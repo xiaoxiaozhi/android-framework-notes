@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>渲染层级树：WindowState 怎样变成 SurfaceFlinger 的 Layer（WMS 专题）</title>
+<style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:30px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; color:var(--text2); }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { background:var(--code-bg); border-radius:3px; padding:1px 6px; font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.88em; color:var(--text); }
+
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; color:var(--text); }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+
+    .step-box { background:var(--step-bg); border:1px solid var(--step-border); border-radius:8px; padding:14px 22px; margin:16px 0; color:var(--text); }
+    .step-num { display:inline-block; background:var(--accent); color:#fff; width:28px; height:28px; border-radius:50%; text-align:center; line-height:28px; font-weight:bold; font-size:.85rem; margin-right:8px; }
+
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.83rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; }
+    .fn { color:var(--fn); font-weight:600; }
+    .cm { color:var(--cm); font-style:italic; }
+    .num { color:#b48a3a; }
+
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; }
+    th { background:var(--table-hdr); font-weight:600; color:var(--text); }
+    tr:hover td { background:var(--hover-bg); }
+
+    .tree { font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; }
+    .tree .dim { color:var(--text2); }
+    .tree .hl { background:var(--tag-bg); border-radius:3px; padding:0 3px; }
+
+    details { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:12px 18px; margin:12px 0; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    details[open] summary { margin-bottom:10px; }
+    .ans { border-left:3px solid var(--accent2); padding:6px 14px; margin-top:8px; background:var(--code-bg); border-radius:4px; }
+
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🌳 渲染层级树：WindowState 怎样变成 SurfaceFlinger 的 Layer</h1>
+<p class="subtitle">逻辑窗口树 → Surface/Layer 树 · 容器图层与 Buffer 图层 · AOSP 12 全链路</p>
+<p class="series">📚 Android 窗口层级专题 · 渲染树分册 ｜ 基于 <code>android-12.0.0_r32</code> ｜ 配套：<a href="android-window-04-surface-render.html">04 像素怎样上屏</a> ｜ <a href="index.html">系列导航</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📖 目录</strong>
+  <a href="#p1">一、先看结论：一张图看懂两棵树</a>
+  <a href="#p2">二、为什么需要第二棵树</a>
+  <a href="#p3">三、Surface 树是怎么长出来的</a>
+  <a href="#p4">四、谁有 Buffer，谁只是容器</a>
+  <a href="#p5">五、Z 序：树上的顺序怎么变成整数</a>
+  <a href="#p6">六、一帧的生命周期（只看树的变化）</a>
+  <a href="#p7">七、真机对照与六个常见误解</a>
+  <a href="#p8">八、速查与自测</a>
+</div>
+
+<!-- ===== 1 ===== -->
+<h2 id="p1">一、先看结论：一张图看懂两棵树</h2>
+<div class="card">
+  <p>这篇只回答一个问题：<strong>逻辑窗口树里的一个 <code>WindowState</code>，怎样变成 SurfaceFlinger 里的一块 <code>Layer</code>？</strong> 先把结论画出来，后面再逐层拆。</p>
+
+  <table>
+    <tr><th>逻辑树（system_server · Java）</th><th>Surface 树（SurfaceFlinger · C++）</th></tr>
+    <tr>
+      <td><div class="tree" style="white-space:pre; font-size:.8rem;">RootWindowContainer
+└─ DisplayContent #0
+   └─ DisplayArea:FeatureRoot
+      └─ TaskDisplayArea
+         └─ Task #42
+            └─ ActivityRecord (extends WindowToken)
+               └─ WindowState(app)  ★
+                  └─ WindowState(sub) ★</div></td>
+      <td><div class="tree" style="white-space:pre; font-size:.8rem;">Layer "Root"
+└─ Layer "DisplayArea:FeatureRoot"
+   └─ Layer "TaskDisplayArea"
+      └─ Layer "Task=42"
+         └─ Layer "ActivityRecord"
+            └─ BufferStateLayer "Window{...}"  ★
+               └─ BufferStateLayer "Window{...}" ★</div></td>
+    </tr>
+  </table>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 读图四条规则 ✦ ✦ ✦</span><br>
+    <strong>① 不是每个节点都有 Layer：</strong><code>DisplayContent</code> 的 <code>"Root"</code> 容器图层在构造时就建好（<code>DisplayContent.java:1061-1065</code>）；DisplayArea / Task 等容器只有在需要裁剪、变换或做动画时才通过 <code>makeSurface().setContainerLayer()</code> 建容器图层（<code>WindowContainer.java:2538</code>）。<br>
+    <strong>② 只有 WindowState 必须有 buffer layer：</strong>因为只有它要装 App 或系统绘制的内容；容器图层不承载像素，只负责组织层级、裁剪和变换。<br>
+    <strong>③ 应用窗口的 token 就是 ActivityRecord：</strong><code>ActivityRecord extends WindowToken</code>（<code>ActivityRecord.java:365</code>），所以逻辑树里不要再画“ActivityRecord → WindowToken”两层；系统窗口（状态栏、导航栏）才用普通 <code>WindowToken</code>。<br>
+    <strong>④ 两棵树是投影关系，不是复制关系：</strong>Surface 树按需生长，父子关系和 Z 序必须与逻辑树一致，但节点数量可以不同。
+  </div>
+
+  <p>一句话记住：<strong>逻辑树是图纸和管理处，Surface 树是真实舞台。</strong>WMS 在逻辑树里做决策，再把决策翻译成 <code>SurfaceControl.Transaction</code> 指令；SurfaceFlinger 只认 Surface 树。</p>
+</div>
+
+<!-- ===== 2 ===== -->
+<h2 id="p2">二、为什么需要第二棵树</h2>
+<div class="card">
+  <p>因为<strong>决策者和执行者不在一个进程，也不认同一种对象</strong>。WMS 手里是 Java 的 <code>WindowState</code>；SurfaceFlinger 手里是 C++ 的 <code>Layer</code>。两边必须有一棵树来对齐“谁是谁的孩子、谁在谁上面、谁裁剪谁”。</p>
+
+  <table>
+    <tr><th></th><th>逻辑树（窗口树）</th><th>Surface 树（图层树）</th></tr>
+    <tr><td>所在进程</td><td>system_server</td><td>SurfaceFlinger 进程持有实体</td></tr>
+    <tr><td>节点是什么</td><td><code>WindowContainer</code> 子类（Java 对象）</td><td><code>Layer</code>（C++ 对象，如 <code>BufferStateLayer</code>）</td></tr>
+    <tr><td>手里的引用</td><td><code>mSurfaceControl</code></td><td>客户端侧 <code>SurfaceControl</code>（只是句柄）</td></tr>
+    <tr><td>决定什么</td><td>归属、可见性、布局、Z 序策略</td><td>实际位置、矩阵、Z 值、alpha、Buffer</td></tr>
+    <tr><td>谁让两者同步</td><td colspan="2"><code>WindowContainer.getSyncTransaction()</code> / 全局 Transaction</td></tr>
+  </table>
+
+  <div class="annotation">
+    <strong>为什么不能把 Java 对象直接交给 SF？</strong> 三个原因：① 跨进程——SF 不可能持有 system_server 的 Java 对象；② 生命周期——窗口随时可能被销毁，句柄比对象好管理；③ 权限与稳定——App 只能拿到一个受控的 handle，不能直接改 SF 的内部状态。所以 Android 的解法是：<strong>对象本体留在 SF，客户端只拿 SurfaceControl 句柄</strong>。
+  </div>
+</div>
+
+<!-- ===== 3 ===== -->
+<h2 id="p3">三、Surface 树是怎么长出来的</h2>
+<div class="card">
+  <p>Surface 树不是一次性建好的，而是随着窗口上树、首次布局逐步长出来。按时间顺序看五步：</p>
+
+  <div class="step-box"><span class="step-num">1</span><strong>屏幕根节点：DisplayContent 建 "Root"</strong><br>
+  <code>DisplayContent</code> 构造时调用 <code>setContainerLayer()</code>，建出名为 <code>"Root"</code> 的容器图层（<code>DisplayContent.java:1061-1065</code>）。它是整块屏幕 Surface 子树的根，所有窗口图层最终都挂在它下面。</div>
+
+  <div class="step-box"><span class="step-num">2</span><strong>窗口 token：首个顶层窗口加入时建容器图层</strong><br>
+  <code>WindowToken.addWindow()</code> 在 <code>mSurfaceControl == null</code> 时调用 <code>createSurfaceControl(true)</code>（<code>WindowToken.java:297-315</code>）。应用窗口的 token 是 <code>ActivityRecord</code>，它继承 <code>WindowToken</code>（<code>ActivityRecord.java:365</code>），<code>addWindow()</code> 里先调 <code>super.addWindow(w)</code>（<code>ActivityRecord.java:3713</code>），所以同样会建出 ActivityRecord 的容器图层。</div>
+
+  <div class="step-box"><span class="step-num">3</span><strong>容器按需向上递归找父图层</strong><br>
+  <code>WindowContainer.makeSurface()</code> 返回一个 <code>SurfaceControl.Builder</code>，<code>setContainerLayer()</code> 把它设成容器图层（<code>WindowContainer.java:2188 / 2538</code>）。DisplayArea / Task 等节点只有在需要承接子 Surface 时才建，避免给每个逻辑节点都建一层空图层。</div>
+
+  <div class="step-box"><span class="step-num">4</span><strong>窗口首次 relayout：建真正的 BufferStateLayer</strong><br>
+  <code>addWindow</code> 只上树，不建画布。App 首帧 <code>relayout</code> 时，WMS 走 <code>createSurfaceControl()</code>（<code>WindowManagerService.java:2597</code>）→ <code>WindowStateAnimator.createSurfaceLocked()</code>（<code>:304</code>）→ <code>WindowSurfaceController</code> 构造函数（<code>:79</code>）→ <code>b.build()</code>（<code>:109</code>）→ Binder 到 <code>SurfaceFlinger::createLayer()</code>（<code>SurfaceFlinger.cpp:4289</code>），造出一个 <code>BufferStateLayer</code> 并挂进 SF 的 Layer 树。</div>
+
+  <div class="step-box"><span class="step-num">5</span><strong>句柄回传：App 拿到画布</strong><br>
+  <code>WindowSurfaceController.getSurfaceControl()</code> 只有一句 <code>copyFrom()</code>（<code>:275-276</code>），把新图层的引用拷进 relayout 的输出参数；Binder reply 回到 App 后，<code>ViewRootImpl.getOrCreateBLASTSurface()</code>（<code>:1958</code>）用这个句柄建 <code>BLASTBufferQueue</code> 和 <code>Surface</code>。到这里，App 才有地方画像素。</div>
+
+  <div class="code-block">
+    <div class="filename">WindowSurfaceController.java:91-109（节选）</div>
+    <pre>
+<span class="kw">final</span> SurfaceControl.Builder b = win.<span class="fn">makeSurface</span>()
+        .<span class="fn">setParent</span>(win.<span class="fn">getSurfaceControl</span>())      <span class="cm">// 挂到父容器图层下</span>
+        .<span class="fn">setName</span>(name)
+        .<span class="fn">setBufferSize</span>(w, h)                  <span class="cm">// 只有 buffer 图层才有尺寸</span>
+        .<span class="fn">setFormat</span>(format)
+        .<span class="fn">setFlags</span>(flags)
+        .<span class="fn">setMetadata</span>(METADATA_WINDOW_TYPE, windowType);
+<span class="kw">if</span> (useBLAST) b.<span class="fn">setBLASTLayer</span>();            <span class="cm">// Android 12 默认走 BLAST</span>
+mSurfaceControl = b.<span class="fn">build</span>();               <span class="cm">// ★ Binder 到 SF 建 Layer</span></pre>
+  </div>
+
+  <p><span class="tag">关键边界</span> <strong>addWindow ≠ 显示。</strong>上树那一刻，窗口只有逻辑身份、树位、Z 序和输入通道；frame 为空、没有 Buffer。必须等首帧 <code>relayout</code>，Surface 树才长出对应的 buffer layer。</p>
+</div>
+
+<!-- ===== 4 ===== -->
+<h2 id="p4">四、谁有 Buffer，谁只是容器</h2>
+<div class="card">
+  <p>这是整篇最重要的一张表。看树的时候，先问一句：<strong>这个节点是“装像素的”，还是“组织像素的”？</strong></p>
+
+  <table>
+    <tr><th>位置</th><th>逻辑树节点</th><th>Surface 树节点</th><th>图层类型</th><th>何时创建</th><th>带 Buffer？</th><th>作用</th></tr>
+    <tr><td>0</td><td><code>RootWindowContainer</code></td><td>—</td><td>—</td><td>—</td><td>否</td><td>全局树根，不直接对应图层</td></tr>
+    <tr><td>1</td><td><code>DisplayContent #0</code></td><td><code>Layer "Root"</code></td><td>ContainerLayer</td><td><strong>构造时</strong></td><td>否</td><td>整块屏幕图层子树的根</td></tr>
+    <tr><td>2</td><td><code>DisplayArea:FeatureRoot</code></td><td><code>Layer "DisplayArea:..."</code></td><td>ContainerLayer</td><td>按需</td><td>否</td><td>按 Feature 分区、裁剪、组织 Z 序</td></tr>
+    <tr><td>3</td><td><code>TaskDisplayArea</code></td><td><code>Layer "TaskDisplayArea"</code></td><td>ContainerLayer</td><td>按需</td><td>否</td><td>应用区容器</td></tr>
+    <tr><td>4</td><td><code>Task #42</code></td><td><code>Layer "Task=42"</code></td><td>ContainerLayer</td><td>按需</td><td>否</td><td>任务卡片范围、动画/截图</td></tr>
+    <tr><td>5a</td><td><code>ActivityRecord</code>（应用窗口 token）</td><td><code>Layer "ActivityRecord"</code></td><td>ContainerLayer</td><td>首个顶层窗口加入时</td><td>否</td><td>Activity 级容器；token 本体</td></tr>
+    <tr><td>5b</td><td><code>WindowToken</code>（系统窗口 token）</td><td><code>Layer "WindowToken"</code></td><td>ContainerLayer</td><td>首个顶层窗口加入时</td><td>否</td><td>一组系统窗口的共同父容器</td></tr>
+    <tr><td>6</td><td><code>WindowState</code>（顶层/子窗）</td><td><code>BufferStateLayer "Window{...}"</code></td><td>BufferStateLayer（BLAST）</td><td>首次 relayout</td><td><strong>是</strong></td><td>真正承载 App/系统绘制的内容</td></tr>
+    <tr><td>7</td><td>动画 leash（临时节点）</td><td><code>Layer "animation-leash of ..."</code></td><td>ContainerLayer</td><td>动画期间</td><td>否</td><td>只动缰绳，不动原图层（09 篇）</td></tr>
+  </table>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 一句话区分 ✦ ✦ ✦</span><br>
+    <strong>ContainerLayer</strong> 是“文件夹”：它可以有子图层、可以裁剪和变换，但自己不放像素。<br>
+    <strong>BufferStateLayer</strong> 是“画纸”：它必须有 Buffer，App 或系统把这一帧画进去。<br>
+    所以看到 <code>dumpsys SurfaceFlinger --list</code> 里一大串 Layer，不要以为每个都在显示内容——大多数只是容器。
+  </div>
+</div>
+
+<!-- ===== 5 ===== -->
+<h2 id="p5">五、Z 序：树上的顺序怎么变成整数</h2>
+<div class="card">
+  <p>Surface 树里没有“兄弟列表顺序”这个概念，只有每个 Layer 的 <strong>Z 值</strong>。这个整数由 WMS 算好，再通过事务写给 SF。</p>
+
+  <p>入口是 <code>WindowContainer.assignChildLayers()</code>（<code>:2290</code>）：它做<strong>两趟遍历</strong>，第一趟给普通孩子按顺序分配，第二趟给需要 Z-boost 的孩子补到末尾。</p>
+
+  <div class="code-block">
+    <div class="filename">WindowContainer.java:2290-2309（节选）</div>
+    <pre>
+<span class="kw">void</span> <span class="fn">assignChildLayers</span>(Transaction t) {
+    <span class="kw">int</span> layer = 0;
+    <span class="cm">// 第一趟：普通孩子按 mChildren 顺序</span>
+    <span class="kw">for</span> (<span class="kw">int</span> j = 0; j &lt; mChildren.size(); ++j) {
+        <span class="kw">final</span> WindowContainer wc = mChildren.get(j);
+        wc.<span class="fn">assignChildLayers</span>(t);
+        <span class="kw">if</span> (!wc.<span class="fn">needsZBoost</span>()) wc.<span class="fn">assignLayer</span>(t, layer++);
+    }
+    <span class="cm">// 第二趟：Z-boost 孩子补到末尾</span>
+    <span class="kw">for</span> (<span class="kw">int</span> j = 0; j &lt; mChildren.size(); ++j) {
+        <span class="kw">final</span> WindowContainer wc = mChildren.get(j);
+        <span class="kw">if</span> (wc.<span class="fn">needsZBoost</span>()) wc.<span class="fn">assignLayer</span>(t, layer++);
+    }
+}</pre>
+  </div>
+
+  <p>叶子节点由 <code>WindowState.assignLayer()</code>（<code>:5648</code>）接手：先处理 IME 相对层级，再调 <code>super.assignLayer(t, layer)</code>。最终 <code>SurfaceControl.Transaction.setLayer()</code> 把这个整数写给 SF；SF 在 VSYNC 里按 Z 值从小到大叠。</p>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 为什么必须“一把事务” ✦ ✦ ✦</span><br>
+    如果 100 个窗口的位置、Z 序、可见性一个个单独提交，SF 每收到一个就可能合成一次，用户会看到画面“跳着变”。WMS 在布局遍历结束时打开全局事务，把所有变更合并，再一次性关闭提交（03 篇第七节）。一帧内的中间状态永远不上屏——这就是 <code>openSurfaceTransaction()</code> / <code>closeSurfaceTransaction()</code> 的意义。
+  </div>
+</div>
+
+<!-- ===== 6 ===== -->
+<h2 id="p6">六、一帧的生命周期（只看树的变化）</h2>
+<div class="card">
+  <p>把前面的步骤压成一条时间线，重点看<strong>每一步 Surface 树多了什么、谁在改它</strong>：</p>
+
+  <table>
+    <tr><th>阶段</th><th>逻辑树侧（WMS）</th><th>Surface 树侧（SF）</th><th>关键入口</th></tr>
+    <tr><td>① addWindow</td><td>WindowState 挂进树；token 容器图层可能建出</td><td>新增容器 Layer（如果 token 是首次）</td><td><code>WindowToken.addWindow</code> :297</td></tr>
+    <tr><td>② 首帧 relayout</td><td>算 frame、可见性；决定建画布</td><td>新增 <code>BufferStateLayer</code></td><td><code>WMS.createSurfaceControl</code> :2597</td></tr>
+    <tr><td>③ 句柄回传</td><td>把 SurfaceControl 交给 App</td><td>Layer 本体不动，只回传句柄</td><td><code>WindowSurfaceController</code> :275</td></tr>
+    <tr><td>④ App 绘制</td><td>—</td><td>BLASTBufferQueue 在 App 进程 dequeue/queue</td><td><code>ViewRootImpl</code> :4418</td></tr>
+    <tr><td>⑤ BLAST 提交</td><td>—</td><td>Buffer 打包进 Transaction 送到 SF</td><td><code>BLASTBufferQueue</code> :546</td></tr>
+    <tr><td>⑥ WMS 事务</td><td>位置/Z/alpha/可见性写入全局事务</td><td>等待 SF 消费</td><td><code>closeSurfaceTransaction</code>（03 篇）</td></tr>
+    <tr><td>⑦ SF 合成</td><td>—</td><td>commit → composite(HWC/GPU) → present</td><td><code>SurfaceFlinger.cpp</code> :3232</td></tr>
+  </table>
+
+  <div class="annotation">
+    <strong>两条信息流：</strong>WMS 的全局事务带“几何/Z/可见性”；App 的 BLAST 事务带“这一帧的 Buffer”。两条流在 SF 的事务队列里汇合，同一个 VSYNC 原子生效。这就是为什么窗口 resize 时不会出现“新尺寸配旧内容”的半帧。
+  </div>
+</div>
+
+<!-- ===== 7 ===== -->
+<h2 id="p7">七、真机对照与六个常见误解</h2>
+<div class="card">
+  <h3>7.1 两条命令，把两棵树抓出来</h3>
+  <p>逻辑树看 WMS，Surface 树看 SF。两条命令的输出可以按窗口名/任务号对上：</p>
+  <div class="code-block">
+    <div class="filename">adb（设备连接后执行）</div>
+    <pre>
+<span class="cm"># 逻辑树：WindowState、mToken、frame、mLayer</span>
+adb shell dumpsys window windows
+
+<span class="cm"># 图层树：最快的列表，先看名字</span>
+adb shell dumpsys SurfaceFlinger --list
+
+<span class="cm"># 图层详情：Z、crop、transform、buffer</span>
+adb shell dumpsys SurfaceFlinger</pre>
+  </div>
+  <p>对照技巧：<code>Task.getName()</code> 返回 <code>"Task=" + mTaskId</code>（<code>Task.java:3942</code>），所以 <code>dumpsys SurfaceFlinger --list</code> 里的 <code>Task=42</code> 可以直接对上逻辑树里的 <code>Task #42</code>；窗口图层名通常包含 <code>Window{...}</code>，和 <code>dumpsys window windows</code> 里的 WindowState 一一对应。</p>
+
+  <h3>7.2 六个常见误解</h3>
+  <ol>
+    <li><strong>“每个 WindowContainer 都有 Surface。”</strong>错。DisplayArea/Task 等容器按需建，只有 WindowState 必须有 buffer layer。</li>
+    <li><strong>“SurfaceControl 就是 Layer 本体。”</strong>错。它只是指向 SF 中 Layer 的跨进程句柄，Layer 本体始终留在 SF。</li>
+    <li><strong>“ActivityRecord 下面还有一层 WindowToken。”</strong>错。<code>ActivityRecord extends WindowToken</code>（<code>:365</code>），应用窗口的 token 就是 ActivityRecord 本身。</li>
+    <li><strong>“Z 序就是树的遍历顺序。”</strong>错。遍历顺序只是输入，最终是 <code>assignChildLayers</code> 算出的整数 <code>mLayer</code>，由 SF 按整数叠。</li>
+    <li><strong>“addWindow 就创建了 Surface。”</strong>错。addWindow 只上逻辑树；首帧 relayout 才建 buffer layer。</li>
+    <li><strong>“Surface 树是逻辑树的完整复制。”</strong>错。它是投影：父子关系一致，但容器节点可以没有 Layer，数量不必相等。</li>
+  </ol>
+</div>
+
+<!-- ===== 8 ===== -->
+<h2 id="p8">八、速查与自测</h2>
+<div class="card">
+  <h3>8.1 概念 → 源码</h3>
+  <table>
+    <tr><th>概念</th><th>源码入口</th><th>位置</th></tr>
+    <tr><td>屏幕根图层 "Root"</td><td><code>DisplayContent</code> 构造 / <code>setContainerLayer()</code></td><td><code>DisplayContent.java:1061-1065</code></td></tr>
+    <tr><td>容器图层按需创建</td><td><code>WindowContainer.makeSurface().setContainerLayer()</code></td><td><code>WindowContainer.java:2188 / 2538</code></td></tr>
+    <tr><td>token 容器图层</td><td><code>WindowToken.addWindow()</code> → <code>createSurfaceControl(true)</code></td><td><code>WindowToken.java:297-315</code></td></tr>
+    <tr><td>ActivityRecord 是 token</td><td><code>class ActivityRecord extends WindowToken</code></td><td><code>ActivityRecord.java:365</code></td></tr>
+    <tr><td>窗口 buffer 图层</td><td><code>WindowStateAnimator.createSurfaceLocked()</code></td><td><code>:304</code></td></tr>
+    <tr><td>向 SF 下单</td><td><code>WindowSurfaceController</code> 构造 / <code>b.build()</code></td><td><code>:79 / :91-109</code></td></tr>
+    <tr><td>SF 建 Layer</td><td><code>SurfaceFlinger::createLayer()</code></td><td><code>SurfaceFlinger.cpp:4289</code></td></tr>
+    <tr><td>Z 序两趟</td><td><code>WindowContainer.assignChildLayers()</code></td><td><code>:2290-2309</code></td></tr>
+    <tr><td>叶子 assignLayer</td><td><code>WindowState.assignLayer()</code></td><td><code>:5648</code></td></tr>
+    <tr><td>App 拿画布</td><td><code>ViewRootImpl.getOrCreateBLASTSurface()</code></td><td><code>:1958</code></td></tr>
+  </table>
+
+  <h3>8.2 自测（5 题）</h3>
+  <details>
+    <summary>1. 为什么 DisplayArea 有 Layer 却没有像素？</summary>
+    <div class="ans">因为它是 ContainerLayer，只负责裁剪、变换和组织子图层，不承载 Buffer。只有 WindowState 对应的 BufferStateLayer 才装像素。</div>
+  </details>
+  <details>
+    <summary>2. 为什么 ActivityRecord 不是 WindowToken 的子节点？</summary>
+    <div class="ans"><code>ActivityRecord extends WindowToken</code>（<code>ActivityRecord.java:365</code>），它是 WindowToken 的一种特化；应用窗口的 token 就是 ActivityRecord 本身。系统窗口（状态栏等）才用普通 WindowToken。</div>
+  </details>
+  <details>
+    <summary>3. SurfaceControl 里到底存的是什么？</summary>
+    <div class="ans">指向 SurfaceFlinger 中某个 Layer 的跨进程句柄，不是 Layer 本体，也不是像素。句柄可跨进程传递，Layer 本体始终留在 SF。</div>
+  </details>
+  <details>
+    <summary>4. addWindow 之后到首帧上屏，Surface 树新增了哪些节点？</summary>
+    <div class="ans">addWindow：token 容器图层（如果首个顶层窗口）；首帧 relayout：WindowState 的 BufferStateLayer；App 侧另外建 BLASTBufferQueue/Surface，但那是客户端队列，不是 SF 的新 Layer。</div>
+  </details>
+  <details>
+    <summary>5. Z 序由谁决定、谁执行？为什么必须一把事务？</summary>
+    <div class="ans">WMS 的 <code>assignChildLayers</code> 算整数 <code>mLayer</code>，写进 <code>SurfaceControl.Transaction</code>；SF 在 VSYNC 里按事务更新 Z 值并合成。一把事务保证一帧内的几何、Z、可见性、Buffer 原子生效，中间状态不上屏。</div>
+  </details>
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android 窗口层级专题 · 渲染树分册 | <strong>渲染层级树：WindowState 怎样变成 SurfaceFlinger 的 Layer</strong></p>
+  <p>基于 AOSP 12（android-12.0.0_r32）· WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实</p>
+  <p style="margin-top:10px;"><a href="android-window-04-surface-render.html">← 04 像素怎样上屏</a> &nbsp;|&nbsp; <strong>渲染树分册 ← 你在这</strong> &nbsp;|&nbsp; <a href="android-window-05-input-dispatch.html">05 输入事件的分发与窗口命中 →</a></p>
+  <p style="margin-top:8px;"><a href="index.html">📚 系列导航</a> &nbsp;|&nbsp; <a href="android-window-roadmap.html">🗺️ 学习路线图</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📖 配套阅读：04 篇讲完整 BLAST/SF 合成；本篇只聚焦“两棵树怎么对应”。</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+</body>
+</html>

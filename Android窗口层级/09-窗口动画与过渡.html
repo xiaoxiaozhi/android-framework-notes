@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>窗口动画与过渡：AppTransition 与 leash 缰绳（WMS 学习 09）</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol","Apple Symbols",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .think .qtag { color:var(--accent3); font-weight:bold; }
+    .analogy { border-left:4px solid var(--accent2); background:var(--bg-card); border:1px solid var(--border); border-left-width:4px; padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .analogy .tag { color:var(--accent2); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:10px 16px; margin:14px 0; font-size:.9rem; color:var(--text2); }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:14px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-size:.82rem; font-weight:bold; margin-right:8px; }
+    .why { color:var(--accent2); font-weight:bold; }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🎬 窗口动画与过渡：AppTransition 与 leash 缰绳</h1>
+<p class="subtitle">树不只会「长」和「摘」——它还能被临时改造：一层叫 leash 的中间节点，让窗口在转场时被拖拽、缩放、淡出 · AOSP 12 源码逐行核实</p>
+<p class="series">📚 Android 窗口层级专题 09 ｜ 基于 <code>android-12.0.0_r32</code> ｜ 上篇：<a href="08-窗口的尺寸与身体.html">← 08 窗口的尺寸与身体</a> ｜ 下篇：<a href="WMS学习路线图.html">🗺️ 学习路线图 →</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p1">一、全景：动画是窗口树的「第三种改造方式」</a>
+  <a href="#p2">二、谁发起：转场状态机 AppTransition</a>
+  <a href="#p3">三、核心机制 leash 缰绳：SurfaceAnimator.startAnimation</a>
+  <a href="#p4">四、leash 是怎么插进去的：createAnimationLeash</a>
+  <a href="#p5">五、窗口怎么应用动画：applyAnimationLocked</a>
+  <a href="#p6">六、帧驱动：WindowAnimator 与 Choreographer</a>
+  <a href="#p7">七、Shell 接管与远程动画</a>
+  <a href="#p8">八、完整链路与源码速查</a>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+
+<h2 id="p1">一、全景：动画是窗口树的「第三种改造方式」</h2>
+
+<div class="card">
+  <p>你在前八篇里已经见过窗口树的两种改造：</p>
+  <table>
+    <tr><th>方式</th><th>篇目</th><th>树上发生了什么</th></tr>
+    <tr><td><strong>add</strong></td><td>02 / 06 篇</td><td>树上<strong>长出新节点</strong>（WindowToken / WindowState）</td></tr>
+    <tr><td><strong>remove</strong></td><td>06 篇（三条删除路径）</td><td>树上<strong>摘掉节点</strong></td></tr>
+    <tr><td><strong>动画</strong></td><td><strong>本篇</strong></td><td>树上<strong>临时插入一个中间节点</strong>（leash），让子树可被拖拽；转场结束再抽掉</td></tr>
+  </table>
+
+  <p>第三种最难理解，因为它违反直觉：<strong>窗口怎么"动"起来？树上的位置是固定的，位置变了不就该重新布局吗？</strong> 答案是：<strong>不移动原节点，而是在它上面套一层</strong>。这层套子可以随便平移/缩放/旋转/改透明度，被套住的子树整体跟着动——但树的结构、层级、布局一个字节都没变。</p>
+
+  <div class="analogy">
+    <span class="tag">类比</span> 想象你要把一幅画从墙上取下来摆到另一面墙。笨办法是<strong>重新钉钉子、重新挂</strong>（重新布局，代价高、会闪）。<br>
+    动画的做法是：<strong>在画外面套一个画框，把画框连同画一起搬过去</strong>。画本身的位置没变，变的是画框。搬完把画框拆掉——画就"落"在了新的地方。<br>
+    这个<strong>画框</strong>就是 <code>leash</code>（缰绳）。它的名字也很形象：牵住这棵子树的那根绳。
+  </div>
+
+  <div class="tree">leash 插入前 vs 插入后
+
+【插入前】
+DisplayArea.Tokens
+ └─ WindowToken (App 窗口)
+      └─ WindowState  ← mSurfaceControl 直接挂在这里
+
+【插入后（转场中）】
+DisplayArea.Tokens
+ └─ WindowToken
+      └─ WindowState
+           └─ <b>SurfaceControl "animation-leash of APP_WINDOW"</b>  ← 临时插入
+                └─ 原有的 surface（被 reparent 进来）
+
+动画操作的是 leash（改它的位置/alpha/crop），而不是 WindowState；
+转场结束 leash 被销毁，surface reparent 回原处 —— 树结构恢复如初。</div>
+
+  <div class="annotation star3"><span class="tag">一句话</span> <strong>树定义「谁盖谁」，leash 定义「这一刻谁在哪」</strong>。前者是静态的层级真值，后者是转场期间的临时表演层。理解了这句，Winscope 里那些"凭空多出来的 Layer"就再也不会让你困惑了。</div>
+
+  <h3>版本事实（先立住，别被高版本文章带偏）</h3>
+  <div class="pitfall"><span class="tag">⚠️ AOSP 12 事实</span> 12 上的转场主力是 <strong><code>AppTransition</code> + <code>SurfaceAnimator</code>(leash) + <code>TaskOrganizer</code>/<code>RemoteAnimation</code></strong>。你在 13/14 的文章里看到的 <code>TransitionController</code> / Shell Transitions 那一整套，在本树里<strong>不是动画主线</strong>（代码存在，但不是主路径）。注意 <code>DisplayRotation.java:416</code> 里那句 <code>useShellTransitions</code> 判断——它只影响旋转的走法，不代表整体转场架构已经切换。</div>
+
+  <div class="hint">🔗 前置：03 篇（遍历与事务提交——leash 的位移最终也是走这笔事务）、08 篇（frame 与 Insets——动画期间 frame 不变，这就是为什么要 leash）。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+
+<h2 id="p2">二、谁发起：转场状态机 AppTransition</h2>
+
+<div class="card">
+  <p>动画不是"窗口自己想起来要动"，而是<strong>有人先宣布"接下来要发生一次转场"</strong>，然后系统在这个声明期内收集该动谁，最后统一执行。</p>
+
+  <h3>块 A：转场的三段式（DisplayContent.java:4954 / 4988）</h3>
+  <div class="code-block">
+    <div class="filename">DisplayContent.java:4954-4965、4988（裁剪）</div>
+    <pre><span class="kw">void</span> <span class="fn">prepareAppTransition</span>(@WindowManager.TransitionType <span class="kw">int</span> transit) {
+    <span class="fn">prepareAppTransition</span>(transit, <span class="num">0</span> <span class="cm">/* flags */</span>, <span class="kw">false</span> <span class="cm">/* alwaysKeepCurrent */</span>);
+}
+
+<span class="kw">void</span> <span class="fn">prepareAppTransition</span>(@WindowManager.TransitionType <span class="kw">int</span> transit,
+        <span class="kw">int</span> flags, <span class="kw">boolean</span> alwaysKeepCurrent) {
+    <span class="cm">// ① why 先「声明」再「执行」：发起方（AMS/ATMS）此刻只知道要转场，</span>
+    <span class="cm">//    但还不知道最终有哪些窗口参与——它们要等布局算完才能确定</span>
+    <span class="cm">//    所以这里只是把意图记在 mAppTransition 里（状态机置位）</span>
+    <span class="cm">// … 省略：与已有 pending transition 的合并/覆盖判断</span>
+}
+
+<span class="kw">void</span> <span class="fn">executeAppTransition</span>() {
+    <span class="cm">// ② why 布局之后才执行：此时每个窗口的可见性、frame、目标状态都已确定，</span>
+    <span class="cm">//    才能正确判断「谁进场、谁退场、谁不动」——这正是 03 篇遍历的末尾阶段</span>
+    mAtmService.mWindowManager.mWindowPlacerLocked.<span class="fn">requestTraversal</span>();
+    <span class="cm">// ③ 转场必须触发一次遍历：因为动画要挂在「新一帧的窗口状态」上</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：<code>prepareAppTransition</code> 宣布意图（记进状态机），<code>executeAppTransition</code> 在布局算完后触发遍历去落实。</p>
+  <p><strong>设计意图</strong>：<span class="why">两段式设计的根本原因是「信息到达顺序」</span>。AMS 决定跳转时，只知道"要从 A 到 B"；但"B 的窗口什么时候真正可见、A 什么时候真正该退场"，必须等 WMS 布局算完。所以意图先存着，等布局的最后一刻再兑现。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>跳转动画不出现 / 只闪一下</strong>。<strong>因果</strong>：<code>prepareAppTransition</code> 被调用但后续没有 <code>executeAppTransition</code>（或中途被 <code>overridePendingTransition(0,0)</code> 置空），意图悬在那里没兑现。<strong>怎么查</strong>：开 ProtoLog 的 <code>WM_DEBUG_APP_TRANSITIONS</code>，看日志里有没有成对的 prepare/execute；两段之间若隔了很远（几百毫秒），说明中间卡在布局或等 VSYNC。</div>
+
+  <h3>块 B：转场就绪判定与时长（AppTransition.java:158 / 167 / 350）</h3>
+  <div class="code-block">
+    <div class="filename">AppTransition.java:158、167、350（裁剪）</div>
+    <pre><span class="kw">public class</span> <span class="fn">AppTransition</span> <span class="kw">implements</span> Dump {
+    <span class="cm">// ① 这就是 12 上的「转场状态机」本体：它不做动画，只记录
+    //    「当前 pending 的转场是什么类型、有哪些窗口在等、准备好没有」</span>
+
+    <span class="kw">static final int</span> DEFAULT_APP_TRANSITION_DURATION = <span class="num">336</span>;
+    <span class="cm">// ② 默认转场时长 336ms（毫秒）。为什么不是整数 300？
+    //    它不是拍脑袋定的，而是和刷新率/帧节奏对齐后的经验值；
+    //    开发者选项里的「窗口动画缩放」就是在这个值上乘系数</span>
+
+    <span class="kw">boolean</span> <span class="fn">isReady</span>() {
+        <span class="cm">// ③ 就绪判据：所有「参与本次转场的窗口」都已能画（hasDrawn）且
+        //    没有窗口还在「等首帧」。任何一方没准备好，
+        //    整个转场就得继续等——这就是启动慢时动画迟迟不开始的原因</span>
+        <span class="cm">// … 省略：mOpeningApps / mClosingApps 的逐个就绪检查（350-386）</span>
+    }
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：AppTransition 是转场状态的记录本：类型、参与者、就绪判断、默认时长。</p>
+  <p><strong>设计意图</strong>：<span class="why">isReady() 是"等齐再动"的闸门</span>。动画最忌讳"动画开始了但内容还没画出来"——那会看到空窗口在滑。所以系统宁可等一下，也要保证<strong>参与转场的窗口都已出图</strong>。代价就是：启动慢的 App 会让转场整体延后（用户感觉"点了没反应"）。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>点开 App 有"卡一下"才出现动画</strong>。<strong>因果</strong>：<code>isReady()</code> 里某个窗口 <code>hasDrawn</code> 仍为 false（首帧还没画完），转场被挂起等它。这正是 06 篇「上树 ≠ 显示」在动画层的体现。<strong>怎么查</strong>：<code>dumpsys window windows</code> 看该窗口 <code>isDrawn</code>；配合 Perfetto 看首次绘制的耗时；如果窗口迟迟不 drawn，锅在 App 主线程（不是 WMS）。</div>
+  <div class="think"><span class="qtag">🧠 思考（单块）</span> 如果去掉 <code>isReady()</code> 这个闸门、转场一到就立刻开始动画，用户体验会怎样？想想「新窗口还没画出内容，但 leash 已经开始从缩小放大到正常」——你看到的会是什么？</div>
+
+  <h3>块 C：转场就绪后干什么（AppTransitionController.java:144 / 567）</h3>
+  <div class="code-block">
+    <div class="filename">AppTransitionController.java:144、567（裁剪）</div>
+    <pre><span class="kw">void</span> <span class="fn">handleAppTransitionReady</span>() {
+    <span class="cm">// ① why 名字叫 ready：这是转场状态机「闸门打开」的那一刻，
+    //    由遍历流程在布局完成后调用（呼应块 A 的 executeAppTransition）</span>
+    <span class="cm">// … 省略：isReady 校验、收集 opening/closing 集合、
+    //   getTransit() 算出最终 transit 类型（较长的省略）</span>
+    <span class="fn">applyAnimations</span>(mTmpOpeningApps, mTmpClosingApps);
+    <span class="cm">// ② 真正开始给窗口挂动画（见块 D / 第五节）</span>
+}
+
+<span class="kw">private void</span> <span class="fn">applyAnimations</span>(ArraySet&lt;WindowContainer&gt; wcs, ArraySet&lt;ActivityRecord&gt; apps,
+        ArraySet&lt;ActivityRecord&gt; wallpapers) {
+    <span class="cm">// ③ why 分成「容器集合 + 应用集合 + 壁纸集合」三组：
+    //    它们的动画来源不同——容器/应用走 AppTransition 的资源动画，
+    //    壁纸走自己的淡入淡出，三者要分开挂</span>
+    <span class="cm">// … 省略：逐个 ActivityRecord 构造 AnimationAdapter 并 startAnimation（570-700）</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：闸门打开后，把参与转场的窗口分成几组，逐组把动画适配器挂上去。</p>
+  <p><strong>设计意图</strong>：<span class="why">分组是因为"动画来源"不同</span>。App 窗口的进场/退场动画可能来自主题资源、可能来自 <code>overridePendingTransition</code>、也可能是远程动画；壁纸则通常只是一个 alpha 渐变。分组后每组用各自的规则构造动画。</p>
+  <p><strong>在主线中的位置</strong>：<code>AMS 发起 → DisplayContent.prepareAppTransition →（布局）→ executeAppTransition → requestTraversal → AppTransitionController.handleAppTransitionReady → applyAnimations → WindowState.startAnimation → SurfaceAnimator.startAnimation</code>（下一节）。</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+
+<h2 id="p3">三、核心机制 leash 缰绳：SurfaceAnimator.startAnimation</h2>
+
+<div class="card">
+  <p>这是本篇的重心。所有窗口（WindowState）、容器（Task / ActivityRecord）、甚至壁纸的动画，最终都汇聚到<strong>同一个类</strong>：<code>SurfaceAnimator</code>。每个 <code>WindowContainer</code> 都持有一个 <code>SurfaceAnimator</code>（这解释了 06 篇那个 <code>mWinAnimator</code> 为什么重要）。</p>
+
+  <h3>块 D：startAnimation 全貌（SurfaceAnimator.java:134 起）</h3>
+  <div class="code-block">
+    <div class="filename">SurfaceAnimator.java:134-180</div>
+    <pre><span class="kw">void</span> <span class="fn">startAnimation</span>(Transaction t, AnimationAdapter anim, <span class="kw">boolean</span> hidden,
+        @AnimationType <span class="kw">int</span> type,
+        @Nullable OnAnimationFinishedCallback animationFinishedCallback,
+        @Nullable SurfaceFreezer freezer) {
+    <span class="fn">cancelAnimation</span>(t, <span class="kw">true</span> <span class="cm">/* restarting */</span>, <span class="kw">true</span> <span class="cm">/* forwardCancel */</span>);
+    <span class="cm">// ① why 第一件事是取消旧动画：一个窗口同时只能有一个活动动画，
+    //    否则两个 leash 会互相打架（画面抖动/卡住）。restarting=true 表示
+    //    「这次取消是正常重开，不是被中断」，会走 forwardCancel 通知旧动画收尾</span>
+
+    mAnimation = anim;
+    mAnimationType = type;
+    mAnimationFinishedCallback = animationFinishedCallback;
+    <span class="cm">// ② 记下这份动画的身份，后面 dump 和回调都要用</span>
+
+    <span class="kw">final</span> SurfaceControl surface = mAnimatable.<span class="fn">getSurfaceControl</span>();
+    <span class="kw">if</span> (surface == <span class="kw">null</span>) {
+        Slog.<span class="fn">w</span>(TAG, <span class="cm">"Unable to start animation, surface is null or no children."</span>);
+        <span class="fn">cancelAnimation</span>();
+        <span class="kw">return</span>;
+        <span class="cm">// ③ why 没 surface 就没得动画：leash 要套在一个真实存在的图层上。
+        //    这对应「窗口还没 relayout 出 surface」（06 篇的"上树≠显示"）</span>
+    }
+
+    mLeash = freezer != <span class="kw">null</span> ? freezer.<span class="fn">takeLeashForAnimation</span>() : <span class="kw">null</span>;
+    <span class="cm">// ④ why 先问 SurfaceFreezer 要：自适应旋转等场景下，leash 是提前
+    //    「冻住」画面时就建好的（截屏当占位），这里直接复用，避免重建和闪屏</span>
+
+    <span class="kw">if</span> (mLeash == <span class="kw">null</span>) {
+        mLeash = <span class="fn">createAnimationLeash</span>(mAnimatable, surface, t, type,
+                mAnimatable.<span class="fn">getSurfaceWidth</span>(), mAnimatable.<span class="fn">getSurfaceHeight</span>(), <span class="num">0</span> <span class="cm">/* x */</span>,
+                <span class="num">0</span> <span class="cm">/* y */</span>, hidden, mService.mTransactionFactory);
+        <span class="cm">// ⑤ ★ 没有现成的就现造：注意尺寸用的是 getSurfaceWidth/Height
+        //    （当前图层实际大小），坐标 (0,0)（贴在原位置，不改变外观）</span>
+        mAnimatable.<span class="fn">onAnimationLeashCreated</span>(t, mLeash);
+        <span class="cm">// ⑥ 通知宿主「你的 leash 建好了」——宿主借此把子 Layer 挂到 leash 下
+        //    （WindowContainer.java:2837 的实现，见下一块）</span>
+    }
+
+    mAnimatable.<span class="fn">onLeashAnimationStarting</span>(t, mLeash);
+    <span class="cm">// ⑦ 再通知一次：动画马上要开始，宿主可做最后准备</span>
+
+    <span class="kw">if</span> (mAnimationStartDelayed) {
+        <span class="kw">if</span> (DEBUG_ANIM) Slog.<span class="fn">i</span>(TAG, <span class="cm">"Animation start delayed"</span>);
+        <span class="kw">return</span>;
+        <span class="cm">// ⑧ why 支持「延迟启动」：leash 建好但先不播，等外部信号。
+        //    用于「先摆好姿势再一起动」的转场（如多窗口同时进入）</span>
+    }
+
+    mAnimation.<span class="fn">startAnimation</span>(mLeash, t, type, mInnerAnimationFinishedCallback);
+    <span class="cm">// ⑨ ★ 把 leash 交给具体的 AnimationAdapter 去驱动：
+    //    它会在每一帧改 leash 的 position/alpha/crop</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：一次动画启动的完整准备——取消旧动画、记身份、确认有 surface、拿到或新建 leash、通知宿主挂接、最后把 leash 交给动画驱动器。</p>
+  <p><strong>设计意图</strong>：<span class="why">整个方法是"把树改造好，再把改造后的树交给动画驱动"</span>。仔细看顺序：<strong>先建 leash → 再通知宿主把子节点 reparent 进来 → 最后才启动动画</strong>。顺序反了的话，动画驱动的就是一棵还没接好线的树。</p>
+  <p><strong>实战问题</strong>：<strong>leash 泄漏 / 画面卡在半透明中间层</strong>。<strong>因果</strong>：动画被取消但 <code>mAnimationFinishedCallback</code> 没执行，leash 没被销毁也没 reparent 回去，于是那层永远留在树上。<strong>怎么查</strong>：Winscope 里看有没有多余的 <code>animation-leash of …</code> Layer；<code>dumpsys window</code> 里搜 <code>mLeash=</code>（<code>SurfaceAnimator.dump()</code> 会打印它）；也可用 <code>adb shell dumpsys SurfaceFlinger | grep leash</code>。</p>
+
+  <h3>块 E：宿主如何接住 leash（WindowContainer.java:2537 / 2542 / 2837）</h3>
+  <div class="code-block">
+    <div class="filename">WindowContainer.java:2537-2545、2837（裁剪）</div>
+    <pre><span class="cm">// ① 宿主提供「照什么规格造 leash」——这不是普通图层：</span>
+<span class="kw">public</span> SurfaceControl.Builder <span class="fn">makeAnimationLeash</span>() {
+    <span class="kw">return</span> <span class="fn">makeChildSurface</span>(<span class="kw">null</span>)       <span class="cm">// 建在「自己」名下，不是建在屏幕下</span>
+            .<span class="fn">setParent</span>(<span class="fn">getSurfaceControl</span>())
+            .<span class="fn">setCallsite</span>(<span class="cm">"makeAnimationLeash"</span>);
+}
+
+<span class="cm">// ② 但 leash 的「父」不是宿主自己，而是宿主在树上的父 —— 这一层错位是刻意的：</span>
+<span class="kw">public</span> SurfaceControl <span class="fn">getAnimationLeashParent</span>() {
+    <span class="kw">return</span> mParent != <span class="kw">null</span> ? mParent.<span class="fn">getSurfaceControl</span>() : <span class="fn">getSurfaceControl</span>();
+    <span class="cm">// why 让 leash 的父 = 宿主的父，这样 leash 占据了宿主原本在父容器中的
+    // 「图层位」；宿主自己的 surface 再 reparent 到 leash 之下。
+    // 结果：树形状是 父 → leash → 宿主，视觉与层级完全等价，
+    // 但多出一层可自由操作的中间层</span>
+}
+
+<span class="cm">// ③ 挂接动作：宿主在这里把自己的 surface 塞进 leash（由 createAnimationLeash 里的 reparent 完成）</span>
+<span class="kw">public void</span> <span class="fn">onAnimationLeashCreated</span>(Transaction t, SurfaceControl leash) {
+    <span class="cm">// … 子类（WindowState / Task 等）各自实现，例如把 IME 相关的相对层级
+    //    重新绑定到 leash 上，避免 leash 一插进去 IME 层级就错乱</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：解答"leash 插在哪一层"——它的父是宿主的父，宿主自己则降到 leash 下面。</p>
+  <p><strong>设计意图</strong>：<span class="why">leash 必须"顶替"宿主原来的图层位</span>。如果 leash 建在宿主<em>内部</em>，那宿主的 alpha/crop 会先作用于 leash 再作用于内容，语义就乱了；相反，让 leash 站在宿主原来的位置、宿主退到下一层，动画操作 leash 就<strong>恰好等价于操作整个宿主</strong>——这是最干净的实现方式。</p>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 D、块 E）</span> 你在 06 篇学过：子窗口在构造函数里 <code>parentWindow.addChild(this, …)</code> 挂到了<strong>父 WindowState</strong> 名下。现在父窗口要播退场动画——请问子窗口的 surface 会跟着动吗？leash 建在父 WindowState 上时，子窗口的图层在 leash 之上还是之下？</div>
+</div>
+
+<!-- ═══════════════════════ 四 ═══════════════════════ -->
+
+<h2 id="p4">四、leash 是怎么插进去的：createAnimationLeash</h2>
+
+<div class="card">
+  <p>上一块说「建 leash」，但没图为它到底怎么进树的。这个方法只有二十多行，却把整件事说完了。</p>
+
+  <h3>块 G：先看插入前的树（ASCII）</h3>
+  <div class="tree">插入前：
+
+DisplayArea.Tokens (SurfaceControl L1)
+ └─ WindowToken (L2)
+      └─ WindowState (L3)  ← mSurfaceControl，直接挂在 L2 下
+
+插入后：
+
+DisplayArea.Tokens (L1)
+ └─ WindowToken (L2)
+      └─ <b>leash (L3')</b>          ← 新建，父 = WindowToken（即宿主的父）
+           └─ WindowState (L3)      ← 原来在 L2 下，现在 reparent 到 leash 下
+
+关键：leash 的父不是 WindowState，而是 WindowState 的父（WindowToken）——
+所以树形状变成 “爷爷 → leash → 孙子”，视觉层级与原来完全等价。</div>
+
+  <h3>块 H：createAnimationLeash 本体（SurfaceAnimator.java:384）</h3>
+  <div class="code-block">
+    <div class="filename">SurfaceAnimator.java:384-415</div>
+    <pre><span class="kw">static</span> SurfaceControl <span class="fn">createAnimationLeash</span>(Animatable animatable, SurfaceControl surface,
+        Transaction t, @AnimationType <span class="kw">int</span> type, <span class="kw">int</span> width, <span class="kw">int</span> height, <span class="kw">int</span> x, <span class="kw">int</span> y,
+        <span class="kw">boolean</span> hidden, Supplier&lt;Transaction&gt; transactionFactory) {
+    <span class="kw">if</span> (DEBUG_ANIM) Slog.<span class="fn">i</span>(TAG, <span class="cm">"Reparenting to leash"</span>);
+
+    <span class="kw">final</span> SurfaceControl.Builder builder = animatable.<span class="fn">makeAnimationLeash</span>()
+            .<span class="fn">setParent</span>(animatable.<span class="fn">getAnimationLeashParent</span>())
+            <span class="cm">// ① 父的选取是关键：取宿主的父，让 leash 顶替宿主原本的图层位（块 E 已解释）</span>
+
+            .<span class="fn">setName</span>(surface + <span class="cm">" - animation-leash of "</span> + <span class="fn">animationTypeToString</span>(type))
+            <span class="cm">// ② 名字带 “animation-leash of 类型”——这就是你在 dumpsys SurfaceFlinger
+            //    里搜 leash 能直接定位到它的原因，也是排障的第一线索</span>
+
+            <span class="cm">// TODO(b/151665759) Defer reparent calls</span>
+            <span class="cm">// We want the leash to be visible immediately because the transaction which shows</span>
+            <span class="cm">// the leash may be deferred but the reparent will not. This will cause the leashed</span>
+            <span class="cm">// surface to be invisible until the deferred transaction is applied. If this</span>
+            <span class="cm">// doesn't work, you will can see the 2/3 button nav bar flicker during seamless</span>
+            <span class="cm">// rotation.</span>
+            <span class="cm">// ③ 这段注释是这个方法的“设计意图说明书”：leash 必须“立即可见”，
+            //    因为展示它的那笔事务可能被 defer，但 reparent 不会。
+            //    两者的时序差会造成“导航条闪烁”——作者直接把已知坑写在代码里了</span>
+
+            .<span class="fn">setHidden</span>(hidden)
+            .<span class="fn">setEffectLayer</span>()
+            <span class="cm">// ④ effect layer：标记为“效果层”，不参与某些优化计算（如遮挡）</span>
+            .<span class="fn">setCallsite</span>(<span class="cm">"SurfaceAnimator.createAnimationLeash"</span>);
+            <span class="cm">// ⑤ callsite 会记进 SurfaceFlinger，事后能用 dumpsys 反查“这层谁建的”</span>
+
+    <span class="kw">final</span> SurfaceControl leash = builder.<span class="fn">build</span>();
+
+    t.<span class="fn">setWindowCrop</span>(leash, width, height);
+    t.<span class="fn">setPosition</span>(leash, x, y);
+    t.<span class="fn">show</span>(leash);
+    t.<span class="fn">setAlpha</span>(leash, hidden ? <span class="num">0</span> : <span class="num">1</span>);
+    <span class="cm">// ⑥ 初始化 leash 自身的属性：尺寸/位置/可见/透明度——
+    //    这一笔事务执行后，leash 就是一个“与宿主外形一模一样”的空壳</span>
+
+    t.<span class="fn">reparent</span>(surface, leash);
+    <span class="cm">// ⑦ ★ 全篇最关键的一行：把宿主原有的 surface 挂到 leash 下。</span>
+    <span class="cm">//    执行前树是 L2→L3；执行后是 L2→L3'→L3。视觉上无差别，</span>
+    <span class="cm">//    但现在改 L3' 的属性等价于改整个 L3 子树</span>
+
+    <span class="kw">return</span> leash;
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：建一个尺寸/位置与宿主一模一样的新图层，改名标记为 leash，然后把宿主原图层挂到它下面。树结构从此多一层。</p>
+  <p><strong>设计意图</strong>：<span class="why">为什么必须“多一层”而不是直接改宿主</span>。因为宿主的 surface 是<strong>内容载体</strong>——App 会不断往上面画新帧（比如列表滚动）。如果直接把位移写进宿主，那 App 每画一帧都可能把动画位移重置。用 leash 隔开：<strong>内容归内容（L3），表演归表演（L3'）</strong>，两者互不干扰。这是整个动画架构最漂亮的地方。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>动画期间画面闪烁一下</strong>。<strong>因果</strong>：正是注释 ③ 描述的那个时序差——leash 的 show 被 defer 了，但 reparent 已经生效，导致宿主在新旧父子关系间瞬间不可见。<strong>怎么查</strong>：开 <code>WM_SHOW_TRANSACTIONS</code> ProtoLog 看事务合并情况；用 Winscope 逐帧看 leash 从建立到可见的那几帧。</div>
+</div>
+
+<!-- ═══════════════════════ 五 ═══════════════════════ -->
+
+<h2 id="p5">五、窗口怎么应用动画：applyAnimationLocked</h2>
+
+<div class="card">
+  <p>leash 建好了，但「这窗口该播什么动画」还没定。这个决策在 <code>WindowStateAnimator.applyAnimationLocked</code>——<strong>把 transit（转场类型）翻译成 Animation（资源动画）</strong>。</p>
+
+  <h3>块 I：transit → 动画资源（WindowStateAnimator.java:701 起，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">WindowStateAnimator.java:701-780（裁剪）</div>
+    <pre><span class="kw">boolean</span> <span class="fn">applyAnimationLocked</span>(<span class="kw">int</span> transit, <span class="kw">boolean</span> isEntrance) {
+    <span class="kw">if</span> (mWin.<span class="fn">isAnimating</span>() &amp;&amp; mAnimationIsEntrance == isEntrance) {
+        <span class="cm">// If we are trying to apply an animation, but already running</span>
+        <span class="cm">// an animation of the same type, then just leave that one alone.</span>
+        <span class="kw">return true</span>;
+        <span class="cm">// ① why 已经在播同类动画就不重开：否则每轮布局都重启一遍动画，
+        //    表现为“动画卡在开头不动”（永远在从头播）</span>
+    }
+
+    <span class="cm">// Only apply an animation if the display isn't frozen.  If it is</span>
+    <span class="cm">// frozen, there is no reason to animate and it can cause strange</span>
+    <span class="cm">// artifacts when we unfreeze the display if some different animation</span>
+    <span class="cm">// is running.</span>
+    <span class="kw">if</span> (mWin.mToken.<span class="fn">okToAnimate</span>()) {
+        <span class="cm">// ② why 冻结显示（旋转中）不播动画：画面本来就是一张静态截图，
+        //    再叠动画只会让解冻后出现错位——这是旋转相关 bug 的常见源头</span>
+
+        <span class="kw">int</span> anim = mWin.<span class="fn">getDisplayContent</span>().<span class="fn">getDisplayPolicy</span>()
+                .<span class="fn">selectAnimation</span>(mWin, transit);
+        <span class="cm">// ③ policy 先把 transit 映射成一个“动画样式”编号（或 ANIMATION_NONE /
+        //    ANIMATION_STYLEABLE）——再次看到“策略在 policy、执行在 WMS”的分工</span>
+
+        <span class="kw">int</span> attr = -<span class="num">1</span>;
+        Animation a = <span class="kw">null</span>;
+        <span class="kw">if</span> (anim != DisplayPolicy.ANIMATION_STYLEABLE) {
+            <span class="kw">if</span> (anim != DisplayPolicy.ANIMATION_NONE) {
+                a = AnimationUtils.<span class="fn">loadAnimation</span>(mContext, anim);
+                <span class="cm">// ④ 系统预定义的动画（帧动画/补间动画资源），直接加载</span>
+            }
+        } <span class="kw">else</span> {
+            <span class="kw">switch</span> (transit) {
+                <span class="kw">case</span> WindowManagerPolicy.TRANSIT_ENTER:
+                    attr = ...WindowAnimation_windowEnterAnimation;
+                    <span class="kw">break</span>;
+                <span class="kw">case</span> WindowManagerPolicy.TRANSIT_EXIT:
+                    attr = ...WindowAnimation_windowExitAnimation;
+                    <span class="kw">break</span>;
+                <span class="cm">// … 省略：TRANSIT_SHOW / TRANSIT_HIDE 两个分支（735-745）</span>
+            }
+            <span class="cm">// ⑤ STYLEABLE 的意思是“由主题决定”：去窗口的 windowAnimations 样式里
+            //    找 windowEnterAnimation / windowExitAnimation 等属性——
+            //    这就是为什么自定义转场动画要在 theme 里写 windowAnimationStyle</span>
+            <span class="kw">if</span> (attr >= <span class="num">0</span>) {
+                a = mWin.<span class="fn">getDisplayContent</span>().mAppTransition
+                        .<span class="fn">loadAnimationAttr</span>(mWin.mAttrs, attr, TRANSIT_OLD_NONE);
+            }
+        }
+        <span class="kw">if</span> (a != <span class="kw">null</span>) {
+            mWin.<span class="fn">startAnimation</span>(a);
+            <span class="cm">// ⑥ 拿到动画对象了，交给 WindowState 去包装成 AnimationAdapter（块 J）</span>
+            mAnimationIsEntrance = isEntrance;
+        }
+    } <span class="kw">else if</span> (!isImeWindow) {
+        mWin.<span class="fn">cancelAnimation</span>();
+        <span class="cm">// ⑦ 不能动画就取消（IME 例外：它有自己的显隐节奏）</span>
+    }
+    <span class="kw">return</span> mWin.<span class="fn">isAnimating</span>(<span class="num">0</span>,
+            ANIMATION_TYPE_WINDOW_ANIMATION);
+    <span class="cm">// ⑧ 返回值告诉调用方“现在它在动画了”，调用方据此决定是否还要做别的处理</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：把转场类型翻译成具体的动画对象——要么用系统预定义的，要么从窗口主题样式里取；拿到就交给 <code>WindowState.startAnimation</code>。</p>
+  <p><strong>设计意图</strong>：<span class="why">三级翻译链</span>：<code>transit</code>（转场语义）→ <code>policy.selectAnimation</code>（样式编号或 STYLEABLE）→ 实际 <code>Animation</code> 对象。三级分开是为了让<strong>三方各改各的</strong>：系统定义默认转场语义、厂商 policy 改映射、App 用主题自定义自己窗口的动画。这就是 <code>overridePendingTransition</code> 能从 App 层影响转场的原理。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong><code>overridePendingTransition</code> 不生效</strong>。<strong>因果</strong>：它只是把动画 id 存进 <code>AppTransition.mNextAppTransitionType</code>（<code>AppTransition.java:1200</code> 起），真正生效要求：① 调用时机在 <code>startActivity</code> 之后、下一帧之前；② 该窗口最终没有被 Shell 的 <code>RemoteAnimation</code> 接管（块 L）。<strong>怎么查</strong>：ProtoLog 开 <code>WM_DEBUG_APP_TRANSITIONS</code>，看日志里 next transition type 是不是 <code>NEXT_TRANSIT_TYPE_CUSTOM</code>；若是 <code>REMOTE</code>，说明被 SystemUI 接管了。</div>
+
+  <h3>块 J：WindowState 把它包成 AnimationAdapter（WindowState.java:5226 起）</h3>
+  <div class="code-block">
+    <div class="filename">WindowState.java:5226-5245、5265-5272</div>
+    <pre><span class="kw">void</span> <span class="fn">startAnimation</span>(Animation anim) {
+    <span class="cm">// If we are an inset provider, all our animations are driven by the inset client.</span>
+    <span class="kw">if</span> (mControllableInsetProvider != <span class="kw">null</span>) {
+        <span class="kw">return</span>;
+        <span class="cm">// ① why insets 提供者不自己播：它的位置由控制方（如 SystemUI）统一驱动，
+        //    否则状态栏跟手势条会各动各的</span>
+    }
+    <span class="kw">final</span> DisplayInfo displayInfo = <span class="fn">getDisplayInfo</span>();
+    anim.<span class="fn">initialize</span>(mWindowFrames.mFrame.<span class="fn">width</span>(), mWindowFrames.mFrame.<span class="fn">height</span>(),
+            displayInfo.appWidth, displayInfo.appHeight);
+    <span class="cm">// ② 用窗口的实际 frame 尺寸初始化动画：这样 scale 类动画才能算出正确比例</span>
+    anim.<span class="fn">restrictDuration</span>(MAX_ANIMATION_DURATION);
+    anim.<span class="fn">scaleCurrentDuration</span>(mWmService.<span class="fn">getWindowAnimationScaleLocked</span>());
+    <span class="cm">// ③ ★ 开发者选项里的“窗口动画缩放”就是在这里生效的：
+    //    0.5x / 1x / 10x 直接把动画时长乘系数。调试动画时把它调到 10x，
+    //    能肉眼看清每一帧——这是官方推荐的动画调试技巧</span>
+
+    <span class="kw">final</span> AnimationAdapter adapter = <span class="kw">new</span> <span class="fn">LocalAnimationAdapter</span>(
+            <span class="kw">new</span> <span class="fn">WindowAnimationSpec</span>(anim, mSurfacePosition, <span class="kw">false</span>, <span class="num">0</span>),
+            mWmService.mSurfaceAnimationRunner);
+    <span class="cm">// ④ 包装成 LocalAnimationAdapter：“本地动画”，由 WMS 自己驱动；
+    //    相对的还有 RemoteAnimationAdapter（交给别的进程，见第七节）</span>
+    <span class="fn">startAnimation</span>(<span class="fn">getPendingTransaction</span>(), adapter);
+    <span class="fn">commitPendingTransaction</span>();
+    <span class="cm">// ⑤ 走 pending transaction：本次修改跟 03 篇学的那笔事务一起提交</span>
+}
+
+<span class="kw">private void</span> <span class="fn">startAnimation</span>(Transaction t, AnimationAdapter adapter) {
+    <span class="fn">startAnimation</span>(t, adapter, mWinAnimator.mLastHidden,
+            ANIMATION_TYPE_WINDOW_ANIMATION);
+    <span class="cm">// ⑥ 最终回到 SurfaceAnimator.startAnimation（块 D）—— 三处入口、一个出口</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：拿窗口实际尺寸初始化动画、套上动画缩放系数、包成 AnimationAdapter，最后交给 SurfaceAnimator 建 leash 并启动。</p>
+  <p><strong>设计意图</strong>：<span class="why">把「动画参数」与「动画执行」彻底分开</span>。AnimationAdapter 是一个很薄的接口：它只负责「给我一个时间点，告诉我 leash 该长什么样」。具体由谁在哪个线程调用它，由 adapter 的实现决定——本地动画就在 SF 的动画线程跑，远程动画则在 App 进程跑。这就是<strong>同一条 leash 机制能同时支撑本地和远程动画</strong>的原因。</p>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 H、块 J）</span> 如果开发者选项把「窗口动画缩放」设为 <code>0.0x</code>（动画关闭），动画会立刻结束还是完全不走 <code>createAnimationLeash</code>？想想 <code>scaleCurrentDuration(0)</code> 对时长的影响——这能解释为什么关掉动画后有些转场问题就复现不出来了。</div>
+</div>
+
+<!-- ═══════════════════════ 六 ═══════════════════════ -->
+
+<h2 id="p6">六、帧驱动：WindowAnimator 与 Choreographer</h2>
+
+<div class="card">
+  <p>leash 建好了、适配器也挂上了——但谁每 16.7ms 去把 leash 往前推一帧？答案是 <code>WindowAnimator</code>，它由 <code>Choreographer</code> 驱动。</p>
+
+  <div class="analogy">
+    <span class="tag">类比</span> <code>Choreographer</code> 是<strong>节拍器</strong>（跟 VSYNC 对齐），<code>WindowAnimator</code> 是<strong>指挥</strong>——每次节拍响，它就喊一声“所有还在动的图层，各报各自当前该长什么样”，然后一次性提笔事务。
+  </div>
+
+  <h3>块 K：动画帧主循环（WindowAnimator.java:128 起，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">WindowAnimator.java:128-170（裁剪）</div>
+    <pre><span class="kw">private void</span> <span class="fn">animate</span>(<span class="kw">long</span> frameTimeNs, <span class="kw">long</span> vsyncId) {
+    <span class="kw">if</span> (!mInitialized) <span class="kw">return</span>;
+
+    <span class="cm">// Schedule next frame already such that back-pressure happens continuously.</span>
+    <span class="fn">scheduleAnimation</span>();
+    <span class="cm">// ① ★ 先排下一帧，再干本帧的活：注释说是为了“持续背压”——
+    //    本帧算得慢时，下一帧的请求已经在路上，不会出现“算完才想起要排下一帧”
+    //    导致的帧间隔抖动。代价是无动画时也会多跑一拍，所以真无动画时会
+    //    被 cancelAnimation 掐掉（下面）</span>
+
+    <span class="kw">final</span> RootWindowContainer root = mService.mRoot;
+    mCurrentTime = frameTimeNs / TimeUtils.NANOS_PER_MS;
+    mBulkUpdateParams = <span class="num">0</span>;
+    root.mOrientationChangeComplete = <span class="kw">true</span>;
+
+    ProtoLog.<span class="fn">i</span>(WM_SHOW_TRANSACTIONS, <span class="cm">">>> OPEN TRANSACTION animate"</span>);
+    mService.<span class="fn">openSurfaceTransaction</span>();
+    <span class="cm">// ② 本帧的所有修改聚到一笔事务里——和 03 篇遍历提交同一个套路，
+    //    避免每改一个图层就过一次 binder</span>
+    <span class="kw">try</span> {
+        root.<span class="fn">handleCompleteDeferredRemoval</span>();
+        <span class="cm">// ③ 处理被 defer 的删除：动画期间不允许真删窗口（否则 leashed surface 没了），
+        //    所以删除请求先挂起，到动画结束才在这里真正执行</span>
+
+        <span class="kw">final int</span> numDisplays = mDisplayContentsAnimators.<span class="fn">size</span>();
+        <span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">0</span>; i &lt; numDisplays; i++) {
+            <span class="kw">final int</span> displayId = mDisplayContentsAnimators.<span class="fn">keyAt</span>(i);
+            <span class="kw">final</span> DisplayContent dc = root.<span class="fn">getDisplayContent</span>(displayId);
+            <span class="cm">// Update animations of all applications, including those associated with</span>
+            <span class="cm">// exiting/removed apps.</span>
+            dc.<span class="fn">updateWindowsForAnimator</span>();
+            dc.<span class="fn">prepareSurfaces</span>();
+            <span class="cm">// ④ 逐屏两道：先更新窗口的动画状态，再重新准备 surface 参数（位置/alpha/crop）
+            //    ——leash 的新属性就是在这两道里被算出来写进事务的</span>
+        }
+        <span class="cm">// … 省略：壁纸动画、无障碍放大、批量参数应用（170-230）</span>
+    } <span class="kw">finally</span> {
+        mService.<span class="fn">closeSurfaceTransaction</span>(<span class="cm">"WindowAnimator"</span>);
+    }
+}
+
+<span class="kw">void</span> <span class="fn">scheduleAnimation</span>() {
+    <span class="kw">if</span> (mAnimationScheduled) <span class="kw">return</span>;
+    mAnimationScheduled = <span class="kw">true</span>;
+    mChoreographer.<span class="fn">postFrameCallback</span>(mAnimationFrameCallback);
+    <span class="cm">// ⑤ ★ 动画的“心脏起搏器”：向 Choreographer 登记一个帧回调。
+    //    Choreographer 会在下一个 VSYNC 到来时唤醒它——
+    //    所以动画帧率和屏幕刷新率对齐（60/90/120Hz）</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：每个 VSYNC 帧，先排下一帧，然后把所有还在动的窗口/壁纸的 leash 参数重新算一遍，打包成一笔事务提交。</p>
+  <p><strong>设计意图</strong>：<span class="why">“先排下一帧”是防掉帧的关键技巧</span>。如果先干活再排下一帧，一旦本帧的计算耗时超过 16.7ms，下一帧就会晚到——表现为顿一下。反过来先把下一帧的请求挂上去，VSYNC 一到就能立刻回调，平滑得多。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>动画掉帧 / 卡顿</strong>。<strong>因果</strong>：<code>animate()</code> 里 <code>updateWindowsForAnimator</code> + <code>prepareSurfaces</code> 是在 system_server 的 UI 线程上跑的，如果同时有很多窗口在动（分屏动画、多屏），这一帧算不完就会错过 VSYNC。<strong>怎么查</strong>：Perfetto 看 <code>WindowAnimator</code> 的 trace 切片耗时（代码里已埋 <code>Trace.traceBegin</code>）；若超过帧预算，看是不是参与动画的窗口数过多。</div>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 K、块 D）</span> 块 K 里 <code>scheduleAnimation</code> 无条件排下一帧——那系统怎么知道“动画都播完了、可以停下来”？联系块 D 里的 <code>mAnimationFinishedCallback</code>，想想 <code>cancelAnimation</code> 与 <code>mAnimationScheduled</code> 的关系（提示：看 <code>WindowAnimator.java:300</code> 的 <code>cancelAnimation</code>）。</div>
+</div>
+
+<!-- ═══════════════════════ 七 ═══════════════════════ -->
+
+<h2 id="p7">七、Shell 接管与远程动画</h2>
+
+<div class="card">
+  <p>上面讲的都是“WMS 自己播动画”。但现代 Android 上，很多转场（尤其是手势返回、分屏、最近任务）的动画<strong>不归 WMS 播</strong>，而是交给 SystemUI（Shell）或 App 自己画。这是 AOSP 10+ 的重要架构变化。</p>
+
+  <h3>块 L：两套接管机制（TaskOrganizerController.java:69 / RemoteAnimationController.java:55）</h3>
+  <div class="code-block">
+    <div class="filename">TaskOrganizerController.java:69、550 + RemoteAnimationController.java:55、107（裁剪）</div>
+    <pre><span class="cm">// 【机制一】TaskOrganizer：SystemUI/Shell 接管 Task 的显示与动画</span>
+<span class="kw">class</span> <span class="fn">TaskOrganizerController</span> <span class="kw">extends</span> ITaskOrganizerController.Stub {
+    <span class="cm">// ① 这是 WMS 侧的一个 binder 服务：Shell 把 TaskOrganizer 注册进来，
+    //    之后 WMS 就把 Task 的“生命周期事件”和“surface 控制权”交给它</span>
+
+    <span class="kw">boolean</span> <span class="fn">addStartingWindow</span>(Task task, ActivityRecord activity, <span class="kw">int</span> launchTheme,
+            <span class="kw">boolean</span> taskSnapshot) {
+        <span class="cm">// ② ★ 启动窗口（splash / 快照）不再由 WMS 自己画：WMS 只负责
+        // 决定“该有一个启动窗”，实际绘制交给 Shell（行 134 / 316 转发给 taskOrganizer）</span>
+        <span class="cm">// … 省略：surface 事务与事件分发</span>
+    }
+}
+
+<span class="cm">// 【机制二】RemoteAnimation：把整个转场的 leash 交给 App 进程自己画</span>
+<span class="kw">class</span> <span class="fn">RemoteAnimationController</span> <span class="kw">implements</span> DeathRecipient {
+    <span class="cm">// ③ 名字里的 Remote：动画的执行者不在 system_server，而是在客户端进程</span>
+
+    <span class="kw">void</span> <span class="fn">goodToGo</span>(@WindowManager.TransitionOldType <span class="kw">int</span> transit) {
+        <span class="cm">// ④ 收到“转场就绪”信号后，把参与转场的 leash 打包发给远端的
+        //    App（如 Launcher），由它自己决定每个 leash 怎么动</span>
+        <span class="cm">// … 省略：逐个 leash 交给 RemoteAnimationRunner（107-200）</span>
+    }
+
+    <span class="cm">// 远端侧的回调（实现 IRemoteAnimationRunner）：</span>
+    <span class="cm">// <span class="kw">public void</span> startAnimation(SurfaceControl animationLeash, Transaction t, ...)</span>
+    <span class="cm">// ⑤ 注意它拿到的参数里就有 animationLeash——说明 leash 是
+    //    同一个机制，只是“谁来推帧”变了</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：两套“把控制权交出去”的机制——TaskOrganizer 交的是 Task 的显示与启动窗，RemoteAnimation 交的是转场 leash 的驱动权。</p>
+  <p><strong>设计意图</strong>：<span class="why">为什么要把动画交出去</span>。因为手势返回、分屏拖拽这类动画<strong>必须跟手指实时联动</strong>——手指位置在每个触摸事件里，而触摸事件在 SystemUI/App 手里。如果还让 WMS 算动画，就得把手指位置一路传回 system_server，延迟不可接受。交给持有输入的那一方，动画才跟手。<strong>代价</strong>：转场逻辑分散到两个进程，调试难度上升（你得同时看 WMS 和 SystemUI 的日志）。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>自定义返回动画不生效 / 行为怪异</strong>。<strong>因果</strong>：你的 <code>overridePendingTransition</code> 请求被 RemoteAnimation 接管覆盖了（SystemUI 优先）。<strong>怎么查</strong>：ProtoLog 开 <code>WM_DEBUG_REMOTE_ANIMATIONS</code>（字符串常量就在 <code>RemoteAnimationController</code> 里）；<code>dumpsys window</code> 搜 <code>mRemoteAnimationController</code>；再对比 SystemUI 侧日志。</div>
+  <div class="annotation star3"><span class="tag">与 13/14 的关系</span> 你在 13/14 文章里看到的 <code>ShellTransitions</code> / <code>TransitionController</code>，本质上就是把这两套机制<strong>统一成一个框架</strong>。AOSP 12 上两套并存且以老机制为主（见第一节的版本事实），所以读完本篇再去看高版本资料会顺得多。</div>
+</div>
+
+<!-- ═══════════════════════ 八 ═══════════════════════ -->
+
+<h2 id="p8">八、完整链路与源码速查</h2>
+
+<div class="card">
+  <h3>完整链路（一笔转场的全生命周期）</h3>
+  <div class="tree">① 发起（AMS/ATMS 决定跳转）
+   └─ DisplayContent.prepareAppTransition(transit)          :4954  只记意图
+
+② 布局（03 篇的遍历，当然也算 frame）
+   └─ DisplayContent.performLayoutNoTrace                    :4417
+
+③ 兑现意图
+   └─ DisplayContent.executeAppTransition()                 :4988
+        └─ requestTraversal()  ← 再触发一轮遍历
+
+④ 转场就绪判定
+   └─ AppTransition.isReady()                                :350
+        检查所有参与窗口 hasDrawn；未就绪则继续等
+
+⑤ 逐组挂动画
+   └─ AppTransitionController.handleAppTransitionReady()     :144
+        └─ applyAnimations(wcs, apps, wallpapers)            :567
+
+⑥ 窗口翻译动画资源
+   └─ WindowStateAnimator.applyAnimationLocked(transit, …)   :701
+        ├─ DisplayPolicy.selectAnimation()  ← policy 决定样式
+        └─ WindowState.startAnimation(anim)                  :5226
+             └─ 包成 LocalAnimationAdapter                       :5240
+
+⑦ 建 leash（核心）
+   └─ SurfaceAnimator.startAnimation()                       :134
+        └─ createAnimationLeash()                            :384
+             └─ t.reparent(surface, leash)  ← 树多一层
+
+⑧ 每帧推进
+   └─ WindowAnimator.animate()                               :128
+        ├─ scheduleAnimation() → Choreographer.postFrameCallback  :293/296
+        └─ dc.updateWindowsForAnimator() + prepareSurfaces()
+             └─ 算 leash 新属性 → 一笔事务提交 SurfaceFlinger
+
+⑨ 结束
+   └─ SurfaceAnimator.cancelAnimation() / reset()            :223/304/335
+        └─ leash 销毁，surface reparent 回原处 → 树恢复</div>
+
+  <h3>源码速查（WSL AOSP 12，行号均已 grep 核实）</h3>
+  <div class="code-block">
+    <div class="filename">动画相关关键位置</div>
+    <pre><span class="cm"># 转场状态机</span>
+sed -n '158,170p'  wm/AppTransition.java        <span class="cm"># 类定义 + 336ms 默认时长</span>
+sed -n '350,386p'  wm/AppTransition.java        <span class="cm"># isReady()</span>
+sed -n '990,1050p' wm/AppTransition.java        <span class="cm"># loadAnimation()</span>
+sed -n '1200,1320p' wm/AppTransition.java       <span class="cm"># overridePendingAppTransition 全家</span>
+
+<span class="cm"># 转场发起与落实</span>
+sed -n '4954,4990p' wm/DisplayContent.java      <span class="cm"># prepareAppTransition / executeAppTransition</span>
+sed -n '144,200p'   wm/AppTransitionController.java <span class="cm"># handleAppTransitionReady</span>
+sed -n '567,640p'   wm/AppTransitionController.java <span class="cm"># applyAnimations</span>
+
+<span class="cm"># leash 机制（本篇核心）</span>
+sed -n '134,200p'   wm/SurfaceAnimator.java      <span class="cm"># startAnimation 全貌</span>
+sed -n '384,420p'   wm/SurfaceAnimator.java      <span class="cm"># createAnimationLeash 本体</span>
+sed -n '223,340p'   wm/SurfaceAnimator.java      <span class="cm"># cancelAnimation / reset</span>
+sed -n '2537,2545p' wm/WindowContainer.java     <span class="cm"># makeAnimationLeash / getAnimationLeashParent</span>
+sed -n '2837,2850p' wm/WindowContainer.java     <span class="cm"># onAnimationLeashCreated</span>
+
+<span class="cm"># 窗口侧</span>
+sed -n '701,780p'   wm/WindowStateAnimator.java  <span class="cm"># applyAnimationLocked</span>
+sed -n '5226,5245p' wm/WindowState.java          <span class="cm"># startAnimation(Animation)</span>
+
+<span class="cm"># 帧驱动</span>
+sed -n '128,175p'   wm/WindowAnimator.java       <span class="cm"># animate() 主循环</span>
+sed -n '293,300p'   wm/WindowAnimator.java       <span class="cm"># scheduleAnimation + postFrameCallback</span>
+
+<span class="cm"># 远程/Shell</span>
+sed -n '69,140p'    wm/TaskOrganizerController.java   <span class="cm"># TaskOrganizer 接口</span>
+sed -n '55,160p'    wm/RemoteAnimationController.java <span class="cm"># goodToGo</span>
+
+<span class="cm"># 设备侧观察</span>
+adb shell cmd window tracing start   <span class="cm"># Winscope 用的就是这套 proto trace</span>
+adb shell dumpsys SurfaceFlinger | grep -i leash   <span class="cm"># 看有没有多出来的 leash 层</span>
+adb shell dumpsys window | grep -i "mLeash\|Animation:"  <span class="cm"># SurfaceAnimator.dump 输出</span>
+<span class="cm"># 开发者选项把“窗口动画缩放”调到 10x —— 官方推荐的动画调试姿势</span></pre>
+  </div>
+
+  <h3>🧠 自测：5 个问题</h3>
+
+  <details><summary>1. 为什么动画要在树上“插一层 leash”，而不是直接改窗口自己的位置/透明度？</summary>
+  <div class="ans">因为窗口的 surface 是<strong>内容载体</strong>——App 会持续往它上面画新帧。如果动画属性直接写在窗口上，App 的每一帧绘制都可能把动画位移/alpha 重置掉，动画会被“抢断”。用 leash 隔离后：内容层（原 surface）只负责内容，表演层（leash）只负责动画参数，两者互不干扰。另外 leash 让“移动整个子树”（含子窗口、leashed 子节点）变成一个原子操作。</div></details>
+
+  <details><summary>2. leash 的父节点为什么取“宿主的父”而不是宿主本身？</summary>
+  <div class="ans">为了让 leash <strong>顶替宿主原本在图层树里的位置</strong>。若 leash 建在宿主内部，宿主的 alpha/crop 会先作用于 leash 再作用于内容，语义叠了一层；而让 leash 站在宿主原来那一格、宿主退到 leash 之下，树形状变成「爷爷 → leash → 宿主」，<strong>视觉与层级完全等价</strong>，动画操作 leash 就恰好等价于操作整个宿主（见 <code>WindowContainer.getAnimationLeashParent()</code> 的注释）。</div></details>
+
+  <details><summary>3. 点开一个 App 有“卡一下”动画才出来，可能的两个不同原因是什么？</summary>
+  <div class="ans">① <strong>转场闸门在等</strong>：<code>AppTransition.isReady()</code> 要求所有参与窗口 <code>hasDrawn</code>，新窗口首帧没画完就不放行——锅在 App 主线程（这是 06 篇“上树 ≠ 显示”在动画层的体现）。② <strong>动画已开始但被“抢断”</strong>：<code>applyAnimationLocked</code> 开头那句 <code>mWin.isAnimating() &amp;&amp; mAnimationIsEntrance == isEntrance</code> 判断错误地重开了动画，表现为永远卡在开头。区分方法：开 <code>WM_DEBUG_APP_TRANSITIONS</code> 看 prepare/execute 之间隔了多久。</div></details>
+
+  <details><summary>4. leash 泄漏（画面卡在半透明中间层）怎么查？</summary>
+  <div class="ans">三个层次：① <code>dumpsys SurfaceFlinger | grep leash</code> —— 看有没有多余的 <code>animation-leash of …</code> 层（名字由 <code>createAnimationLeash</code> 里 <code>setName()</code> 写入，是唯一可门的指纹）；② <code>dumpsys window | grep mLeash</code> —— <code>SurfaceAnimator.dump()</code> 会打印 <code>mLeash=</code> 与 <code>mAnimationType=</code>；③ Winscope 逐帧回放，看 leash 从创建到销毁的时刻。根因通常是动画被取消但 <code>mAnimationFinishedCallback</code> 未执行，对应 <code>cancelAnimation(…, forwardCancel)</code> 的第三个参数被传了 false。</div></details>
+
+  <details><summary>5. 为什么手势返回动画要交给 SystemUI/App 自己画，而不是 WMS？</summary>
+  <div class="ans">因为<strong>动画必须跟手</strong>。手势返回过程中，手指位置在每个触摸事件里，而触摸事件在 SystemUI/App 进程。若让 system_server 的 WMS 算动画，就得把每个移动事件跨进程送回 WMS，再算一次再发出去——多了一轮往返，动画会明显滞后于手指。交给持有输入的那一方算，动画才能实时跟手。（代价：转场逻辑分散到两进程，调试要同时看两边日志。）</div></details>
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android 窗口层级专题 | <strong>09 — 窗口动画与过渡：AppTransition 与 leash 缰绳</strong></p>
+  <p>基于 AOSP 12（android-12.0.0_r32）· WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实</p>
+  <p style="margin-top:10px;"><a href="08-窗口的尺寸与身体.html">← 08 窗口的尺寸与身体</a> &nbsp;|&nbsp; <strong>09 窗口动画与过渡 ← 你在这</strong> &nbsp;|&nbsp; <a href="WMS学习路线图.html">🗺️ 学习路线图 →</a></p>
+  <p style="margin-top:8px;"><a href="10-显示子系统的节拍.html">下篇：10 vsync 与 Choreographer（本篇的地基）→</a></p>
+  <p style="margin-top:8px;"><a href="index.html">🏠 系列导航</a> &nbsp;|&nbsp; <a href="WMS学习路线图.html">🗺️ 学习路线图</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📌 下篇预告：🗺️ 学习路线图 · 10 篇已落盘：vsync 与 Choreographer；11 篇待写：IME 与壁纸专项：ImeContainer、壁纸窗口生命周期</p>
+</div>
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

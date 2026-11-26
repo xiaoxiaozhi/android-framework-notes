@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>窗口树全景：WindowContainer 家族、Z 序与 Token（WMS 学习 01）</title>
+  <style>
+    :root {
+      --bg: #faf8f5;
+      --bg-card: #ffffff;
+      --text: #2c2c2c;
+      --text2: #555;
+      --border: #e0ddd5;
+      --accent: #c44536;
+      --accent2: #2a7f62;
+      --accent3: #5b7e9e;
+      --code-bg: #f4f1eb;
+      --kw: #7b3f6a;
+      --fn: #c44536;
+      --cm: #6b8f71;
+      --tag-bg: #f0e6d3;
+      --tag-text: #a0522d;
+      --link: #2a5f8f;
+      --h2-border: #ddd8cc;
+      --hover-bg: #e8e4db;
+      --table-border: #e0ddd5;
+      --table-hdr: #efece5;
+      --theme-btn-bg: rgba(0,0,0,0.08);
+      --theme-btn-text: #333;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e;
+      --bg-card: #222226;
+      --text: #e0ddd5;
+      --text2: #999;
+      --border: #333338;
+      --accent: #e0755a;
+      --accent2: #5dbf96;
+      --accent3: #7fa9c9;
+      --code-bg: #28282c;
+      --kw: #c99bc8;
+      --fn: #e0755a;
+      --cm: #8bc34a;
+      --tag-bg: #3d3020;
+      --tag-text: #d4a05a;
+      --link: #6ab0e0;
+      --h2-border: #333338;
+      --hover-bg: #2a2a30;
+      --table-border: #333338;
+      --table-hdr: #2a2a30;
+      --theme-btn-bg: rgba(255,255,255,0.1);
+      --theme-btn-text: #ddd;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.85;
+      padding: 40px 20px 80px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 1.8em; margin-bottom: 4px; color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 12px; }
+    h2 { font-size: 1.3em; margin: 44px 0 14px; color: var(--accent2); border-bottom: 1px solid var(--h2-border); padding-bottom: 8px; }
+    h3 { font-size: 1.08em; margin: 26px 0 10px; color: var(--accent3); }
+    p { margin: 10px 0; color: var(--text2); }
+    strong { color: var(--text); }
+    ul, ol { margin: 8px 0 8px 22px; color: var(--text2); }
+    li { margin: 4px 0; }
+
+    .annotation {
+      background: var(--code-bg);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      padding: 12px 16px;
+      margin: 16px 0;
+      color: var(--text);
+      font-size: 0.94em;
+    }
+    .annotation.star3 {
+      border-left-color: #e09830;
+      background: var(--tag-bg);
+    }
+    .tag {
+      display: inline-block;
+      background: var(--tag-bg);
+      color: var(--tag-text);
+      border-radius: 3px;
+      padding: 1px 7px;
+      font-size: 0.85em;
+      font-weight: 600;
+      margin: 0 2px;
+    }
+    .src-ref {
+      font-size: 0.82em;
+      color: var(--text2);
+      font-style: italic;
+      font-family: "Cascadia Code", "Consolas", monospace;
+    }
+
+    .tree-view {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 20px 24px;
+      margin: 16px 0;
+      font-family: "Cascadia Code", "Fira Code", "Source Code Pro", "Consolas", monospace;
+      font-size: 0.88em;
+      line-height: 1.75;
+      white-space: pre;
+      overflow-x: auto;
+      color: var(--text);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 0.9em;
+    }
+    th, td {
+      border: 1px solid var(--table-border);
+      padding: 10px 13px;
+      text-align: left;
+    }
+    th {
+      background: var(--table-hdr);
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+    }
+    td { color: var(--text2); vertical-align: top; }
+
+    .flow-steps { counter-reset: step; margin: 14px 0; }
+    .flow-steps .step {
+      counter-increment: step;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin: 8px 0;
+    }
+    .flow-steps .step::before {
+      content: counter(step);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.82em;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .flow-steps .step span { color: var(--text2); }
+
+    .hier-box {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      margin: 16px 0;
+      text-align: center;
+      overflow-x: auto;
+    }
+
+    /* TOC / 类比框 / 思考题折叠 */
+    .toc { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 18px 24px; margin: 22px 0 8px; }
+    .toc a { display: block; padding: 2px 0; font-size: 0.92em; color: var(--link); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    .analogy { background: var(--code-bg); border: 1px dashed var(--accent3); border-radius: 8px; padding: 14px 18px; margin: 14px 0; font-size: 0.94em; color: var(--text); }
+    details { margin: 14px 0; border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; background: var(--code-bg); }
+    details summary { cursor: pointer; font-weight: 600; color: var(--accent3); }
+    details[open] summary { color: var(--accent2); margin-bottom: 8px; }
+    details p { margin: 6px 0; }
+
+    /* Floating theme button */
+    #theme-btn {
+      position: fixed; bottom: 24px; right: 24px;
+      width: 48px; height: 48px; border-radius: 50%;
+      background: var(--theme-btn-bg); color: var(--theme-btn-text);
+      border: 1px solid var(--border); font-size: 1.3em;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+      transition: transform 0.15s; z-index: 9999;
+    }
+    #theme-btn:hover { transform: scale(1.1); }
+
+    @media (max-width: 600px) {
+      body { padding: 20px 14px 80px; }
+      h1 { font-size: 1.35em; }
+      .tree-view { font-size: 0.78em; padding: 14px 16px; }
+    }
+      .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+  </style>
+</head>
+<body>
+
+<h1>🌳 窗口树全景：WindowContainer 家族、Z 序与 Token</h1>
+<p style="margin-top:6px;"><span class="src-ref">基于 AOSP 12 源码，源自 /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/</span></p>
+<p class="series">📚 Android 窗口层级专题 01 ｜ 基于 <code>android-12.0.0_r32</code> ｜ 上篇：<a href="00-窗口为什么是一棵树.html">← 00 窗口为什么是一棵树</a> ｜ 下篇：<a href="02-窗口树的构建算法.html">02 窗口树是怎样建起来的 →</a></p>
+
+<div class="annotation star3">
+  <span class="tag">✦ ✦ ✦</span> <strong>一句话：</strong>窗口层级树是 WMS（WindowManagerService）管理全系统窗口的核心数据结构——它是一棵<strong>真实的多叉树</strong>，树上所有节点都继承自 <strong>WindowContainer</strong>。树的形状决定了三件事：<strong>窗口归谁管</strong>（父子关系）、<strong>窗口画在第几层</strong>（DFS 顺序 = Z 序）、<strong>窗口死了谁陪葬</strong>（级联清理）。看懂这一篇，后面的"构建"和"遍历"才有落脚点。
+</div>
+
+<!-- ═══════════ TOC ═══════════ -->
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p0">零、先建立直觉（概念引导 · 零代码）</a>
+  <a href="#p1">一、为什么非得是"树"——三个逃不掉的理由</a>
+  <a href="#p2">二、树长什么样——一棵真实树的全景图</a>
+  <a href="#p3">三、树上的节点类型——WindowContainer 家族</a>
+  <a href="#p4">四、树的零件与挂载——mChildren / mParent / addChild</a>
+  <a href="#p5">五、遍历即 Z 序——forAllWindows 详解</a>
+  <a href="#p5-3" style="padding-left:18px; font-size:0.85em;">└ 5.3 Layer 实体化：assignLayer / mBaseLayer / mSubLayer</a>
+  <a href="#p6">六、DisplayArea 的"楼层编号"——mFeatureId 分区</a>
+  <a href="#p6-1" style="padding-left:18px; font-size:0.85em;">└ 6.1 Feature 实体化：DisplayAreaPolicyBuilder.Feature</a>
+  <a href="#p7">七、WindowToken——窗口的"户口本"</a>
+  <a href="#p8">八、别混淆：窗口树 vs View 树（两层结构）</a>
+  <a href="#p9">九、和其他系统的关系</a>
+  <a href="#p10">十、学习路径建议（基于实际源码）</a>
+  <a href="#p11">十一、总结——核心结论</a>
+</div>
+
+<!-- ===== 零 ===== -->
+<h2 id="p0">零、先建立直觉——概念引导（不碰代码）</h2>
+
+<p>在读任何源码之前，先回答一个问题：<strong>你看到的屏幕画面，是一整张图吗？</strong>不是。本节只用两个生活类比建立直觉——后文所有源码细节，都是这些直觉的"实体化"。</p>
+
+<h3>0.1 屏幕是"叠"出来的：一张胶片 = 一个窗口</h3>
+
+<div class="analogy">
+  <strong>想象屏幕是一张桌子。</strong>你能看到的一切——微信界面、状态栏、导航栏、弹窗、输入法键盘、Toast——<strong>每一个都是一张独立的透明胶片</strong>，按顺序叠在桌子上。上面胶片透明的地方，会透出下面胶片的内容。
+</div>
+
+<p>每张胶片就是一个<strong>窗口（Window）</strong>，Android 世界里"往屏幕上画东西"的基本单位。它有边界、有大小、有位置，还有一样最容易被忽略的东西——<strong>它压着谁、被谁压着</strong>。</p>
+
+<div class="annotation">
+  ⚠️ <strong>常见误解</strong>：按钮、文字、图片<strong>不是</strong>窗口，它们画在某张胶片"里面"，属于 View 系统（见第八节）。先记住：<strong>一张胶片 = 一个窗口</strong>。
+</div>
+
+<h3>0.2 总调度：WMS 管所有胶片</h3>
+
+<p>如果大家随意乱放胶片，画面就乱套了。系统里有一位专职管理员——<strong>WindowManagerService，简称 WMS</strong>。它手里握着一份全系统窗口的清单，负责：</p>
+
+<ul>
+  <li>每个窗口<strong>放在哪、多大</strong>（位置与尺寸）</li>
+  <li><strong>谁压着谁</strong>（叠放顺序，也叫 Z 序）</li>
+  <li><strong>谁能盖过谁</strong>（权限校验，防止恶意 App 造假窗口骗人）</li>
+  <li><strong>谁和谁同生共死</strong>（窗口归属，父窗口没了子窗口必须消失）</li>
+</ul>
+
+<div class="annotation star3">
+  <span class="tag">✦ ✦ ✦</span> 关键预告：这份"清单"并不是一张平铺的列表，而是一棵<strong>树</strong>。为什么 WMS 要自找麻烦用树而不是列表？——这正是第一节要回答的问题，也是全文最重要的问题。
+</div>
+
+<h3>0.3 窗口的三种身份（Window Type）</h3>
+
+<p>不是所有窗口地位平等。Android 把窗口分成三大类：</p>
+
+<table>
+  <tr><th>类别</th><th>例子</th><th>特点</th></tr>
+  <tr>
+    <td><strong>应用窗口</strong></td>
+    <td>Activity 的主窗口（微信聊天界面）</td>
+    <td>应用自己创建，最常见；挂在所属 Task 下面</td>
+  </tr>
+  <tr>
+    <td><strong>子窗口</strong></td>
+    <td>Dialog、PopupWindow、上下文菜单</td>
+    <td><strong>必须依附</strong>某个父窗口，父窗口没了它必须消失——"父子关系"的第一个伏笔</td>
+  </tr>
+  <tr>
+    <td><strong>系统窗口</strong></td>
+    <td>状态栏、导航栏、Toast、输入法、锁屏</td>
+    <td>系统级创建，Z 序通常更高，普通应用管不着</td>
+  </tr>
+</table>
+
+<h3>0.4 两个必须提前认识的名词：Z 序 与 Token</h3>
+
+<p>桌面的叠放引入了第三维——<strong>Z 轴</strong>。这个叠放顺序叫 <strong>Z 序（Z-order）</strong>：Z 越高的窗口越靠上、越先拿到触摸事件。而每个窗口还带着一个<strong>Token（令牌）</strong>——它证明"我是谁家孩子"：子窗口靠它证明"我爸是哪个窗口"，系统靠它做权限校验。第七节会专门讲 Token。</p>
+
+<ol>
+  <li><strong>窗口是屏幕上的一层独立"画"，全系统的窗口叠在一起，由 WMS 统一管理。</strong></li>
+  <li><strong>叠放顺序叫 Z 序；窗口分应用窗口、子窗口、系统窗口三类。</strong></li>
+  <li><strong>窗口之间有父子关系、有归属凭证（Token）——这两点决定了 WMS 必须用"树"来组织它们。</strong></li>
+</ol>
+
+<details>
+  <summary>💡 思考题：按一次 Home 键返回桌面，微信的窗口和桌面的窗口，在"窗口树"里发生了什么？</summary>
+  <p style="margin-top:8px;"><strong>变的是"顺序"，不是"结构"。</strong>桌面的 Task 和微信的 Task 是 TaskDisplayArea 下的两个兄弟节点。按 Home 键时，桌面 Task 被移到兄弟列表的<strong>尾部</strong>（= Z 序最顶层），微信 Task 相应滑到底部——树的样子没变，兄弟顺序变了，于是 DFS 遍历顺序、Z 序、触摸命中顺序全部跟着变。</p>
+  <p>顺带一提：如果桌面窗口不透明且铺满全屏，还会触发"遮挡检测"——被完全盖住的微信窗口不再参与合成，省电省资源。这个机制在第 03 篇有详细源码拆解。</p>
+</details>
+
+<p style="margin-top:16px;">带着这几个直觉进入正文：第一、二节讲"为什么是树、树长什么样"，第四、五节讲"树的两个关键动作——挂载与遍历"，第六、七节讲树上的两套"规则系统"——分区与 Token。</p>
+
+<!-- ===== 一 ===== -->
+<h2 id="p1">一、为什么非得是"树"——三个逃不掉的理由</h2>
+
+<p>这是全文最重要的一个问题。WMS 完全可以用一个平铺的 <code>List&lt;WindowState&gt;</code> 装下所有窗口，为什么偏偏要设计出一套层层嵌套的 WindowContainer 树？<strong>因为有三个需求，平铺列表一个都满足不了。</strong></p>
+
+<h3>1.1 理由一：生死绑定——"删一个，带走一整窝"</h3>
+
+<p>窗口之间有严格的<strong>归属关系</strong>：</p>
+
+<ul>
+  <li>Activity 销毁时，它的 Dialog、PopupWindow、输入法弹窗必须<strong>同时消失</strong>，一个都不能剩；</li>
+  <li>一个 App 进程被杀时，它在所有 Task 里的所有窗口必须<strong>一起被清掉</strong>；</li>
+  <li>屏幕（Display）拔掉时，挂在这块屏幕上的所有窗口必须<strong>整批销毁</strong>。</li>
+</ul>
+
+<p>在树结构里，这种需求天然满足：<strong>删掉一个节点 = 删掉以它为根的整棵子树</strong>。如果换成平铺列表，每次清理都要遍历全表、逐个比对"这个窗口是不是属于要死的那个 Activity"，既慢又容易漏。树的形状本身就是一张"血缘关系图"，清理就是砍树枝。</p>
+
+<div class="analogy">
+  类比文件系统：<strong>删除一个目录，等于删除目录下所有文件和子目录</strong>。没有人会主张"文件系统应该把所有文件平铺在一个列表里"——因为目录层级本身就承载了归属信息。窗口树同理。
+</div>
+
+<h3>1.2 理由二：状态广播——配置沿树往下流</h3>
+
+<p>旋转屏幕、改分辨率、切深色模式时，配置变化需要通知<strong>所有</strong>窗口：显示器（DisplayContent）先知道，然后它下面的每个 Task、每个 Activity、每个 WindowState 依次收到并作出反应。</p>
+
+<p>在树结构里，"广播"就是一次<strong>从根向叶子的递归</strong>——配置像水一样顺着树枝往下流，每个节点只负责通知自己的直接子节点（源码里叫 <code>dispatchConfigurationChanged</code> 之类的 onConfigurationChanged 链）。如果换成平铺列表，又得全表遍历一遍。</p>
+
+<h3>1.3 理由三：局部排序拼出全局 Z 序——树让"排序"可维护</h3>
+
+<p>这是最精妙的一点。<strong>全系统几百个窗口的 Z 序，不可能靠一个大数组反复全量排序来维护</strong>——任何一次弹窗、切后台都要动顺序，代价太高。</p>
+
+<p>树把问题分解了：<strong>每个父节点只需要保证自己孩子的先后顺序正确，全局 Z 序就自动成立</strong>（见第五节，DFS 遍历天然产出全局顺序）。这就像图书馆——不用给全馆图书排一个大序，只要"每个书架上的书排好序、每个房间的书架排好序"就够。局部有序 + 递归组合 = 全局有序。</p>
+
+<div class="annotation">
+  <strong>小结：</strong>树不是 WMS 的"优雅选择"，而是<strong>刚需</strong>——① 级联生命周期（删子树）② 配置/状态传播（沿树广播）③ Z 序的局部维护（每层只排自己的序）。三个需求合力把窗口管理推向了树结构。
+</div>
+
+<!-- ===== 二 ===== -->
+<h2 id="p2">二、树长什么样——一棵真实树的全景图</h2>
+
+<p>先看整体，再抠细节。下面是一台普通手机上，<code>adb shell dumpsys window</code> 输出简化后的一棵真实窗口树（AOSP 12 结构）：</p>
+
+<div class="tree-view">
+RootWindowContainer                        ← 全局唯一（WMS.mRoot），树根
+ │
+ └─ DisplayContent #0（内建屏幕）           ← 每个显示器一个 DisplayContent
+      │
+      ├─ DisplayArea:FeatureRoot (0)        ← 树根区：手势导航、系统覆盖层
+      │
+      ├─ TaskDisplayArea (FEATURE_DEFAULT_TASK_CONTAINER=1)   ← ★ 应用区
+      │    ├─ Task #1（微信）               ← 一个"任务"=最近任务里的一张卡片
+      │    │    └─ ActivityRecord（MainActivity）
+      │    │         ├─ WindowState（主窗口）
+      │    │         └─ WindowState（Dialog）   ← 子窗口挂在这
+      │    └─ Task #2（桌面 Launcher）
+      │         └─ ActivityRecord
+      │              └─ WindowState（主窗口）
+      │
+      ├─ DisplayArea.Tokens (FEATURE_WINDOW_TOKENS=2)   ← ★ 系统窗口区
+      │    ├─ WindowToken(StatusBar)        ← 状态栏
+      │    │    └─ WindowState（状态栏图标）
+      │    ├─ WindowToken(NavigationBar)    ← 导航栏
+      │    │    └─ WindowState（导航键）
+      │    └─ WindowToken(NotificationShade)← 通知面板
+      │         └─ WindowState（下拉通知）
+      │
+      ├─ DisplayArea (FEATURE_ONE_HANDED=3)        ← 单手模式
+      ├─ … (FEATURE_WINDOWED/FULLSCREEN_MAGNIFICATION=4/5, 放大镜)
+      ├─ … (FEATURE_HIDE_DISPLAY_CUTOUT=6, 刘海隐藏)
+      │
+      ├─ DisplayArea:ImePlaceholders (FEATURE_IME_PLACEHOLDER=7)  ← ★ 输入法区
+      │    └─ ImeContainer
+      │         └─ WindowToken(InputMethod)
+      │              └─ WindowState（键盘）
+      │
+      └─ DisplayArea (FEATURE_ONE_HANDED_BACKGROUND_PANEL=8)      ← 单手背景板
+</div>
+
+<p>注意三个观察点：</p>
+
+<ol>
+  <li><strong>同一棵树，两类"血统"并存。</strong>状态栏、输入法走 <code>WindowToken</code> 直接挂在 <code>DisplayArea.Tokens</code>/<code>ImeContainer</code> 下；而 App 窗口走 <code>Task → ActivityRecord → WindowState</code> 的长链。身份不同，挂的位置就不同。</li>
+  <li><strong>编号即楼层。</strong>DisplayArea 括号里的 Feature 编号越小越靠底：应用区(1) 在系统窗口区(2) 之下，输入法区(7) 在最上面压着所有人——所以你打字时键盘永远盖住 App。</li>
+  <li><strong>兄弟顺序 = 局部 Z 序。</strong>Task #1(微信) 排在 Task #2(桌面) 前面，表示微信压在桌面上。每个"目录"内部都是有序列表，这一点是第五节的基石。</li>
+</ol>
+
+<p class="src-ref">参考：DisplayAreaOrganizer.java（feature ID 常量）、RootDisplayArea.java（Feature 到 DisplayArea 的映射）、TaskDisplayArea.java（应用区容器）。</p>
+
+<!-- ===== 三 ===== -->
+<h2 id="p3">三、树上的节点类型——WindowContainer 家族</h2>
+
+<p>树上所有节点都继承自 <strong>WindowContainer</strong>。AOSP 12 中各类的实际声明如下（行数为对应源文件总行数，用于感受规模）：</p>
+
+<table>
+  <tr><th>类名</th><th>实际声明（源码）</th><th>行数</th><th>角色</th></tr>
+  <tr>
+    <td><strong>WindowContainer</strong></td>
+    <td><code>class WindowContainer&lt;E extends WindowContainer&gt; extends ConfigurationContainer&lt;E&gt;</code></td>
+    <td>3,352</td>
+    <td>万物之基：子节点列表（mChildren）、父指针（mParent）、Z 序排序、遍历方法（forAllWindows）、Surface 委托</td>
+  </tr>
+  <tr>
+    <td><strong>RootWindowContainer</strong></td>
+    <td><code>class RootWindowContainer extends WindowContainer&lt;DisplayContent&gt;</code></td>
+    <td>3,706</td>
+    <td>全局唯一树根，持有所有 DisplayContent。系统启动时创建，永不销毁</td>
+  </tr>
+  <tr>
+    <td><strong>DisplayContent</strong></td>
+    <td><code>class DisplayContent extends RootDisplayArea</code></td>
+    <td>6,117</td>
+    <td>一块物理/虚拟显示器：屏幕分辨率、DPI、旋转都归它。树根下的第一层分叉</td>
+  </tr>
+  <tr>
+    <td><strong>RootDisplayArea</strong></td>
+    <td><code>class RootDisplayArea extends DisplayArea.Dimmable</code></td>
+    <td>~110</td>
+    <td>根显示区域，被 DisplayContent 继承；负责按 Feature 映射挂载各功能分区</td>
+  </tr>
+  <tr>
+    <td><strong>DisplayArea</strong></td>
+    <td><code>class DisplayArea&lt;T extends WindowContainer&gt; extends WindowContainer&lt;T&gt;</code></td>
+    <td>701</td>
+    <td>显示区域：按 <code>mFeatureId</code> 给窗口"分楼层"。系统窗口、输入法、放大镜各占一层</td>
+  </tr>
+  <tr>
+    <td><strong>TaskDisplayArea</strong></td>
+    <td><code>class TaskDisplayArea extends DisplayArea&lt;WindowContainer&gt;</code></td>
+    <td>~1,300</td>
+    <td>★ 应用任务专用区（FEATURE_DEFAULT_TASK_CONTAINER）。所有 App 的 Task 都长在这里</td>
+  </tr>
+  <tr>
+    <td><strong>DisplayArea.Tokens</strong></td>
+    <td><code>static class Tokens extends DisplayArea&lt;WindowToken&gt;</code></td>
+    <td>~40</td>
+    <td>特殊的 DisplayArea，专门持有 WindowToken——系统窗口（状态栏等）都从这里挂</td>
+  </tr>
+  <tr>
+    <td><strong>DisplayArea.Dimmable</strong></td>
+    <td><code>static class Dimmable extends DisplayArea&lt;DisplayArea&gt;</code></td>
+    <td>~70</td>
+    <td>可调暗的 DisplayArea（熄屏动画变暗用）。被 RootDisplayArea 继承，也可用于嵌套</td>
+  </tr>
+  <tr>
+    <td><strong>Task</strong></td>
+    <td><code>class Task extends WindowContainer&lt;WindowContainer&gt;</code></td>
+    <td>8,255</td>
+    <td>一个"任务容器"，对应最近任务列表里的一张卡片；可包含多个 ActivityRecord（分屏/多 Activity）</td>
+  </tr>
+  <tr>
+    <td><strong>WindowToken</strong></td>
+    <td><code>class WindowToken extends WindowContainer&lt;WindowState&gt;</code></td>
+    <td>835</td>
+    <td>窗口组令牌——所有同"源"的 WindowState 共享一个 Token。Token 死亡 → 名下窗口被集体清理</td>
+  </tr>
+  <tr>
+    <td><strong>ActivityRecord</strong></td>
+    <td><code>final class ActivityRecord extends WindowToken</code></td>
+    <td>9,056</td>
+    <td>★ ActivityRecord 继承 WindowToken！它是 AMS 与 WMS 的接头点，一个 ActivityRecord 下挂 1~多个 WindowState</td>
+  </tr>
+  <tr>
+    <td><strong>WindowState</strong></td>
+    <td><code>class WindowState extends WindowContainer&lt;WindowState&gt;</code></td>
+    <td>6,152</td>
+    <td>真正的窗口：持有 Surface、位置、大小、可见性。绝大多数时候是叶子，但子窗口会挂在父窗口之下（所以它也能有孩子）</td>
+  </tr>
+</table>
+
+<div class="annotation star3">
+  <span class="tag">✦ ✦ ✦</span> <strong>关键洞察：ActivityRecord extends WindowToken。</strong>很多人以为 ActivityRecord 只是 AMS 的记录对象，但它在 AOSP 12 中直接继承了 WindowToken（即继承了 WindowContainer），所以它<strong>自身就站在窗口层级树里</strong>——同一个对象，AMS 用它管生命周期，WMS 用它管窗口。这就是两套系统不打结的秘密。
+</div>
+
+<h3>继承链一览</h3>
+
+<div class="tree-view">
+ConfigurationContainer                        ← 配置管理（Orientation、Density、ScreenSize）
+  └── WindowContainer&lt;E&gt;                      ← + 父子关系 + Z-Order + Surface 委托
+       ├── RootWindowContainer                ← 树根。子节点：DisplayContent
+       ├── DisplayContent                     ← 显示器（继承 RootDisplayArea → Dimmable → DisplayArea）
+       ├── DisplayArea&lt;T&gt;                     ← 显示区域。按 mFeatureId 分楼层
+       │    ├── TaskDisplayArea               ← ★ 应用区（FEATURE_DEFAULT_TASK_CONTAINER）
+       │    ├── DisplayArea.Tokens            ← 系统窗口区（FEATURE_WINDOW_TOKENS）
+       │    ├── DisplayArea.Dimmable          ← 可调暗区域
+       │    └── ImeContainer                  ← 输入法容器（FEATURE_IME）
+       ├── Task                                ← 任务容器。子节点：ActivityRecord
+       ├── WindowToken                         ← 令牌。子节点：WindowState
+       │    └── ActivityRecord                ← ★ Activity 特有的 Token
+       └── WindowState                         ← 真·窗口（可再挂子窗口）
+</div>
+
+<!-- ===== 四 ===== -->
+<h2 id="p4">四、树的零件与挂载——mChildren / mParent / addChild</h2>
+
+<p>整棵树只用两个字段就能描述。打开 <span class="src-ref">WindowContainer.java</span>：</p>
+
+<div class="tree-view">// L156：一个 WindowContainer 持有一个按 Z-Order 排列的子节点列表
+protected final WindowList&lt;E&gt; mChildren = new WindowList&lt;E&gt;();
+
+// L145：每个子节点也持有指向父节点的指针
+private WindowContainer&lt;WindowContainer&gt; mParent = null;</div>
+
+<div class="annotation">
+  <strong>子列表 + 父指针 = 一棵多叉树。</strong>直白点说：<code>mChildren</code> 是文件系统里 <code>ls</code> 出来的目录项列表，<code>mParent</code> 是 <code>..</code>。而且注意——<strong>这个列表是有序的</strong>，这正是第 1.3 节"局部排序"的落地点。
+</div>
+
+<h3>4.1 addChild：窗口是怎么"挂"上去的</h3>
+
+<p><span class="src-ref">WindowContainer.java:514-560</span> 定义了 <code>addChild(E child, Comparator&lt;E&gt; comparator)</code>，逻辑如下：</p>
+
+<div class="tree-view">protected void addChild(E child, Comparator&lt;E&gt; comparator) {
+    // 1. 防环检查：不允许把自己挂到自己（或后代）下面
+    // 2. 用 Comparator 找到 child 在 mChildren 中的 Z 序插入位置
+    // 3. 插入 mChildren 列表
+    // 4. 设置 child.mParent = this          ← 双向连接
+    // 5. 触发 onChildAdded() 回调（子类可覆写，如 TaskDisplayArea 记账）
+}</div>
+
+<p>当 App 通过 Binder 调 <code>WMS.addWindow()</code> 时，链路的概念级走向：</p>
+
+<div class="flow-steps">
+  <div class="step"><span>App 通过 Binder 调 <strong>WMS.addWindow()</strong>，WMS 创建一个 WindowState 对象</span></div>
+  <div class="step"><span><strong>校验身份</strong>：WindowToken 是否有效？窗口类型是否合法？（Token 不对直接拒绝）</span></div>
+  <div class="step"><span>按窗口类型找到<strong>父容器</strong>：App 窗口 → 它所属 ActivityRecord 名下；系统窗口 → 按类型定位到对应 DisplayArea 的 Token</span></div>
+  <div class="step"><span>父容器调用 <strong>addChild(windowState)</strong>，按 Z 序插入 mChildren，并回填 mParent</span></div>
+  <div class="step"><span>创建 SurfaceControl（与 SurfaceFlinger 通信的句柄），通过 Transaction 设置位置/大小/可见性</span></div>
+  <div class="step"><span>applyTransaction → SurfaceFlinger 收到通知，下一帧合成时画出这个窗口</span></div>
+</div>
+
+<div class="annotation">
+  <strong>树不是"建好再用"的静态结构——它是一边挂载一边生效。</strong>每一次 addChild 都在维护"局部有序"这个不变量，全局 Z 序因此永远成立。挂载细节（谁创建父容器、Comparator 怎么定）交给第 02 篇。
+</div>
+
+<!-- ===== 五 ===== -->
+<h2 id="p5">五、遍历即 Z 序——forAllWindows 详解</h2>
+
+<p>现在回答第一节埋下的问题：<strong>为什么"每层排好序"就等于"全局排好序"？</strong>答案在遍历方式里。<span class="src-ref">WindowContainer.java:1391-1415</span> 定义了核心递归方法（简化后）：</p>
+
+<div class="tree-view">boolean forAllWindows(ToBooleanFunction&lt;WindowState&gt; callback,
+                      boolean traverseTopToBottom) {
+    if (traverseTopToBottom) {
+        // 从列表尾部开始 → 从最上层开始
+        for (int i = mChildren.size() - 1; i &gt;= 0; --i)
+            mChildren.get(i).forAllWindows(callback, true);
+    } else {
+        // 从列表头部开始 → 从最下层开始
+        for (int i = 0; i &lt; mChildren.size(); i++)
+            mChildren.get(i).forAllWindows(callback, false);
+    }
+}</div>
+
+<p>先记住 <span class="src-ref">WindowContainer.java:156</span> 注释里对 mChildren 的定义：</p>
+
+<div class="annotation">
+  <em>"List is in z-order as the children appear on screen with the top-most window container at the tail of the list."</em><br>
+  译文：<strong>mChildren 按 Z 序排列——屏幕上越靠上的子节点，越靠近列表尾部。</strong>头部 = 最底层，尾部 = 最顶层。
+</div>
+
+<h3>5.1 一个最小例子：看着 DFS 走出 Z 序</h3>
+
+<p>拿第二节的树截取两段，标上 DFS 访问顺序。假设 TaskDisplayArea（应用区，Feature 1）在下、DisplayArea.Tokens（系统窗口区，Feature 2）在上：</p>
+
+<div class="tree-view">
+TaskDisplayArea (Feature 1)                      DisplayArea.Tokens (Feature 2)
+ ├─ Task #1（微信）                              └─ WindowToken(StatusBar)
+ │    └─ ActivityRecord                           │
+ │         ├─ WindowState A（主窗口）             └─ WindowState D（状态栏）
+ │         └─ WindowState B（Dialog）
+ └─ Task #2（桌面）
+      └─ ActivityRecord
+           └─ WindowState C（Launcher）
+
+自下而上遍历（traverseTopToBottom=false）→  A → B → C → D
+自上而下遍历（traverseTopToBottom=true） →  D → C → B → A
+</div>
+
+<p>看出门道了吗？<strong>每个"目录"内部有序 + 递归地按顺序展开 = 全局唯一的一个 Z 序。</strong>这就像合并排序的"合并"步骤：每层都已经排好了，遍历只是在把嵌套的排序展开成一条直线。不需要任何全局排序算法，树的形状 + 局部有序，就决定了全局顺序。</p>
+
+<h3>5.2 两个方向对应两个真实场景</h3>
+
+<table>
+  <tr><th>遍历方向</th><th>顺序</th><th>实际用途</th></tr>
+  <tr>
+    <td><strong>自下而上</strong><br><code>traverseTopToBottom=false</code></td>
+    <td>最底层 → 最顶层</td>
+    <td><strong>绘制/合成顺序</strong>：先画下面的，再画上面的，上面的自然盖住下面的（第 03 篇 WindowSurfacePlacer 的布局遍历）</td>
+  </tr>
+  <tr>
+    <td><strong>自上而下</strong><br><code>traverseTopToBottom=true</code></td>
+    <td>最顶层 → 最底层</td>
+    <td><strong>触摸命中顺序</strong>：先问最上层的窗口"点的是你吗？"，不是再往下问（InputDispatcher 的命中测试逻辑）</td>
+  </tr>
+</table>
+
+<h3 id="p5-3">5.3 抽象概念实体化：Layer 到底是什么？</h3>
+
+<p>"Z 序"听着抽象，它在源码里就是一个 <strong>int 层号</strong>，由三个具体方法接力算出并下发——全在 <span class="src-ref">WindowContainer.java</span>：</p>
+
+<div class="tree-view">// L2290：父容器给每个子节点"发号"——兄弟顺序就是层号
+void assignChildLayers(Transaction t) {
+    int layer = 0;
+    // 第一轮：不需要 Z-boost 的孩子按列表顺序领号
+    for (int j = 0; j &lt; mChildren.size(); ++j) {
+        final WindowContainer wc = mChildren.get(j);
+        wc.assignChildLayers(t);              // 先递归处理孙辈
+        if (!wc.needsZBoost()) {
+            wc.assignLayer(t, layer++);       // ← 层号在这里 +1 分发
+        }
+    }
+    // 第二轮：需要 Z-boost 的孩子排到最后，层号更大 = 浮在最上
+    for (int j = 0; j &lt; mChildren.size(); ++j) {
+        final WindowContainer wc = mChildren.get(j);
+        if (wc.needsZBoost()) wc.assignLayer(t, layer++);
+    }
+}
+
+// L2240：真正"写层号"的地方——只有层号变了才动手
+void assignLayer(Transaction t, int layer) {
+    final boolean changed = layer != mLastLayer || mLastRelativeToLayer != null;
+    if (changed) {
+        setLayer(t, layer);          // → mSurfaceAnimator.setLayer
+        mLastLayer = layer;          // 记住旧值，避免每帧重复下发
+    }
+}
+
+// L2252：相对层级——不写绝对序号，而是"始终贴在 relativeTo 上面"
+void assignRelativeLayer(Transaction t, SurfaceControl relativeTo, int layer) { ... }</div>
+
+<p><code>setLayer</code> 一路往下，最终变成 <code>SurfaceControl.Transaction.setLayer(SurfaceControl, int)</code> 这一个 int 参数交给 SurfaceFlinger。也就是说：<strong>树上的"Z 序"不是概念，而是一串从根一路 <code>layer++</code> 分下来的整数</strong>。</p>
+
+<p>到窗口这一层，层号拆成三个字段，定义在 <span class="src-ref">WindowState.java:316-317 / 391</span>：</p>
+
+<table>
+  <tr><th>字段</th><th>行号</th><th>含义与来源</th></tr>
+  <tr><td><code>mBaseLayer</code></td><td>316</td><td>基础层：由 <code>mPolicy.getWindowLayerLw(parentWindow)</code> 按<strong>窗口类型</strong>给出——状态栏、输入法、应用窗口各有各的层号</td></tr>
+  <tr><td><code>mSubLayer</code></td><td>317</td><td>子层偏移：子窗口相对父窗口的微调，来自 <code>getSubWindowLayerFromTypeLw</code>（如菜单面板压在内容之上）</td></tr>
+  <tr><td><code>mLayer</code></td><td>391</td><td>最终层号：<code>getSurfaceLayer()</code>（L1486）读的就是它</td></tr>
+</table>
+
+<div class="annotation star3">
+  <span class="tag">✦ ✦ ✦</span> <strong>换用具体类的一句话版：</strong>layer = <code>WindowContainer.assignLayer(t, layer)</code> 收到的那个 int，最终存进 <code>WindowState.mLayer</code>，经 <code>Transaction.setLayer</code> 发给 SurfaceFlinger。树排好序、层号按 DFS 分发——这就是"Z 序"的完整实体化。
+</div>
+
+<div class="annotation star3">
+  <span class="tag">✦ ✦ ✦</span> <strong>一句话：DFS 遍历顺序 = 全局 Z 序。</strong>树的形状回答了"窗口画在第几层"，遍历方向回答了"先处理谁"。这是整个窗口系统最核心的一个等式，后面两篇（构建、遍历显示）都是围着它转。
+</div>
+
+<!-- ===== 六 ===== -->
+<h2 id="p6">六、DisplayArea 的"楼层编号"——mFeatureId 分区</h2>
+
+<p>第二节的树里，每个 DisplayArea 都带一个 Feature 编号。为什么？因为<strong>不同身份的窗口必须住在不同楼层</strong>：App 不能盖住状态栏，键盘必须压住 App，放大镜必须压住一切。与其让每个窗口自己抢位置，不如先按"用途"划好楼层，窗口按身份入住。</p>
+
+<p><span class="src-ref">DisplayAreaOrganizer.java:39-130</span> 定义了所有 Feature ID：</p>
+
+<table>
+  <tr><th>Feature ID 常量</th><th>值</th><th>对应区域（楼层）</th></tr>
+  <tr><td>FEATURE_ROOT</td><td>0</td><td>根 DisplayArea（最低层）</td></tr>
+  <tr><td>FEATURE_DEFAULT_TASK_CONTAINER</td><td>1</td><td>应用任务区 → 实例化为 <strong>TaskDisplayArea</strong>（你的 App 在这层）</td></tr>
+  <tr><td>FEATURE_WINDOW_TOKENS</td><td>2</td><td>窗口令牌区 → 实例化为 <strong>DisplayArea.Tokens</strong>（状态栏等系统窗口在这层）</td></tr>
+  <tr><td>FEATURE_ONE_HANDED</td><td>3</td><td>单手模式位移区</td></tr>
+  <tr><td>FEATURE_WINDOWED_MAGNIFICATION</td><td>4</td><td>窗口化放大镜</td></tr>
+  <tr><td>FEATURE_FULLSCREEN_MAGNIFICATION</td><td>5</td><td>全屏放大镜</td></tr>
+  <tr><td>FEATURE_HIDE_DISPLAY_CUTOUT</td><td>6</td><td>刘海隐藏区</td></tr>
+  <tr><td>FEATURE_IME_PLACEHOLDER</td><td>7</td><td>输入法占位区 → 内含 ImeContainer（键盘在这层，压住 App）</td></tr>
+  <tr><td>FEATURE_ONE_HANDED_BACKGROUND_PANEL</td><td>8</td><td>单手模式背景面板（最高层）</td></tr>
+</table>
+
+<div class="annotation">
+  <strong>DisplayArea 不是按"名字"排队，是按 mFeatureId（楼层编号）排队。</strong>DisplayAreaPolicyBuilder 构建时按 Feature ID 升序排列——编号越小越靠底、越大越靠顶。所以"输入法永远压住应用""状态栏永远在 App 之上"这些我们习以为常的现象，源头就是这两行编号。构建细节在第 02 篇完整拆解。
+</div>
+
+<h3 id="p6-1">6.1 Feature 不是编号，是一个具体类</h3>
+
+<p>每个 DisplayArea 的 mFeatureId 来自一个真实存在的类：<strong>DisplayAreaPolicyBuilder.Feature</strong>（<span class="src-ref">DisplayAreaPolicyBuilder.java:585</span>）。它是"这棵树该长成什么样"的描述块，四个字段：</p>
+
+<table>
+  <tr><th>字段</th><th>行号</th><th>含义</th></tr>
+  <tr><td><code>mName</code></td><td>586</td><td>名字，如 <code>"WindowedMagnification"</code>、<code>"ImePlaceholder"</code>（只用于日志和调试）</td></tr>
+  <tr><td><code>mId</code></td><td>587</td><td>唯一 id，即上一节的 FEATURE_* 常量（如 FEATURE_IME_PLACEHOLDER = 7）</td></tr>
+  <tr><td><code>mWindowLayers</code></td><td>588</td><td>boolean 数组，<strong>下标就是窗口 layer 号</strong>——标记这个功能圈定哪些窗口类型。<strong>Feature 和 Layer 在这里咬合</strong></td></tr>
+  <tr><td><code>mNewDisplayAreaSupplier</code></td><td>589</td><td>默认 <code>DisplayArea::new</code>；想要可调暗区域就传 <code>DisplayArea.Dimmable::new</code></td></tr>
+</table>
+
+<p>用 <code>Feature.Builder</code>（<span class="src-ref">DisplayAreaPolicyBuilder.java:616</span>）链式圈定范围——<code>all()</code> / <code>and(...)</code> / <code>except(...)</code> / <code>upTo(...)</code> 内部都是在改 <code>mWindowLayers[]</code> 这个布尔数组。来自 DisplayAreaPolicy.java:156 的真实代码：</p>
+
+<div class="tree-view">// 圈定"输入法两层窗口"：TYPE_INPUT_METHOD + TYPE_INPUT_METHOD_DIALOG
+new Feature.Builder(wmService.mPolicy, "ImePlaceholder", FEATURE_IME_PLACEHOLDER)
+        .and(TYPE_INPUT_METHOD, TYPE_INPUT_METHOD_DIALOG)
+        .build()
+
+// 对比：放大镜圈"几乎所有窗口"，再逐个排除
+new Feature.Builder(wmService.mPolicy, "FullscreenMagnification",
+        FEATURE_FULLSCREEN_MAGNIFICATION)
+        .all()
+        .except(TYPE_ACCESSIBILITY_MAGNIFICATION_OVERLAY, TYPE_INPUT_METHOD,
+                TYPE_INPUT_METHOD_DIALOG, TYPE_MAGNIFICATION_OVERLAY,
+                TYPE_NAVIGATION_BAR, TYPE_NAVIGATION_BAR_PANEL)
+        .build()</div>
+
+<p>系统默认的整棵功能树，就是在 <span class="src-ref">DisplayAreaPolicy.java:117</span> 的 <code>configureTrustedHierarchyBuilder()</code> 里逐个 addFeature 拼出来的：<strong>WindowedMagnification → HideDisplayCutout → OneHandedBackgroundPanel → OneHanded → FullscreenMagnification → ImePlaceholder</strong>。每个 Feature 交给 <code>HierarchyBuilder</code>，最终实例化为树里对应的 DisplayArea / RootDisplayArea / TaskDisplayArea 节点。</p>
+
+<div class="annotation star3">
+  <span class="tag">✦ ✦ ✦</span> <strong>换用具体类的一句话版：</strong>Feature = <code>DisplayAreaPolicyBuilder.Feature</code> 的一个实例，四个字段描述"某类窗口该住哪一层"；树里那些非窗口的组织节点（状态栏区、输入法占位区……）就是它实例化的产物。<strong>Layer 给窗口编号，Feature 按编号圈地</strong>——这就是树里两个词的关系。构建算法在第 02 篇拆解。
+</div>
+
+<!-- ===== 七 ===== -->
+<h2 id="p7">七、WindowToken——窗口的"户口本"</h2>
+
+<p><span class="src-ref">WindowToken.java:71</span>：<code>class WindowToken extends WindowContainer&lt;WindowState&gt;</code></p>
+
+<p>树上的每个 WindowState 都不是"黑户"——它必须挂在一个 WindowToken 名下。Token 的核心职责：</p>
+
+<ul>
+  <li><strong>身份绑定</strong>：所有同源的 WindowState（一个 Activity 的主窗口 + 它的 Dialog + 它的 PopupWindow）共享一个 WindowToken。窗口归属谁，Token 说了算</li>
+  <li><strong>集体清理</strong>：Token 被移除 → 递归移除名下所有 WindowState → SurfaceFlinger 同步清除所有 Layer。"注销户口，全家消失"</li>
+  <li><strong>权限验证</strong>：每个 WindowToken 有自己的 client（Binder 连接）。普通 App 无法冒用状态栏的 Token 挂自己的窗口——这就是"系统窗口不能被伪造"的防线</li>
+  <li><strong>ActivityRecord 是 WindowToken 的子类</strong>，所以 Activity 天然拥有上述全部能力，还额外带着生命周期管理</li>
+</ul>
+
+<div class="annotation star3">
+  <span class="tag">✦ ✦ ✦</span> <strong>一句话：WindowToken = 窗口的"户口本"。</strong>户口注销时，所有家庭成员（WindowState）一起消失。ActivityRecord 是户口本的一种特殊类型——它附加了 Activity 生命周期的管理能力，同时身兼 AMS 记录与 WMS 节点两职。
+</div>
+
+<!-- ===== 八 ===== -->
+<h2 id="p8">八、别混淆：窗口树 vs View 树（两层结构）</h2>
+
+<p>初学最容易栽的坑：把"窗口层级"和"View 层级"混为一谈。<strong>它们是两棵完全不同的树，各归各的管家。</strong></p>
+
+<table>
+  <tr><th></th><th>窗口树（本专题主角）</th><th>View 树（窗口内部的骨架）</th></tr>
+  <tr>
+    <td><strong>节点</strong></td>
+    <td>WindowContainer 家族：Display / Task / Token / WindowState…</td>
+    <td>ViewGroup（容器）和 View（元素）：按钮、文字、图片…</td>
+  </tr>
+  <tr>
+    <td><strong>管家</strong></td>
+    <td>WMS（system_server 进程）</td>
+    <td>ViewRootImpl / LayoutInflater（App 进程内）</td>
+  </tr>
+  <tr>
+    <td><strong>根节点</strong></td>
+    <td>RootWindowContainer（全系统一棵）</td>
+    <td>每个窗口一棵，根固定叫 <strong>DecorView</strong>（"装裱好的画框"）</td>
+  </tr>
+  <tr>
+    <td><strong>粒度</strong></td>
+    <td>窗口与窗口之间（谁压谁）</td>
+    <td>窗口内部元素之间（按钮放哪）</td>
+  </tr>
+</table>
+
+<p>窗口内部的典型结构：</p>
+
+<div class="tree-view">
+WindowState（窗口）
+ └── DecorView                        ← 视图树根，窗口的"画框"
+      ├── 系统预留区                    ← 状态栏下方的留白
+      └── 内容区 (ContentView)
+           └── 你的布局：ViewGroup
+                ├── View（按钮）
+                ├── ViewGroup（列表）
+                │    └── View（列表项）
+                └── ...
+</div>
+
+<div class="annotation">
+  <strong>两棵树的接头点在哪？</strong>App 进程里，ViewRootImpl 通过 <code>Session.addToDisplay()</code> 走 Binder 到 system_server，把"我这棵 View 树"注册成一个 WindowState、挂上窗口树；之后 Surface 的提交、触摸事件的下发，都沿这两棵树来回传递。<strong>窗口树决定"这一窗画在哪层"，View 树决定"这一窗里面画什么"。</strong>
+</div>
+
+<!-- ===== 九 ===== -->
+<h2 id="p9">九、和其他系统的关系</h2>
+
+<div class="hier-box">
+  <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; font-size:0.88em;">
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:14px;">
+      <strong style="color:var(--accent)">AMS</strong><br><br>
+      管 Activity 生命周期<br>
+      创建并持有 Task / ActivityRecord<br>
+      决定"开哪个界面"<br><br>
+      <small>→ 与 WMS 共享 ActivityRecord 对象</small>
+    </div>
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:14px;">
+      <strong style="color:var(--accent2)">WMS</strong><br><br>
+      管窗口层级树<br>
+      持有 RootWindowContainer<br>
+      Z 序、动画、Token 校验<br><br>
+      <small>→ 通过 SurfaceControl 指挥 SurfaceFlinger</small>
+    </div>
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:14px;">
+      <strong style="color:var(--accent3)">SurfaceFlinger</strong><br><br>
+      管 Layer（GPU 缓冲）<br>
+      按 Z 序合成到屏幕<br>
+      不懂 Activity、不懂窗口概念<br><br>
+      <small>→ 通过 HWC 输出到硬件</small>
+    </div>
+  </div>
+</div>
+
+<p><strong>三者之间的数据映射：</strong></p>
+<ul>
+  <li>AMS 的 <strong>ActivityRecord</strong> ↔ WMS 层级树中的 <strong>ActivityRecord（继承 WindowToken）</strong>——<strong>同一个对象</strong>，这是两套系统不打结的关键</li>
+  <li>WMS 的 <strong>WindowState</strong> → 持有 <strong>SurfaceControl</strong> → SurfaceFlinger 的 <strong>Layer</strong>——跨进程 Binder Transaction 映射</li>
+  <li>Activity 销毁时：AMS 移除 ActivityRecord → WMS 连根移除名下的 WindowState → Transaction 通知 SurfaceFlinger 移除 Layer——<strong>一次操作沿三层系统瀑布式传导</strong></li>
+</ul>
+
+<!-- ===== 十 ===== -->
+<h2 id="p10">十、学习路径建议（基于实际源码）</h2>
+
+<table>
+  <tr><th>阶段</th><th>关键源码</th><th>看什么</th></tr>
+  <tr>
+    <td>0. 概念直觉</td>
+    <td>本文第零节</td>
+    <td>胶片类比、Z 序、三种窗口身份、Token</td>
+  </tr>
+  <tr>
+    <td>1. 为什么是树</td>
+    <td>本文第一节</td>
+    <td>级联清理、配置传播、局部 Z 序三个动机——先想清楚再读代码</td>
+  </tr>
+  <tr>
+    <td>2. 基类与零件</td>
+    <td><span class="src-ref">WindowContainer.java:156</span> (mChildren), <span class="src-ref">:145</span> (mParent), <span class="src-ref">:514</span> (addChild)</td>
+    <td>节点管理、挂载、防环</td>
+  </tr>
+  <tr>
+    <td>3. 遍历</td>
+    <td><span class="src-ref">WindowContainer.java:1391</span> (forAllWindows)</td>
+    <td>DFS 与两个方向的真实含义</td>
+  </tr>
+  <tr>
+    <td>4. 根与显示器</td>
+    <td><span class="src-ref">RootWindowContainer.java:175</span>, <span class="src-ref">DisplayContent.java</span></td>
+    <td>树根持有所有 Display，理解 DefaultDisplay</td>
+  </tr>
+  <tr>
+    <td>5. DisplayArea 分层</td>
+    <td><span class="src-ref">DisplayAreaOrganizer.java:39</span> (FEATURE_*)<br><span class="src-ref">DisplayAreaPolicyBuilder.java:290</span></td>
+    <td>Feature 如何映射为楼层与 Z 序区间</td>
+  </tr>
+  <tr>
+    <td>6. Token 机制</td>
+    <td><span class="src-ref">WindowToken.java:71</span><br><span class="src-ref">ActivityRecord.java:365</span></td>
+    <td>Token 如何保护窗口并绑定生命周期</td>
+  </tr>
+  <tr>
+    <td>7. 窗口添加</td>
+    <td><span class="src-ref">WindowManagerService.java</span>（addWindow 方法）</td>
+    <td>从 Binder 入口到挂树的完整流程</td>
+  </tr>
+  <tr>
+    <td>8. SurfaceFlinger 联动</td>
+    <td><span class="src-ref">WindowState.java</span> → SurfaceControl → Transaction</td>
+    <td>跨进程 Surface 管理和 VSYNC 同步</td>
+  </tr>
+</table>
+
+<div class="annotation star3">
+  <span class="tag">✦ ✦ ✦</span> <strong>继续阅读：</strong>概念建立完毕，往深走——<a href="02-窗口树的构建算法.html">《02 窗口树是怎样建起来的》</a>（树是怎么长出来的，含 DisplayAreaPolicyBuilder 三阶段算法）→ <a href="03-窗口刷新与事务提交.html">《03 窗口刷新：布局、Z 序与事务提交》</a>（树是怎么被用起来的，含布局与 Z 序分配）。
+</div>
+
+<!-- ===== 十一 ===== -->
+<h2 id="p11">十一、总结——核心结论</h2>
+
+<div class="annotation">
+  <strong>❶ 为什么是树：三个刚需逼出来的</strong>——① 级联生命周期（删一个节点带走整棵子树）② 配置/状态沿树广播 ③ 局部排序递归拼出全局 Z 序。<strong>窗口层级树不是比喻，是真实的多叉树</strong>：所有节点继承自 WindowContainer，靠 mChildren（按 Z 序排列的子列表）+ mParent（父指针）连接。<br><br>
+  <strong>❷ 树的形状</strong>——RootWindowContainer → DisplayContent → 各 DisplayArea（按 Feature 楼层分区）→ Task → ActivityRecord（继承 WindowToken）→ WindowState；系统窗口走 Tokens 区，App 窗口走 TaskDisplayArea 区。<br><br>
+  <strong>❸ 树的运转 = DFS</strong>——forAllWindows 自下而上（绘制合成）或自上而下（触摸命中）遍历，遍历顺序即全局 Z 序：mChildren 头部最底、尾部最顶。<br><br>
+  <strong>❹ 别混淆两层树</strong>——窗口树归 WMS 管"窗口之间谁压谁"；View 树归 ViewRootImpl 管"窗口里面画什么"，两棵树通过 addToDisplay 对接。<br><br>
+  <strong>❺ 两个抽象词都有实体</strong>——<strong>Layer</strong> 是 <code>WindowContainer.assignChildLayers/assignLayer</code> 从根往下 <code>layer++</code> 分发的 int 层号（窗口侧拆成 <code>WindowState.mBaseLayer / mSubLayer / mLayer</code>，经 <code>Transaction.setLayer</code> 交给 SurfaceFlinger）；<strong>Feature</strong> 是 <code>DisplayAreaPolicyBuilder.Feature</code> 的实例（<code>mName / mId / mWindowLayers / mNewDisplayAreaSupplier</code>），用 layer 号圈定楼层、生成对应的 DisplayArea 节点。
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android 窗口层级专题 | <strong>01 — 窗口树全景：WindowContainer 家族、Z 序与 Token</strong></p>
+  <p>基于 AOSP 12（android-12.0.0_r32）· WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实</p>
+  <p style="margin-top:10px;"><a href="00-窗口为什么是一棵树.html">← 00 窗口为什么是一棵树</a> &nbsp;|&nbsp; <strong>01 窗口树全景 ← 你在这</strong> &nbsp;|&nbsp; <a href="02-窗口树的构建算法.html">02 窗口树是怎样建起来的 →</a></p>
+  <p style="margin-top:8px;"><a href="index.html">🏠 系列导航</a> &nbsp;|&nbsp; <a href="WMS学习路线图.html">🗺️ 学习路线图</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📌 下篇预告：02 窗口树是怎样建起来的 — DisplayAreaPolicyBuilder 三层遍历、Feature 分区与挂树全流程</p>
+</div>
+
+<!-- ════════════════ Theme Button ════════════════ -->
+<button id="theme-btn" title="自动模式">🌓</button>
+
+<script>
+(function() {
+  var MODES = { AUTO: 0, LIGHT: 1, DARK: 2 };
+  var ICONS = ['🌓', '☀️', '🌙'];
+  var TITLES = ['自动模式', '浅色模式', '深色模式'];
+
+  var saved = localStorage.getItem('theme-mode');
+  var mode = (saved != null) ? parseInt(saved, 10) : MODES.AUTO;
+  if (isNaN(mode) || mode < 0 || mode > 2) mode = MODES.AUTO;
+
+  function isDaytime() {
+    var h = new Date().getHours();
+    return h >= 7 && h < 22;
+  }
+  function applyTheme() {
+    var useDark = (mode === MODES.DARK) || (mode === MODES.AUTO && !isDaytime());
+    document.documentElement.setAttribute('data-theme', useDark ? 'dark' : '');
+    var btn = document.getElementById('theme-btn');
+    btn.textContent = ICONS[mode];
+    btn.title = TITLES[mode] + (mode === MODES.AUTO ? (useDark ? ' (当前深色)' : ' (当前浅色)') : '');
+  }
+
+  document.getElementById('theme-btn').addEventListener('click', function() {
+    mode = (mode + 1) % 3;
+    localStorage.setItem('theme-mode', mode);
+    applyTheme();
+  });
+
+  applyTheme();
+  setInterval(applyTheme, 60000);
+})();
+</script>
+
+</body>
+</html>

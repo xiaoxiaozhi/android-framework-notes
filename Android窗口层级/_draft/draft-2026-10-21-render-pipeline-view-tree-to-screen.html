@@ -1,0 +1,1881 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>从 View 树到屏幕像素：Android 渲染全链路 — AOSP 12 源码深度分析</title>
+  <style>
+    :root {
+      --paper: #f4ecdd;
+      --paper-deep: #ece0cc;
+      --card: #fbf6ea;
+      --ink: #2a2621;
+      --ink2: #5c5347;
+      --muted: #8a7c69;
+      --line: #d8cbb6;
+      --line-strong: #bfae94;
+      --terracotta: #b4553a;
+      --terracotta-dark: #8f3f2c;
+      --green: #4f6b52;
+      --blue: #4f6b7a;
+      --gold: #a77b2f;
+      --code-bg: #2b2622;
+      --code-bg2: #241f1b;
+      --code-ink: #efe6d6;
+      --code-dim: #b6a78f;
+      --kw: #e6b17a;
+      --fn: #f0c27b;
+      --cm: #9bbf8f;
+      --num: #d9a05b;
+      --str: #c9a7a0;
+      --tag-bg: #f0dfc6;
+      --tag-ink: #7a3f2a;
+      --table-head: #e8dcc8;
+      --hover: #f0e6d6;
+      --shadow: 0 8px 26px rgba(60, 42, 24, .08);
+      --theme-btn-bg: rgba(42, 38, 33, .08);
+      --theme-btn-text: #2a2621;
+    }
+    [data-theme="dark"] {
+      --paper: #171513;
+      --paper-deep: #1e1a16;
+      --card: #211d19;
+      --ink: #e9dfcf;
+      --ink2: #c3b5a1;
+      --muted: #9b8c78;
+      --line: #3b332b;
+      --line-strong: #57493c;
+      --terracotta: #e08a6a;
+      --terracotta-dark: #f0a080;
+      --green: #8fbd92;
+      --blue: #8fb5c4;
+      --gold: #d7aa5f;
+      --code-bg: #120f0d;
+      --code-bg2: #0d0b09;
+      --code-ink: #efe6d6;
+      --code-dim: #a99b87;
+      --kw: #e6b17a;
+      --fn: #f0c27b;
+      --cm: #9bbf8f;
+      --num: #d9a05b;
+      --str: #c9a7a0;
+      --tag-bg: #3b2b20;
+      --tag-ink: #e6b08a;
+      --table-head: #2a2420;
+      --hover: #2a2420;
+      --shadow: 0 8px 26px rgba(0, 0, 0, .28);
+      --theme-btn-bg: rgba(255, 255, 255, .1);
+      --theme-btn-text: #e9dfcf;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Segoe UI Symbol", "Apple Symbols", sans-serif;
+      background-color: var(--paper);
+      background-image: radial-gradient(rgba(120, 90, 50, .045) 1px, transparent 1px);
+      background-size: 22px 22px;
+      color: var(--ink);
+      line-height: 1.85;
+      padding: 44px 20px 60px;
+      transition: background-color .3s, color .3s;
+    }
+    .container { max-width: 1080px; margin: 0 auto; }
+    h1, h2, h3, h4 { font-family: Georgia, "Songti SC", "Noto Serif SC", "STSong", serif; }
+    h1 {
+      font-size: 2.05rem;
+      line-height: 1.35;
+      color: var(--terracotta-dark);
+      border-bottom: 3px solid var(--terracotta);
+      padding-bottom: 14px;
+      margin-bottom: 8px;
+      letter-spacing: .5px;
+    }
+    .subtitle { color: var(--ink2); font-size: .96rem; margin-bottom: 8px; }
+    .series { color: var(--muted); font-size: .84rem; margin-bottom: 28px; }
+    h2 {
+      font-size: 1.5rem;
+      margin: 46px 0 18px;
+      padding-bottom: 9px;
+      border-bottom: 2px solid var(--line);
+      color: var(--green);
+    }
+    h2 .num {
+      color: var(--terracotta);
+      font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+      font-size: .75em;
+      margin-right: 8px;
+    }
+    h3 { font-size: 1.16rem; margin: 30px 0 12px; color: var(--blue); }
+    h4 { font-size: 1.02rem; margin: 20px 0 8px; color: var(--ink); }
+    p, li { margin-bottom: 10px; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; }
+    a { color: var(--blue); text-decoration: none; border-bottom: 1px dotted var(--blue); }
+    a:hover { color: var(--terracotta); border-bottom-color: var(--terracotta); }
+    code {
+      font-family: "SF Mono", "Cascadia Code", "Consolas", "Segoe UI Symbol", "Apple Symbols", monospace;
+      font-size: .86em;
+      background: var(--paper-deep);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--terracotta-dark);
+      border: 1px solid var(--line);
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+      transition: background .3s, border .3s;
+    }
+    .card:hover { border-color: var(--line-strong); }
+    .lead {
+      font-size: 1.02rem;
+      color: var(--ink2);
+      border-left: 4px solid var(--terracotta);
+      padding-left: 16px;
+      margin: 14px 0 18px;
+    }
+    .annotation {
+      border-left: 4px solid var(--blue);
+      background: var(--paper-deep);
+      padding: 13px 18px;
+      margin: 16px 0;
+      border-radius: 6px;
+      font-size: .93rem;
+    }
+    .annotation.star3 { border-left-color: var(--terracotta); background: var(--tag-bg); }
+    .tag { color: var(--tag-ink); font-weight: bold; letter-spacing: 1.5px; }
+    .pitfall {
+      border-left: 4px solid var(--terracotta);
+      padding: 12px 18px;
+      margin: 14px 0;
+      background: var(--tag-bg);
+      border-radius: 6px;
+      font-size: .92rem;
+    }
+    .pitfall .tag { color: var(--terracotta-dark); }
+    .insight {
+      border: 1px dashed var(--line-strong);
+      background: var(--card);
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin: 16px 0;
+      font-size: .94rem;
+    }
+    .insight strong { color: var(--terracotta-dark); }
+    .toc {
+      background: var(--code-bg);
+      color: var(--code-ink);
+      border: 1px solid #3a332c;
+      border-radius: 12px;
+      padding: 20px 26px;
+      margin-bottom: 28px;
+      box-shadow: var(--shadow);
+    }
+    .toc strong { color: var(--fn); font-family: Georgia, "Songti SC", serif; letter-spacing: 1px; }
+    .toc a {
+      display: block;
+      padding: 3px 0;
+      color: #e8dcc8;
+      border-bottom: none;
+      font-size: .92rem;
+    }
+    .toc a:hover { color: var(--fn); padding-left: 4px; }
+    .toc .part { color: var(--code-dim); font-size: .8rem; margin-top: 8px; letter-spacing: 1px; }
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid #3a332c;
+      border-radius: 9px;
+      margin: 18px 0;
+      overflow-x: auto;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, .12);
+    }
+    .code-block .filename {
+      padding: 8px 16px;
+      font-size: .80rem;
+      color: var(--code-dim);
+      border-bottom: 1px solid #3a332c;
+      background: rgba(255, 255, 255, .035);
+      font-family: "SF Mono", "Cascadia Code", "Consolas", "Segoe UI Symbol", "Apple Symbols", monospace;
+    }
+    .code-block pre {
+      padding: 15px 18px;
+      font-family: "SF Mono", "Cascadia Code", "Consolas", "Segoe UI Symbol", "Apple Symbols", monospace;
+      font-size: .80rem;
+      line-height: 1.72;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--code-ink);
+    }
+    .kw { color: var(--kw); font-weight: 600; }
+    .fn { color: var(--fn); font-weight: 600; }
+    .cm { color: var(--cm); font-style: italic; }
+    .num { color: var(--num); }
+    .str { color: var(--str); }
+    .calltree {
+      background: var(--code-bg);
+      border: 1px solid #3a332c;
+      border-radius: 9px;
+      padding: 16px 18px;
+      margin: 18px 0;
+      overflow-x: auto;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, .12);
+    }
+    .calltree pre {
+      font-family: "SF Mono", "Cascadia Code", "Consolas", "Segoe UI Symbol", "Apple Symbols", monospace;
+      font-size: .81rem;
+      line-height: 1.8;
+      color: var(--code-ink);
+      white-space: pre;
+    }
+    .calltree .loc { color: var(--code-dim); }
+    .calltree .cm { color: var(--cm); }
+    .calltree .hl { color: var(--fn); font-weight: 600; }
+    .calltree .dim { color: var(--code-dim); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: .87rem;
+      background: var(--card);
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 9px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: var(--table-head); font-weight: 600; color: var(--ink); }
+    tr:hover td { background: var(--hover); }
+    td code { background: transparent; border: none; padding: 0 2px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .mini-title { color: var(--terracotta-dark); font-weight: 700; margin-bottom: 6px; font-size: .9rem; }
+    details {
+      background: var(--paper-deep);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 11px 16px;
+      margin-bottom: 10px;
+    }
+    summary { cursor: pointer; font-weight: 600; color: var(--blue); }
+    .ans {
+      margin-top: 10px;
+      padding: 10px 14px;
+      border-left: 3px solid var(--green);
+      background: var(--card);
+      border-radius: 6px;
+      font-size: .9rem;
+    }
+    .kbd {
+      font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+      font-size: .8rem;
+      background: var(--paper-deep);
+      border: 1px solid var(--line);
+      border-bottom-width: 2px;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    #theme-btn {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      background: var(--theme-btn-bg);
+      color: var(--theme-btn-text);
+      font-size: 1.35rem;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
+      z-index: 999;
+      transition: all .25s;
+      backdrop-filter: blur(6px);
+    }
+    #theme-btn:hover { transform: scale(1.08) rotate(8deg); }
+    .footer {
+      margin-top: 56px;
+      padding: 22px 0;
+      border-top: 1px solid var(--line);
+      text-align: center;
+      color: var(--muted);
+      font-size: .84rem;
+    }
+    .footer a { color: var(--blue); }
+    @media (max-width: 760px) {
+      body { padding: 24px 12px 50px; }
+      h1 { font-size: 1.55rem; }
+      h2 { font-size: 1.28rem; }
+      .card { padding: 18px 16px; }
+      .grid2 { grid-template-columns: 1fr; }
+      .code-block pre, .calltree pre { font-size: .74rem; }
+      table { font-size: .8rem; }
+    }
+  </style>
+</head>
+<body>
+<button id="theme-btn" title="切换主题">🌓</button>
+<div class="container">
+
+<h1>🎞️ 从 View 树到屏幕像素</h1>
+<p class="subtitle">一次绘制如何穿过 UI 线程、RenderThread、GPU、BufferQueue、SurfaceFlinger 与 HWC · AOSP 12 源码拆解</p>
+<p class="series">📚 Android 窗口层级专题 · 渲染深潜篇（临时稿）｜ 基于 <code>android-12.0.0_r32</code> ｜ 源码现地核实：<code>/home/book/aosp12</code></p>
+
+<div class="toc">
+  <strong>📑 目录</strong>
+  <div class="part">先把概念说清楚</div>
+  <a href="#p0">0.0 名词表：屏幕、帧、树、队列</a>
+  <div class="part">主链路</div>
+  <a href="#p1">一、全景：两棵树、一条队列、三次跨界</a>
+  <a href="#p2">二、初始化：Renderer、Surface 与 BLASTBufferQueue</a>
+  <a href="#p3">三、驱动：VSync 从哪来，Choreographer 怎么跑</a>
+  <a href="#p4">四、UI 线程：遍历、录制、RenderNode 树</a>
+  <a href="#p5">五、交接：ThreadedRenderer 与 RenderThread</a>
+  <a href="#p6">六、GPU：CanvasContext、Skia、EGL 与 BufferQueue</a>
+  <a href="#p7">七、合成：SurfaceFlinger 的 Layer 树</a>
+  <a href="#p8">八、上屏：HWC 与显示扫描</a>
+  <div class="part">收束与排障</div>
+  <a href="#p9">九、类与方法：谁负责什么</a>
+  <a href="#p10">十、稳态闭环：一帧的生命周期与排障</a>
+  <a href="#p11">十一、源码速查与自测</a>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p0"><span class="num">0.0</span>先讲概念：屏幕、帧、树、队列</h2>
+
+<div class="card">
+  <p>把 Android 渲染想成一条流水线：<strong>UI 线程把界面“录制”成命令清单，RenderThread 把命令清单交给 GPU 画进一块内存，SurfaceFlinger 把多块内存按 Z 序叠成一张图，HWC 再把这张图交给显示控制器逐行扫描到屏幕上。</strong></p>
+  <p>这条流水线上没有“一个 View 直接对应屏幕上一块像素”这种事。View 只是 App 进程里的对象；真正跨进程流动的是 <strong>绘制命令</strong>、<strong>图形缓冲区</strong> 和 <strong>同步栅栏</strong>。把这三样东西看清楚，渲染链路就通了。</p>
+
+  <div class="lead">
+    先记住三句话：<br>
+    ① View 树先被录制为 <strong>RenderNode / DisplayList 树</strong>，不是直接画到屏幕。<br>
+    ② 一个 Window 对应一个 <strong>Surface / BufferQueue</strong>；SurfaceFlinger 合成的是窗口级 Layer，不是一个个 View。<br>
+    ③ UI 线程负责“录制”，RenderThread 负责“回放与 GPU 提交”，SurfaceFlinger 与 HWC 负责“合成与上屏”。
+  </div>
+
+  <h3>名词表（读完后文可以随时回来查）</h3>
+  <table>
+    <tr><th>名词</th><th>一句话解释</th><th>在这条链路里的位置</th></tr>
+    <tr><td><strong>VSync</strong></td><td>显示控制器的刷新节拍。每一拍给 App 和 SurfaceFlinger 一个“可以准备下一帧”的信号。</td><td>整条链路的时钟</td></tr>
+    <tr><td><strong>Frame</strong></td><td>一个 VSync 周期内要完成的一帧工作；不是“一张图片”，而是一次有截止时间的提交。</td><td>调度单位</td></tr>
+    <tr><td><strong>Choreographer</strong></td><td>App 侧的 VSync 回调调度器，按 input、animation、traversal、commit 的顺序跑回调。</td><td>UI 线程入口</td></tr>
+    <tr><td><strong>View</strong></td><td>UI 的基本对象，负责测量、布局、绘制自身内容。</td><td>View 树的节点</td></tr>
+    <tr><td><strong>ViewRootImpl</strong></td><td>一个 Window 的 View 树根管家，连接 View、WindowManager、Surface 与 Choreographer。</td><td>遍历与绘制的总调度</td></tr>
+    <tr><td><strong>RenderNode</strong></td><td>View 的“绘制属性 + 显示列表”载体；可以理解为一棵可复用的命令子树。</td><td>UI 线程与 RenderThread 的交接物</td></tr>
+    <tr><td><strong>DisplayList</strong></td><td>RecordingCanvas 录下来的一串绘制命令，附着在 RenderNode 上。</td><td>录制结果</td></tr>
+    <tr><td><strong>RecordingCanvas</strong></td><td>只记录、不立即执行的 Canvas；把 drawRect、drawText、drawRenderNode 等调用写进 DisplayList。</td><td>UI 线程录制工具</td></tr>
+    <tr><td><strong>HWUI</strong></td><td>Android 的硬件加速 2D 渲染库（libhwui），包含 RenderThread、CanvasContext、Skia 管线等。</td><td>App 进程的渲染引擎</td></tr>
+    <tr><td><strong>RenderThread</strong></td><td>每个 App 进程一条的渲染线程；负责同步 DisplayList、回放、GPU 提交与 BufferQueue 交互。</td><td>UI 线程的下游</td></tr>
+    <tr><td><strong>CanvasContext</strong></td><td>一个渲染目标（通常是一个 Window Surface）在 RenderThread 侧的上下文。</td><td>RT 的绘制上下文</td></tr>
+    <tr><td><strong>Skia</strong></td><td>2D 图形库；HWUI 用它的 GPU 后端把 DisplayList 变成 GPU 命令。</td><td>命令回放与光栅化</td></tr>
+    <tr><td><strong>EGL</strong></td><td>连接 OpenGL ES 与原生窗口系统的接口；EGLSurface 背后就是 BufferQueue 的一个 buffer。</td><td>GPU 与 Surface 的桥</td></tr>
+    <tr><td><strong>Surface</strong></td><td>App 侧的绘制目标句柄，本质是 BufferQueue 的生产者端。</td><td>一个 Window 一块画布</td></tr>
+    <tr><td><strong>BufferQueue</strong></td><td>生产者（App）与消费者（SurfaceFlinger）之间的缓冲区队列，带 slot、状态和 fence。</td><td>跨进程像素交接</td></tr>
+    <tr><td><strong>GraphicBuffer</strong></td><td>真正装像素的内存块，通常由 gralloc 分配，GPU 与显示控制器都能访问。</td><td>像素载体</td></tr>
+    <tr><td><strong>Fence</strong></td><td>GPU/显示之间的同步原语；acquire fence 表示“缓冲区何时可读”，release fence 表示“何时可重用”。</td><td>流水线的红绿灯</td></tr>
+    <tr><td><strong>SurfaceFlinger</strong></td><td>系统合成器；把各窗口的 Layer 按 Z 序合成，交给 HWC。</td><td>系统进程侧合成</td></tr>
+    <tr><td><strong>Layer</strong></td><td>SurfaceFlinger 对一个 Surface 的表示；BufferLayer 持有缓冲区，容器 Layer 只组织层级。</td><td>SF 的合成单元</td></tr>
+    <tr><td><strong>SurfaceControl</strong></td><td>App/WMS 操作 Layer 的句柄；事务（Transaction）通过它设置位置、大小、Z、可见性等。</td><td>Layer 的控制面</td></tr>
+    <tr><td><strong>BLASTBufferQueue</strong></td><td>Android 12 的 BufferQueue 封装，把 buffer 提交与 SurfaceControl 事务同步起来。</td><td>App 侧生产者</td></tr>
+    <tr><td><strong>HWC</strong></td><td>Hardware Composer；显示硬件的合成器，能把多个 Layer 直接叠加后送显示。</td><td>最后一道合成</td></tr>
+    <tr><td><strong>Client / Device Composition</strong></td><td>Client 合成是 GPU 先画到一张目标 buffer；Device 合成是 HWC 用硬件叠加层直接合成。</td><td>SF 的两种合成策略</td></tr>
+    <tr><td><strong>Triple Buffering</strong></td><td>用多个 buffer 轮转，让 App、GPU、显示可以并行工作；代价是可能增加一帧延迟。</td><td>流水线并行</td></tr>
+    <tr><td><strong>Jank</strong></td><td>某一帧没能在截止时间前提交，用户看到卡顿或掉帧。</td><td>性能问题的总称</td></tr>
+  </table>
+
+  <div class="annotation star3">
+    <p><span class="tag">先纠一个常见误解</span> “硬件加速”并不是说 View 直接由 GPU 画。准确地说：<strong>View 先在 UI 线程被录制为 DisplayList，RenderThread 再让 GPU 回放这些命令</strong>。所以 UI 线程的 <code>onDraw</code> 和 GPU 的绘制是两件事，中间隔着一次 RenderNode 树的同步。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p1"><span class="num">一</span>全景：两棵树、一条队列、三次跨界</h2>
+
+<div class="card">
+  <p>先不要急着看代码。把整条链路压缩成一张图，只需要关注四个角色：<strong>App UI 线程</strong>、<strong>App RenderThread</strong>、<strong>SurfaceFlinger</strong>、<strong>HWC/显示</strong>。它们之间传递的东西完全不同。</p>
+
+  <table>
+    <tr><th>角色</th><th>所在进程 / 线程</th><th>主要工作</th><th>交给下游的东西</th></tr>
+    <tr><td>UI 线程</td><td>App 进程 / main</td><td>VSync 回调、measure/layout、录制 DisplayList</td><td>RenderNode 树的更新 + FrameInfo</td></tr>
+    <tr><td>RenderThread</td><td>App 进程 / RenderThread</td><td>同步 RenderNode、Skia 回放、GPU 提交</td><td>一个装满像素的 GraphicBuffer（入队）</td></tr>
+    <tr><td>SurfaceFlinger</td><td>surfaceflinger 进程 / main + RE</td><td>latch 最新 buffer、按 Z 序合成 Layer</td><td>合成后的 Layer 集合 / client target</td></tr>
+    <tr><td>HWC + Display</td><td>composer HAL / 显示控制器</td><td>硬件叠加、present、扫描输出</td><td>屏幕上的光；present/release fence</td></tr>
+  </table>
+
+  <h3>两棵树：View 树 与 RenderNode 树</h3>
+  <p>App 侧其实有两棵“同构”的树。第一棵是大家熟悉的 View 树，负责<strong>结构与布局</strong>；第二棵是 RenderNode 树，负责<strong>绘制命令与绘制属性</strong>。每个参与硬件加速绘制的 View 都有一个 <code>RenderNode</code>，父 View 的 DisplayList 里保存的是对子 RenderNode 的<strong>引用</strong>，不是把子 View 的命令复制一遍。</p>
+
+  <div class="calltree"><pre>
+App 进程：View 树                          App 进程：RenderNode 树
+└─ DecorView                              └─ DecorView.mRenderNode
+   ├─ LinearLayout                           ├─ LinearLayout.mRenderNode
+   │  ├─ TextView                            │  ├─ TextView.mRenderNode
+   │  └─ RecyclerView                        │  └─ RecyclerView.mRenderNode
+   │     ├─ item 0                           │     ├─ item 0.mRenderNode
+   │     └─ item 1                           │     └─ item 1.mRenderNode
+   └─ ...                                    └─ ...
+
+父 DisplayList 里的一条命令：
+  drawRenderNode(child.mRenderNode)        // 只存引用，不复制子命令
+</pre></div>
+
+  <p>RenderNode 树不是另一份 UI 结构，它是 View 树的“绘制投影”：只有参与绘制的 View 才有非空 DisplayList；不可见、被裁剪、没有 invalidate 的子树可以整棵复用。也正因为如此，<strong><code>onDraw</code> 不需要每帧执行</strong>——只有失效的 View 才重新录制。</p>
+
+  <h3>另一棵树：SurfaceFlinger 的 Layer 树</h3>
+  <p>SurfaceFlinger 完全不知道 TextView、RecyclerView 这些对象。它看到的是一棵 <strong>Layer 树</strong>：每个 Window 通常对应一个 <code>BufferLayer</code>，Task/DisplayArea 等对应容器 Layer。App 的一整棵 View 树，最终只变成<strong>一块（或少数几块）窗口级 buffer</strong>，作为 Layer 的内容参与合成。</p>
+
+  <div class="calltree"><pre>
+surfaceflinger 进程：Layer 树
+└─ RootLayer
+   ├─ DisplayArea（容器，无 buffer）
+   │  ├─ Task（容器，无 buffer）
+   │  │  └─ BufferLayer（Window A）        // 一块窗口 buffer，对应 App 的一整棵 View 树
+   │  └─ BufferLayer（Window B）           // 另一个窗口，另一块 buffer
+   └─ BufferLayer（StatusBar / NavBar 等）
+</pre></div>
+
+  <div class="annotation">
+    <p><span class="tag">关键边界</span> View 树在 App 进程内被“压平”成一块窗口 buffer；SurfaceFlinger 只合成窗口级 Layer。例外是 <code>SurfaceView</code>、<code>TextureView</code>、<code>PopupWindow</code> 等会引入额外的 Surface/Layer，所以一个 Activity 可能对应多个 Layer，但绝不会是“一个 View 一个 Layer”。</p>
+  </div>
+
+  <h3>一条队列：BufferQueue</h3>
+  <p>App 和 SurfaceFlinger 之间不是直接传 Bitmap，而是通过 <strong>BufferQueue</strong> 传 <code>GraphicBuffer</code> 的槽位（slot）。生产者 dequeue 一个空闲 slot，GPU 画进去，再 queue 回去；消费者 acquire 最新的 buffer，合成完再 release。每个 buffer 带 acquire/release fence，保证 GPU、SF、HWC 不会读到“还没画完”或“已经被复用”的内存。</p>
+
+  <table>
+    <tr><th>动作</th><th>谁做</th><th>状态变化</th><th>关键同步</th></tr>
+    <tr><td><code>dequeueBuffer</code></td><td>App（EGL/ANativeWindow）</td><td>FREE → DEQUEUED</td><td>没有空闲 slot 时阻塞，形成背压</td></tr>
+    <tr><td><code>queueBuffer</code></td><td>App</td><td>DEQUEUED → QUEUED</td><td>带 acquire fence，表示 GPU 何时写完</td></tr>
+    <tr><td><code>acquireBuffer</code></td><td>SurfaceFlinger</td><td>QUEUED → ACQUIRED</td><td>等待 acquire fence 生效</td></tr>
+    <tr><td><code>releaseBuffer</code></td><td>SurfaceFlinger</td><td>ACQUIRED → FREE</td><td>带 release fence，表示显示何时用完</td></tr>
+  </table>
+
+  <h3>三次跨界</h3>
+  <table>
+    <tr><th>跨界</th><th>从</th><th>到</th><th>传什么</th><th>同步方式</th></tr>
+    <tr><td>① 线程交接</td><td>App UI 线程</td><td>App RenderThread</td><td>RenderNode 树更新、FrameInfo</td><td><code>DrawFrameTask</code> 的 post/wait</td></tr>
+    <tr><td>② 进程交接</td><td>App 进程</td><td>surfaceflinger 进程</td><td>GraphicBuffer slot + acquire fence</td><td>BufferQueue + Binder/SurfaceControl 事务</td></tr>
+    <tr><td>③ 硬件交接</td><td>SurfaceFlinger</td><td>HWC / 显示控制器</td><td>Layer 合成计划、client target</td><td>HWC present/release fence</td></tr>
+  </table>
+
+  <h3>数据形态怎么变</h3>
+  <table>
+    <tr><th>阶段</th><th>数据形态</th><th>拥有者</th><th>是否跨进程</th></tr>
+    <tr><td>布局完成</td><td>View 树 + 测量/布局结果</td><td>App UI 线程</td><td>否</td></tr>
+    <tr><td>录制完成</td><td>RenderNode 树 + DisplayList 命令</td><td>App UI 线程</td><td>否</td></tr>
+    <tr><td>同步完成</td><td>RenderThread 可见的 RenderNode 快照</td><td>App RenderThread</td><td>否（同进程）</td></tr>
+    <tr><td>GPU 完成</td><td>GraphicBuffer 中的像素 + acquire fence</td><td>BufferQueue slot</td><td>是（入队时）</td></tr>
+    <tr><td>合成完成</td><td>Layer 合成结果 / client target</td><td>SurfaceFlinger</td><td>是（到 HWC）</td></tr>
+    <tr><td>上屏</td><td>显示控制器扫描out 的帧</td><td>Display</td><td>硬件</td></tr>
+  </table>
+
+  <div class="calltree"><pre>
+一帧的总调用链（先看骨架，后文逐段拆）
+
+App UI 线程
+└─ Choreographer#doFrame                              <span class="loc">[Choreographer.java:701]</span>
+   └─ ViewRootImpl#doTraversal                        <span class="loc">[ViewRootImpl.java:2117]</span>
+      └─ ViewRootImpl#performTraversals                <span class="loc">[ViewRootImpl.java:2510]</span>
+         ├─ performMeasure / performLayout             <span class="loc">[ViewRootImpl.java:3602 / 3665]</span>
+         └─ ViewRootImpl#performDraw                   <span class="loc">[ViewRootImpl.java:4128]</span>
+            └─ ViewRootImpl#draw                       <span class="loc">[ViewRootImpl.java:4281]</span>
+               └─ ThreadedRenderer#draw                <span class="loc">[ThreadedRenderer.java:613]</span>
+                  ├─ updateRootDisplayList             <span class="loc">[ThreadedRenderer.java:538]</span>
+                  │  └─ View#updateDisplayListIfDirty   <span class="loc">[View.java:21459]</span>
+                  │     ├─ RenderNode#beginRecording   <span class="loc">[RenderNode.java:394]</span>
+                  │     ├─ View#draw / dispatchDraw    <span class="loc">[View.java:22616 / ViewGroup.java:4218]</span>
+                  │     └─ RenderNode#endRecording     <span class="loc">[RenderNode.java:426]</span>
+                  └─ HardwareRenderer#syncAndDrawFrame <span class="loc">[HardwareRenderer.java:455]</span>
+                     └─ RenderProxy#syncAndDrawFrame   <span class="loc">[RenderProxy.cpp:136]</span>
+                        └─ DrawFrameTask#drawFrame     <span class="loc">[DrawFrameTask.cpp:125]</span>
+                           └─ postAndWait → RT run     <span class="loc">[DrawFrameTask.cpp:135 / 141]</span>
+                              ├─ syncFrameState         <span class="loc">[DrawFrameTask.cpp:218]</span>
+                              └─ CanvasContext#draw     <span class="loc">[CanvasContext.cpp:473]</span>
+                                 ├─ SkiaOpenGLPipeline#draw        <span class="loc">[SkiaOpenGLPipeline.cpp:72]</span>
+                                 └─ SkiaOpenGLPipeline#swapBuffers <span class="loc">[SkiaOpenGLPipeline.cpp:133]</span>
+                                    └─ EglManager#swapBuffers      <span class="loc">[EglManager.cpp:519]</span>
+                                       └─ BufferQueueProducer#queueBuffer <span class="loc">[BufferQueueProducer.cpp:804]</span>
+
+surfaceflinger 进程
+└─ SurfaceFlinger#onMessageInvalidate                  <span class="loc">[SurfaceFlinger.cpp:1875]</span>
+   └─ BufferLayer#latchBuffer                          <span class="loc">[BufferLayer.cpp:486]</span>
+      └─ SurfaceFlinger#onMessageRefresh               <span class="loc">[SurfaceFlinger.cpp:2049]</span>
+         └─ CompositionEngine#present                  <span class="loc">[CompositionEngine.cpp:91]</span>
+            └─ Output#present                          <span class="loc">[Output.cpp:423]</span>
+               └─ Output#postFramebuffer               <span class="loc">[Output.cpp:1261]</span>
+                  └─ HWC2::Display#present             <span class="loc">[HWC2.cpp:362]</span>
+                     └─ ComposerHal#presentDisplay     <span class="loc">[ComposerHal.cpp:492]</span>
+</pre></div>
+
+  <div class="pitfall">
+    <p><span class="tag">🐛 先记住这个排障分界</span> 如果 <code>Choreographer#doFrame</code> 超过一帧预算，问题多半在 UI 线程的 measure/layout/draw；如果 <code>DrawFrames</code> 或 <code>dequeueBuffer</code> 很长，问题在 RenderThread/GPU/缓冲区背压；如果 SurfaceFlinger 的 <code>onMessageRefresh</code> 或 <code>HwcPresentDisplay</code> 异常，问题在合成或显示侧。不要把所有“卡顿”都归因于 <code>onDraw</code>。</p>
+  </div>
+</div>
+<!-- ============================================================ -->
+
+<h2 id="p2"><span class="num">二</span>初始化：Renderer、Surface 与 BLASTBufferQueue</h2>
+
+<div class="card">
+  <p>渲染链路不是从 <code>onDraw</code> 开始的，而是从 <strong>Window 拿到 SurfaceControl、ViewRootImpl 创建 Renderer</strong> 开始的。顺序很重要：先有系统侧的 Layer 身份（SurfaceControl），再有 App 侧的 BufferQueue/Surface，最后 Renderer 才能把 EGLSurface 绑到这块 Surface 上。</p>
+
+  <p>入口在 <code>ViewRootImpl.setView()</code>（ViewRootImpl.java:993）。它在挂载 View 树时调用 <code>enableHardwareAcceleration(attrs)</code>，决定这个窗口走硬件加速还是软件绘制。硬件加速路径会创建一个 <code>ThreadedRenderer</code>，而 <code>ThreadedRenderer</code> 的父类 <code>HardwareRenderer</code> 会在构造时创建 native 侧的 <code>RenderProxy</code> 和根 <code>RenderNode</code>。</p>
+
+  <div class="code-block">
+    <div class="filename">ViewRootImpl.java:1409-1457（裁剪）</div>
+    <pre><span class="kw">private void</span> <span class="fn">enableHardwareAcceleration</span>(WindowManager.LayoutParams attrs) {
+    mAttachInfo.mHardwareAccelerated = <span class="kw">false</span>;
+    mAttachInfo.mHardwareAccelerationRequested = <span class="kw">false</span>;
+
+    <span class="cm">// 兼容模式（mTranslator != null）直接放弃硬件加速</span>
+    <span class="kw">if</span> (mTranslator != <span class="kw">null</span>) <span class="kw">return</span>;
+
+    <span class="kw">final boolean</span> hardwareAccelerated =
+            (attrs.flags &amp; WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED) != <span class="num">0</span>;
+
+    <span class="kw">if</span> (hardwareAccelerated) {
+        <span class="kw">final boolean</span> forceHwAccelerated = (attrs.privateFlags &amp;
+                WindowManager.LayoutParams.PRIVATE_FLAG_FORCE_HARDWARE_ACCELERATED) != <span class="num">0</span>;
+
+        <span class="kw">if</span> (ThreadedRenderer.sRendererEnabled || forceHwAccelerated) {
+            <span class="kw">if</span> (mAttachInfo.mThreadedRenderer != <span class="kw">null</span>) {
+                mAttachInfo.mThreadedRenderer.<span class="fn">destroy</span>();
+            }
+
+            <span class="kw">final</span> Rect insets = attrs.surfaceInsets;
+            <span class="kw">final boolean</span> hasSurfaceInsets = insets.left != <span class="num">0</span> || insets.right != <span class="num">0</span>
+                    || insets.top != <span class="num">0</span> || insets.bottom != <span class="num">0</span>;
+            <span class="kw">final boolean</span> translucent = attrs.format != PixelFormat.OPAQUE || hasSurfaceInsets;
+
+            <span class="cm">// 【注】这里只是创建 Java 侧 Renderer；native RenderThread 是进程级单例</span>
+            mAttachInfo.mThreadedRenderer = ThreadedRenderer.<span class="fn">create</span>(mContext, translucent,
+                    attrs.getTitle().toString());
+            <span class="cm">// … 省略：颜色模式、ForceDark、Observer 注册（与本段主线无关）</span>
+            <span class="kw">if</span> (mAttachInfo.mThreadedRenderer != <span class="kw">null</span>) {
+                mAttachInfo.mHardwareAccelerated =
+                        mAttachInfo.mHardwareAccelerationRequested = <span class="kw">true</span>;
+                <span class="cm">// 【注】把系统侧 Layer 句柄交给 RenderThread，后续事务/属性都走它</span>
+                mAttachInfo.mThreadedRenderer.<span class="fn">setSurfaceControl</span>(mSurfaceControl);
+            }
+        }
+    }
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：判断窗口是否允许硬件加速；允许就销毁旧 Renderer、创建新的 <code>ThreadedRenderer</code>，并把 <code>SurfaceControl</code> 交给它。此时还没有真正的 <code>Surface</code>，只有系统侧的 Layer 身份。</p>
+  <p><strong>设计意图</strong>：Renderer 的生命周期跟着 Window/ViewRootImpl 走，而不是跟着某个 View 走；一个窗口一个 Renderer、一个 Surface、一个 BufferQueue，这是后面“窗口级合成”的基础。</p>
+  <p><strong>实战问题</strong>：如果 <code>ThreadedRenderer.sRendererEnabled</code> 为 false（低端机/系统进程策略），或者窗口没带 <code>FLAG_HARDWARE_ACCELERATED</code>，就会落到 <code>drawSoftware()</code> 路径，<code>onDraw</code> 直接画到 <code>Surface.lockCanvas()</code> 返回的 Canvas 上。此时本文后面的 RenderNode/RenderThread 链路不成立，排障时先确认 <code>ViewRootImpl.isHardwareEnabled()</code>。</p>
+  <p><strong>主线位置</strong>：上游 <code>ViewRootImpl#setView()</code>；本方法 <code>ViewRootImpl#enableHardwareAcceleration()</code>；下游 <code>ThreadedRenderer#create()</code> 与 <code>HardwareRenderer</code> 构造。</p>
+</div>
+
+<div class="card">
+  <h3>Surface 从哪里来：BLASTBufferQueue</h3>
+  <p>有了 <code>SurfaceControl</code>，还需要一个 App 能绘制的 <code>Surface</code>。Android 12 走 <code>BLASTBufferQueue</code>：它包住 <code>SurfaceControl</code>，创建一条 BufferQueue，并导出一个生产者 <code>Surface</code>。<code>ViewRootImpl.getOrCreateBLASTSurface()</code> 就是这条路径。</p>
+
+  <div class="code-block">
+    <div class="filename">ViewRootImpl.java:1958-1978</div>
+    <pre><span class="fn">Surface</span> <span class="fn">getOrCreateBLASTSurface</span>() {
+    <span class="kw">if</span> (!mSurfaceControl.<span class="fn">isValid</span>()) {
+        <span class="kw">return null</span>;
+    }
+
+    Surface ret = <span class="kw">null</span>;
+    <span class="kw">if</span> (mBlastBufferQueue == <span class="kw">null</span>) {
+        <span class="cm">// 【注】BLASTBufferQueue 同时持有 SurfaceControl 和 BufferQueue</span>
+        mBlastBufferQueue = <span class="kw">new</span> <span class="fn">BLASTBufferQueue</span>(mTag, mSurfaceControl,
+            mSurfaceSize.x, mSurfaceSize.y,
+            mWindowAttributes.format);
+        <span class="cm">// 【注】createSurface() 返回生产者端；SF 侧对应一个 BufferLayer</span>
+        ret = mBlastBufferQueue.<span class="fn">createSurface</span>();
+    } <span class="kw">else</span> {
+        <span class="cm">// 尺寸/格式变化时只更新队列参数，不重新创建 Surface</span>
+        mBlastBufferQueue.<span class="fn">update</span>(mSurfaceControl,
+            mSurfaceSize.x, mSurfaceSize.y,
+            mWindowAttributes.format);
+    }
+
+    <span class="kw">return</span> ret;
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：首次调用创建 <code>BLASTBufferQueue</code> 和 <code>Surface</code>；后续只更新尺寸/格式。<code>Surface</code> 是生产者句柄，真正跨进程的 Layer 仍是 <code>mSurfaceControl</code> 指向的那个。</p>
+  <p><strong>设计意图</strong>：把“Layer 的身份/属性”和“像素队列”分开。SurfaceControl 事务负责位置、大小、Z、可见性；BufferQueue 负责 buffer 的生产与消费。BLAST 还把 buffer 提交与事务同步，避免“图层已经移动、buffer 还是旧尺寸”的错位。</p>
+  <p><strong>实战问题</strong>：<code>getOrCreateBLASTSurface()</code> 返回 null 或 <code>Surface.isValid() == false</code> 时，<code>ViewRootImpl.draw()</code> 会在第一行直接返回（ViewRootImpl.java:4283），表现为“窗口在、内容不更新”。这类问题先查 <code>dumpsys SurfaceFlinger --list</code> 有没有对应 Layer，再查 <code>dumpsys window</code> 里该窗口的 SurfaceControl 是否有效。</p>
+  <p><strong>主线位置</strong>：上游 <code>ViewRootImpl#setView()</code> / <code>relayoutWindow</code> 结果；本方法 <code>ViewRootImpl#getOrCreateBLASTSurface()</code>；下游 <code>HardwareRenderer#setSurface()</code> → <code>CanvasContext#setSurface()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>Renderer 的 native 侧：RenderProxy、CanvasContext、RenderThread</h3>
+  <p><code>ThreadedRenderer.create()</code> 只是 Java 包装。真正的 native 对象在 <code>HardwareRenderer</code> 构造时创建：<code>HardwareRenderer.java:167</code> 的 <code>mNativeProxy = nCreateProxy(!mOpaque, mRootNode.mNativeRenderNode)</code>。<code>RenderProxy</code> 持有一个 <code>DrawFrameTask</code> 和一个 <code>CanvasContext</code>，所有绘制请求都通过 <code>RenderProxy</code> 投递到进程级 <code>RenderThread</code>。</p>
+
+  <div class="calltree"><pre>
+ThreadedRenderer（Java，每个 Window 一个）
+└─ HardwareRenderer（Java 基类）
+   ├─ mRootNode : RenderNode                 // RenderNode 树的根
+   └─ mNativeProxy : long                    // 指向 native RenderProxy
+      └─ RenderProxy（native）
+         ├─ DrawFrameTask                    // 一次帧提交的任务对象
+         └─ CanvasContext                    // 这个 Window 的 RT 侧上下文
+            ├─ mRenderPipeline               // SkiaOpenGLPipeline / SkiaVulkanPipeline
+            └─ mNativeSurface                // ReliableSurface(ANativeWindow)
+
+RenderThread（进程级单例）
+└─ 线程循环 + WorkQueue
+   ├─ DrawFrameTask#run()                    // 普通 UI 帧
+   └─ AChoreographer 回调                    // RT 动画/帧回调
+</pre></div>
+
+  <p><strong>为什么一个进程只有一条 RenderThread</strong>：所有窗口共享同一个 GPU 上下文和资源缓存（字体、纹理、Path），这样纹理上传、Shader 编译、Skia 缓存可以复用；代价是任何一个窗口的 RenderThread 任务阻塞，都可能拖慢同进程的其他窗口。<code>CanvasContext</code> 则按窗口隔离，避免不同 Surface 的状态互相污染。</p>
+
+  <p><strong>Surface 绑定时发生什么</strong>：<code>HardwareRenderer.setSurface()</code> 调 <code>nSetSurface</code>，native 侧最终到 <code>CanvasContext::setSurface()</code>（CanvasContext.cpp:173）。它把 <code>ANativeWindow</code> 包成 <code>ReliableSurface</code>，设置 dequeue 超时，然后 <code>setupPipelineSurface()</code> 让 <code>SkiaOpenGLPipeline</code> 创建/更新 <code>EGLSurface</code>。从这一刻起，EGL 的 back buffer 就来自这个窗口的 BufferQueue。</p>
+
+  <div class="code-block">
+    <div class="filename">CanvasContext.cpp:173-187</div>
+    <pre><span class="kw">void</span> <span class="fn">CanvasContext::setSurface</span>(ANativeWindow* window, <span class="kw">bool</span> enableTimeout) {
+    ATRACE_CALL();
+
+    <span class="kw">if</span> (window) {
+        <span class="cm">// 【注】ReliableSurface 负责 dequeue/queue 的错误恢复与超时</span>
+        mNativeSurface = std::make_unique&lt;ReliableSurface&gt;(window);
+        mNativeSurface-&gt;<span class="fn">init</span>();
+        <span class="kw">if</span> (enableTimeout) {
+            <span class="cm">// 【注】4s 是 dequeueBuffer 的兜底超时，不是帧预算</span>
+            ANativeWindow_setDequeueTimeout(window, <span class="num">4000</span>_ms);
+        }
+    } <span class="kw">else</span> {
+        mNativeSurface = <span class="kw">nullptr</span>;
+    }
+    <span class="fn">setupPipelineSurface</span>();
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：把 Java <code>Surface</code> 背后的 <code>ANativeWindow</code> 交给 RT，并重建渲染管线与 EGLSurface。<code>setupPipelineSurface()</code> 会调用 <code>mRenderPipeline->setSurface(...)</code>，失败则 <code>hasSurface</code> 为 false，后续 <code>prepareTree</code> 会把这一帧标记为 skipped。</p>
+  <p><strong>设计意图</strong>：Surface 可能因为窗口尺寸变化、转屏、WMS relayout 而更换；CanvasContext 要能热替换 EGLSurface，而不是重建整个 RenderThread。<code>ReliableSurface</code> 把 dequeue/queue 的异常集中处理，避免每个调用点都写错误恢复。</p>
+  <p><strong>实战问题</strong>：<code>ANativeWindow_setDequeueTimeout(4000ms)</code> 说明 dequeue 卡住时不会立刻失败，而是可能让 RT 停 4 秒；这段时间 UI 线程可能继续跑，但 buffer 很快被填满，最终 UI 线程在 <code>syncAndDrawFrame</code> 里被背压住。看到“应用突然卡几秒又恢复”，要查 <code>dequeueBuffer</code> 是否超时、SF 是否停止消费。</p>
+  <p><strong>主线位置</strong>：上游 <code>HardwareRenderer#setSurface()</code>；本方法 <code>CanvasContext#setSurface()</code>；下游 <code>SkiaOpenGLPipeline#setSurface()</code> / <code>EglManager#createSurface()</code>。</p>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p3"><span class="num">三</span>驱动：VSync 从哪来，Choreographer 怎么跑</h2>
+
+<div class="card">
+  <p>渲染的“心跳”是 VSync。App 不会自己无限循环画，而是向 <code>Choreographer</code> 注册回调，等显示硬件的 VSync 信号到了才跑一帧。但先纠正一个常见误解：<strong>VSync 不是 Choreographer 的定时器，也不是 App 自己“发起”的</strong>；它的源头是显示控制器/HWC，由 SurfaceFlinger 的 Scheduler/EventThread 分发。</p>
+  <p><code>ViewRootImpl.scheduleTraversals()</code> 把 traversal 回调挂到 <code>CALLBACK_TRAVERSAL</code> 上（ViewRootImpl.java:2101），VSync 到来时 <code>Choreographer#doFrame()</code> 按固定顺序执行 input、animation、traversal、commit 四类回调。</p>
+
+  <div class="code-block">
+    <div class="filename">Choreographer.java:761-782</div>
+    <pre>mFrameInfo.<span class="fn">setVsync</span>(intendedFrameTimeNanos, frameTimeNanos, vsyncEventData.id,
+        vsyncEventData.frameDeadline, startNanos, vsyncEventData.frameInterval);
+mFrameScheduled = <span class="kw">false</span>;
+mLastFrameTimeNanos = frameTimeNanos;
+mLastFrameIntervalNanos = frameIntervalNanos;
+mLastVsyncEventData = vsyncEventData;
+}
+<span class="cm">// … 省略：锁外准备动画时钟</span>
+AnimationUtils.<span class="fn">lockAnimationClock</span>(frameTimeNanos / TimeUtils.NANOS_PER_MS);
+
+mFrameInfo.<span class="fn">markInputHandlingStart</span>();
+<span class="fn">doCallbacks</span>(Choreographer.CALLBACK_INPUT, frameTimeNanos, frameIntervalNanos);
+
+mFrameInfo.<span class="fn">markAnimationsStart</span>();
+<span class="fn">doCallbacks</span>(Choreographer.CALLBACK_ANIMATION, frameTimeNanos, frameIntervalNanos);
+<span class="fn">doCallbacks</span>(Choreographer.CALLBACK_INSETS_ANIMATION, frameTimeNanos,
+        frameIntervalNanos);
+
+mFrameInfo.<span class="fn">markPerformTraversalsStart</span>();
+<span class="cm">// 【注】ViewRootImpl 的 traversal 就在这一类回调里</span>
+<span class="fn">doCallbacks</span>(Choreographer.CALLBACK_TRAVERSAL, frameTimeNanos, frameIntervalNanos);
+
+<span class="fn">doCallbacks</span>(Choreographer.CALLBACK_COMMIT, frameTimeNanos, frameIntervalNanos);</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：一次 VSync 回调内，先处理输入，再跑动画，最后跑 traversal（measure/layout/draw）和 commit。顺序不是随意的：输入要先于动画，动画要先于布局，布局要先于绘制；commit 放在最后，用于提交那些“这一帧必须一起生效”的状态。</p>
+  <p><strong>设计意图</strong>：把一帧内所有会修改 UI 状态的 Java 回调集中到一个 VSync 节拍上，避免每个回调各自安排 Handler 导致撕裂/抖动。<code>FrameInfo</code> 记录 intended vsync、frame deadline、input/animation/traversal 各阶段时间，<code>dumpsys gfxinfo</code> 和 Perfetto 的时间线都来自它。</p>
+  <p><strong>实战问题</strong>：如果 <code>Choreographer#doFrame</code> 的 traversal 阶段超过 frame interval，日志会出现 <code>Skipped N frames! The application may be doing too much work on its main thread.</code>（Choreographer.java:727-729）。这时不要先怀疑 GPU；先看 <code>dumpsys gfxinfo &lt;pkg&gt; framestats</code> 的 Draw/Measure/Layout 列，或者 Perfetto 里 <code>Choreographer#doFrame</code> 下面哪一段最长。</p>
+  <p><strong>主线位置</strong>：上游 <code>DisplayEventReceiver</code> 的 VSync；本方法 <code>Choreographer#doFrame()</code>；下游 <code>ViewRootImpl#doTraversal()</code> → <code>performTraversals()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>VSync 是谁发出来的？</h3>
+  <p>这个问题要分两层回答：<strong>物理源头</strong>和<strong>软件派发</strong>。很多文章只写“VSync 到了”，把这两层混在一起，结果读者以为 <code>Choreographer</code> 自己有个 16.6ms 定时器。</p>
+
+  <table>
+    <tr><th>层级</th><th>角色</th><th>做什么</th></tr>
+    <tr><td>物理层</td><td>Display Controller / Panel</td><td>按屏幕刷新率产生 VSync 脉冲；这是“节拍”的真正来源</td></tr>
+    <tr><td>HAL 层</td><td>HWC / ComposerHal</td><td>把硬件 VSync 回调上报给 SurfaceFlinger</td></tr>
+    <tr><td>系统层</td><td>Scheduler / EventThread</td><td>按每个客户端的 VSyncRequest 做节流、相位偏移和分发</td></tr>
+    <tr><td>App 层</td><td>Choreographer / RenderThread</td><td>接收 <code>onVsync</code>，分别驱动 UI traversal 与 RT 动画</td></tr>
+  </table>
+
+  <div class="calltree"><pre>
+Display Controller / Panel
+└─ ComposerCallbackBridge::onVsync / onVsync_2_4      <span class="loc">[HWComposer.cpp:98 / 107]</span>
+   └─ SurfaceFlinger::onComposerHalVsync              <span class="loc">[SurfaceFlinger.cpp:1718]</span>
+      ├─ display->onVsync(timestamp)
+      └─ HWComposer::onVsync                          <span class="loc">[HWComposer.cpp:205]</span>
+         └─ Scheduler / EventThread                   <span class="loc">[Scheduler.cpp:273]</span>
+            ├─ SF main thread（驱动合成）
+            └─ App DisplayEventReceiver               <span class="loc">[DisplayEventReceiver.cpp:40]</span>
+               └─ Choreographer.FrameDisplayEventReceiver#onVsync <span class="loc">[Choreographer.java:981]</span>
+                  └─ Choreographer#doFrame             <span class="loc">[Choreographer.java:701]</span>
+</pre></div>
+
+  <p>注意调用方向：<strong>HWC 是上报者，不是制造者</strong>；<code>SurfaceFlinger::onComposerHalVsync()</code> 收到回调后，除了更新显示时间，还会把事件交给 <code>Scheduler</code> 管理的 <code>EventThread</code>。<code>EventThread</code> 才是把 VSync “发”给 SurfaceFlinger 自己和各个 App 的软件派发者。</p>
+
+  <div class="code-block">
+    <div class="filename">Choreographer.java:880-887</div>
+    <pre><span class="kw">private void</span> <span class="fn">scheduleVsyncLocked</span>() {
+    <span class="kw">try</span> {
+        Trace.<span class="fn">traceBegin</span>(Trace.TRACE_TAG_VIEW, <span class="str">"Choreographer#scheduleVsyncLocked"</span>);
+        <span class="cm">// 【注】这不是“产生 VSync”，只是向 SF 的 EventThread 订阅下一拍</span>
+        mDisplayEventReceiver.<span class="fn">scheduleVsync</span>();
+    } <span class="kw">finally</span> {
+        Trace.<span class="fn">traceEnd</span>(Trace.TRACE_TAG_VIEW);
+    }
+}</pre>
+  </div>
+
+  <p><code>scheduleVsync()</code> 的语义是“下一拍到了叫我”，不是“我现在生成一个 VSync”。<code>DisplayEventReceiver</code> 在构造时通过 <code>ISurfaceComposer::createDisplayEventConnection()</code> 连到 SurfaceFlinger 的 EventThread（DisplayEventReceiver.cpp:40）；EventThread 根据连接上的 <code>VSyncRequest</code> 决定是否分发、是否按周期节流、是否加相位偏移。</p>
+
+  <div class="annotation star3">
+    <p><span class="tag">一句话记住</span> <strong>物理源头是显示控制器/HWC；软件派发者是 SurfaceFlinger 的 Scheduler/EventThread；Choreographer 和 RenderThread 只是接收者。</strong> App 能做的是“申请下一拍”，不能决定硬件什么时候发这一拍。</p>
+  </div>
+
+  <p><strong>两个容易混的点</strong>：① SurfaceFlinger 自己也订阅 VSync，所以它和 App 拿到的是同一套硬件节拍的不同相位副本；② 模拟器/无显示场景可能用 <code>DummyVsyncSource</code> 或 HWC 合成的节拍，但真实设备上源头仍是显示控制器。</p>
+  <p><strong>主线位置</strong>：上游 <code>Display Controller</code> / <code>HWC</code> 回调；本段 <code>SurfaceFlinger#onComposerHalVsync()</code> → <code>Scheduler/EventThread</code>；下游 <code>Choreographer#doFrame()</code> 与 <code>RenderThread</code> 的 <code>AChoreographer</code> 回调。</p>
+</div>
+
+<div class="card">
+  <h3>为什么“掉帧”不等于“GPU 慢”</h3>
+  <p>VSync 是截止时间，不是“GPU 画完的时间”。一帧的预算通常是一个 refresh interval（60Hz 约 16.6ms，120Hz 约 8.3ms），但这条预算要分给 UI 线程、RenderThread、SurfaceFlinger 和 HWC。任何一段超时，都会让这一帧错过下一个 VSync。</p>
+
+  <table>
+    <tr><th>现象</th><th>最可能超时的阶段</th><th>先看什么</th></tr>
+    <tr><td><code>Choreographer#doFrame</code> 很长，但 <code>DrawFrames</code> 很短</td><td>UI 线程 measure/layout/draw 录制</td><td><code>dumpsys gfxinfo framestats</code> 的 Measure/Layout/Draw</td></tr>
+    <tr><td><code>DrawFrames</code> 很长，<code>dequeueBuffer</code> 也长</td><td>RenderThread/GPU 或 BufferQueue 背压</td><td>Perfetto 的 <code>DrawFrames</code>、<code>dequeueBuffer</code>、<code>queueBuffer</code></td></tr>
+    <tr><td><code>onMessageRefresh</code> 很长，<code>HwcPresentDisplay</code> 异常</td><td>SurfaceFlinger 合成或 HWC</td><td><code>dumpsys SurfaceFlinger</code>、<code>--latency</code>、Winscope</td></tr>
+    <tr><td>UI 和 RT 都不长，但显示仍旧</td><td>SF 没 latch、HWC 没 present、buffer 被丢弃</td><td><code>dumpsys SurfaceFlinger</code> 的 Layer/Buffer 状态</td></tr>
+  </table>
+
+  <div class="annotation">
+    <p><span class="tag">VSync 的相位</span> App 的 VSync 与 SurfaceFlinger 的 VSync 通常有相位差：SF 先被唤醒，准备合成；App 稍后收到自己的 VSync，开始录制下一帧。这个相位差是流水线能并行工作的前提，也是“为什么 App 这一帧画完不一定马上显示”的原因。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p4"><span class="num">四</span>UI 线程：遍历、录制、RenderNode 树</h2>
+
+<div class="card">
+  <p><code>ViewRootImpl.performTraversals()</code> 是 UI 线程的总调度。它先根据 <code>mLayoutRequested</code> 决定要不要 measure/layout，再根据 <code>mDirty</code>、动画状态、Surface 状态决定要不要 draw。对渲染链路来说，最关键的是最后这一步：<code>performDraw()</code> 进入 <code>draw(fullRedrawNeeded)</code>，硬件加速分支调用 <code>ThreadedRenderer.draw()</code>。</p>
+
+  <div class="code-block">
+    <div class="filename">ViewRootImpl.java:4128-4146</div>
+    <pre><span class="kw">private void</span> <span class="fn">performDraw</span>() {
+    <span class="kw">if</span> (mAttachInfo.mDisplayState == Display.STATE_OFF &amp;&amp; !mReportNextDraw) {
+        <span class="kw">return</span>;
+    } <span class="kw">else if</span> (mView == <span class="kw">null</span>) {
+        <span class="kw">return</span>;
+    }
+
+    <span class="kw">final boolean</span> fullRedrawNeeded =
+            mFullRedrawNeeded || mReportNextDraw || mNextDrawUseBlastSync;
+    mFullRedrawNeeded = <span class="kw">false</span>;
+
+    mIsDrawing = <span class="kw">true</span>;
+    Trace.<span class="fn">traceBegin</span>(Trace.TRACE_TAG_VIEW, <span class="str">"draw"</span>);
+
+    <span class="kw">boolean</span> usingAsyncReport = <span class="fn">addFrameCompleteCallbackIfNeeded</span>();
+    <span class="fn">addFrameCallbackIfNeeded</span>();
+
+    <span class="kw">try</span> {
+        <span class="kw">boolean</span> canUseAsync = <span class="fn">draw</span>(fullRedrawNeeded);
+        <span class="cm">// … 省略：异步上报/回调清理（与本段主路径无关）</span>
+    } <span class="kw">finally</span> {
+        mIsDrawing = <span class="kw">false</span>;
+        Trace.<span class="fn">traceEnd</span>(Trace.TRACE_TAG_VIEW);
+    }</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：决定这一帧是不是全量重绘（<code>mFullRedrawNeeded</code>、<code>mReportNextDraw</code>、BLAST sync 都会触发），然后进入 <code>draw()</code>。<code>Trace</code> 的 <code>"draw"</code> 切片就是 Perfetto 里 UI 线程绘制阶段的入口。</p>
+  <p><strong>设计意图</strong>：把“是否重绘”与“怎么重绘”分开。全量重绘通常发生在 Surface 创建、尺寸变化、转屏、首次绘制；普通 invalidate 只更新脏区。这样大多数帧只需要处理局部脏区，而不是重录整棵树。</p>
+  <p><strong>实战问题</strong>：如果每次触摸都触发 <code>fullRedrawNeeded</code>，说明有东西在不断请求全量重绘（常见于 <code>Surface</code> 重建、<code>mNextDrawUseBlastSync</code>、窗口尺寸变化、某些自定义 View 在 <code>onDraw</code> 里调用 <code>invalidate()</code>）。用 Perfetto 看 <code>draw</code> 切片的频率，再对照 <code>ViewRootImpl</code> 的 <code>mFullRedrawNeeded</code> 置位点。</p>
+  <p><strong>主线位置</strong>：上游 <code>ViewRootImpl#performTraversals()</code>；本方法 <code>ViewRootImpl#performDraw()</code>；下游 <code>ViewRootImpl#draw(boolean)</code>。</p>
+</div>
+
+<div class="card">
+  <h3>硬件分支：把整棵树交给 ThreadedRenderer</h3>
+  <p><code>ViewRootImpl.draw()</code> 先检查 <code>Surface.isValid()</code>，再根据 <code>dirty</code> 和动画状态决定是否真的画。硬件加速分支不会直接调用 <code>View.draw()</code>，而是把 <code>mView</code>（DecorView）交给 <code>ThreadedRenderer.draw()</code>；软件分支才走 <code>drawSoftware()</code> 和 <code>Surface.lockCanvas()</code>。</p>
+
+  <div class="code-block">
+    <div class="filename">ViewRootImpl.java:4379-4418（裁剪）</div>
+    <pre><span class="kw">boolean</span> useAsyncReport = <span class="kw">false</span>;
+<span class="kw">if</span> (!dirty.<span class="fn">isEmpty</span>() || mIsAnimating || accessibilityFocusDirty || mNextDrawUseBlastSync) {
+    <span class="kw">if</span> (<span class="fn">isHardwareEnabled</span>()) {
+        <span class="kw">boolean</span> invalidateRoot = accessibilityFocusDirty || mInvalidateRootRequested;
+        mInvalidateRootRequested = <span class="kw">false</span>;
+
+        mIsAnimating = <span class="kw">false</span>;
+
+        <span class="kw">if</span> (mHardwareYOffset != yOffset || mHardwareXOffset != xOffset) {
+            mHardwareYOffset = yOffset;
+            mHardwareXOffset = xOffset;
+            invalidateRoot = <span class="kw">true</span>;
+        }
+
+        <span class="kw">if</span> (invalidateRoot) {
+            mAttachInfo.mThreadedRenderer.<span class="fn">invalidateRoot</span>();
+        }
+
+        dirty.<span class="fn">setEmpty</span>();
+
+        <span class="cm">// 【注】把内容绘制边界同步给 Renderer，供 RT 计算 damage</span>
+        <span class="kw">final boolean</span> updated = <span class="fn">updateContentDrawBounds</span>();
+
+        <span class="kw">if</span> (mReportNextDraw) {
+            mAttachInfo.mThreadedRenderer.<span class="fn">setStopped</span>(<span class="kw">false</span>);
+        }
+
+        <span class="kw">if</span> (updated) {
+            <span class="fn">requestDrawWindow</span>();
+        }
+
+        useAsyncReport = <span class="kw">true</span>;
+
+        <span class="cm">// 【注】UI 线程的绘制工作到这里正式交给 ThreadedRenderer</span>
+        mAttachInfo.mThreadedRenderer.<span class="fn">draw</span>(mView, mAttachInfo, <span class="kw">this</span>);
+    } <span class="kw">else</span> {
+        <span class="cm">// … 省略：硬件 Renderer 被禁用时的重初始化/软件绘制分支</span>
+    }
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：处理滚动偏移、无障碍焦点、根节点失效等边界，然后调用 <code>ThreadedRenderer.draw()</code>。注意 <code>dirty.setEmpty()</code> 在调用之前——一旦交给 Renderer，UI 线程的脏区就清空，后续由 RenderNode 的失效状态驱动。</p>
+  <p><strong>设计意图</strong>：把“窗口级偏移/缩放/边界”这类不属于某个 View 的状态，集中在 ViewRootImpl 处理；Renderer 只关心 RenderNode 树和 Surface。<code>invalidateRoot()</code> 用于强制重录根 DisplayList（例如整个窗口平移），而不是让每个子 View 都失效。</p>
+  <p><strong>实战问题</strong>：<code>SYNC_LOST_SURFACE_REWARD_IF_FOUND</code>（ThreadedRenderer.java:635）出现时，<code>ThreadedRenderer.draw()</code> 会设置 <code>mForceNextWindowRelayout</code> 并请求重新布局。典型现象是转屏/分屏后内容黑一下或闪一下；这是 Surface 丢失后的恢复路径，不一定是应用 bug。</p>
+  <p><strong>主线位置</strong>：上游 <code>ViewRootImpl#performDraw()</code>；本方法 <code>ViewRootImpl#draw(boolean)</code>；下游 <code>ThreadedRenderer#draw()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>根 DisplayList：只录一个“引用”</h3>
+  <p><code>ThreadedRenderer.draw()</code> 的第一件事是 <code>updateRootDisplayList()</code>。它先让 DecorView 更新自己的 DisplayList，再检查根 <code>RenderNode</code> 是否需要重录。根 DisplayList 里通常只有一条关键命令：<code>drawRenderNode(DecorView.mRenderNode)</code>。也就是说，根节点不复制整棵树，只持有对根 View 的引用。</p>
+
+  <div class="code-block">
+    <div class="filename">ThreadedRenderer.java:538-572</div>
+    <pre><span class="kw">private void</span> <span class="fn">updateRootDisplayList</span>(View view, DrawCallbacks callbacks) {
+    Trace.<span class="fn">traceBegin</span>(Trace.TRACE_TAG_VIEW, <span class="str">"Record View#draw()"</span>);
+    <span class="fn">updateViewTreeDisplayList</span>(view);
+
+    <span class="cm">// … 省略：RT frame callback 的转交（与主链路无关）</span>
+
+    <span class="kw">if</span> (mRootNodeNeedsUpdate || !mRootNode.<span class="fn">hasDisplayList</span>()) {
+        RecordingCanvas canvas = mRootNode.<span class="fn">beginRecording</span>(mSurfaceWidth, mSurfaceHeight);
+        <span class="kw">try</span> {
+            <span class="kw">final int</span> saveCount = canvas.<span class="fn">save</span>();
+            canvas.<span class="fn">translate</span>(mInsetLeft, mInsetTop);
+            callbacks.<span class="fn">onPreDraw</span>(canvas);
+
+            canvas.<span class="fn">enableZ</span>();
+            <span class="cm">// 【注】根 DisplayList 只记录对 DecorView RenderNode 的引用</span>
+            canvas.<span class="fn">drawRenderNode</span>(view.<span class="fn">updateDisplayListIfDirty</span>());
+            canvas.<span class="fn">disableZ</span>();
+
+            callbacks.<span class="fn">onPostDraw</span>(canvas);
+            canvas.<span class="fn">restoreToCount</span>(saveCount);
+            mRootNodeNeedsUpdate = <span class="kw">false</span>;
+        } <span class="kw">finally</span> {
+            mRootNode.<span class="fn">endRecording</span>();
+        }
+    }
+    Trace.<span class="fn">traceEnd</span>(Trace.TRACE_TAG_VIEW);
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：确保根节点有 DisplayList；如果需要，就在根节点上录一条 <code>drawRenderNode(DecorView)</code>。真正的内容录制发生在 <code>view.updateDisplayListIfDirty()</code> 内部，根节点只是入口。</p>
+  <p><strong>设计意图</strong>：根节点经常只需要平移/缩放（窗口 inset、滚动、分屏），不必重录整棵树。把“根变换”和“子树内容”分开，可以让子树 DisplayList 在窗口移动时保持不变，只改根节点的属性/命令。</p>
+  <p><strong>实战问题</strong>：<code>mRootNodeNeedsUpdate</code> 被置位的原因包括 <code>invalidateRoot()</code>、Surface 尺寸变化、窗口 inset 变化。如果它在每帧都为 true，根 DisplayList 会每帧重录，虽然只录一条命令，但会触发同步和 GPU 重放；用 Perfetto 看 <code>Record View#draw()</code> 的频率。</p>
+  <p><strong>主线位置</strong>：上游 <code>ThreadedRenderer#draw()</code>；本方法 <code>ThreadedRenderer#updateRootDisplayList()</code>；下游 <code>View#updateDisplayListIfDirty()</code> 与 <code>HardwareRenderer#syncAndDrawFrame()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>View 的 DisplayList：retained mode 的核心</h3>
+  <p><code>View.updateDisplayListIfDirty()</code> 是整个 UI 线程录制阶段的核心。它先看这个 View 是否还有效：如果 <code>PFLAG_DRAWING_CACHE_VALID</code> 还在、RenderNode 已有 DisplayList、也不需要重建，就只让子 View 恢复/重建自己的 DisplayList，然后直接返回；否则才 <code>beginRecording()</code>、调用 <code>draw()</code>、<code>endRecording()</code>。</p>
+
+  <div class="code-block">
+    <div class="filename">View.java:21459-21530（裁剪）</div>
+    <pre><span class="kw">public</span> RenderNode <span class="fn">updateDisplayListIfDirty</span>() {
+    <span class="kw">final</span> RenderNode renderNode = mRenderNode;
+    <span class="kw">if</span> (!<span class="fn">canHaveDisplayList</span>()) {
+        <span class="kw">return</span> renderNode;
+    }
+
+    <span class="kw">if</span> ((mPrivateFlags &amp; PFLAG_DRAWING_CACHE_VALID) == <span class="num">0</span>
+            || !renderNode.<span class="fn">hasDisplayList</span>()
+            || (mRecreateDisplayList)) {
+        <span class="cm">// 父节点有效、只是子节点需要恢复：只递归子节点，不重录自己</span>
+        <span class="kw">if</span> (renderNode.<span class="fn">hasDisplayList</span>()
+                &amp;&amp; !mRecreateDisplayList) {
+            mPrivateFlags |= PFLAG_DRAWN | PFLAG_DRAWING_CACHE_VALID;
+            mPrivateFlags &amp;= ~PFLAG_DIRTY_MASK;
+            <span class="fn">dispatchGetDisplayList</span>();
+            <span class="kw">return</span> renderNode;
+        }
+
+        mRecreateDisplayList = <span class="kw">true</span>;
+
+        <span class="kw">int</span> width = mRight - mLeft;
+        <span class="kw">int</span> height = mBottom - mTop;
+        <span class="kw">int</span> layerType = <span class="fn">getLayerType</span>();
+
+        renderNode.<span class="fn">clearStretch</span>();
+
+        <span class="cm">// 【注】从这里开始，所有 draw 调用都只是“写命令”，不执行 GPU 绘制</span>
+        <span class="kw">final</span> RecordingCanvas canvas = renderNode.<span class="fn">beginRecording</span>(width, height);
+
+        <span class="kw">try</span> {
+            <span class="kw">if</span> (layerType == LAYER_TYPE_SOFTWARE) {
+                <span class="cm">// … 省略：软件层走 Bitmap cache</span>
+                canvas.<span class="fn">drawBitmap</span>(cache, <span class="num">0</span>, <span class="num">0</span>, mLayerPaint);
+            } <span class="kw">else</span> {
+                <span class="fn">computeScroll</span>();
+
+                canvas.<span class="fn">translate</span>(-mScrollX, -mScrollY);
+                mPrivateFlags |= PFLAG_DRAWN | PFLAG_DRAWING_CACHE_VALID;
+                mPrivateFlags &amp;= ~PFLAG_DIRTY_MASK;
+
+                <span class="cm">// 无背景的 ViewGroup 可以跳过自己的 draw，直接派发子节点</span>
+                <span class="kw">if</span> ((mPrivateFlags &amp; PFLAG_SKIP_DRAW) == PFLAG_SKIP_DRAW) {
+                    <span class="fn">dispatchDraw</span>(canvas);
+                    <span class="cm">// … 省略：autofill/overlay/layout bounds</span>
+                } <span class="kw">else</span> {
+                    <span class="fn">draw</span>(canvas);
+                }
+            }
+        } <span class="kw">finally</span> {
+            <span class="cm">// 【注】endRecording 之后，命令表才真正 attach 到 RenderNode</span>
+            renderNode.<span class="fn">endRecording</span>();
+            <span class="fn">setDisplayListProperties</span>(renderNode);
+        }
+    } <span class="kw">else</span> {
+        mPrivateFlags |= PFLAG_DRAWN | PFLAG_DRAWING_CACHE_VALID;
+        mPrivateFlags &amp;= ~PFLAG_DIRTY_MASK;
+    }
+    <span class="kw">return</span> renderNode;
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：根据 View 的失效标志决定“重录自己”还是“只递归子节点”。重录时，<code>RecordingCanvas</code> 把 <code>draw()</code> 里的所有绘制调用写成命令；<code>endRecording()</code> 把命令表交给 RenderNode；<code>setDisplayListProperties()</code> 把位置、alpha、translation、clip 等属性同步到 RenderNode。</p>
+  <p><strong>设计意图</strong>：这是典型的 <strong>retained mode</strong>。DisplayList 可以跨帧复用，只有失效的子树才重新录制；父节点不需要因为子节点内容变化而重录，因为父节点只持有子 RenderNode 的引用。这样滚动列表时，只有新进入屏幕的 item 需要录制，已经录好的 item 可以直接回放。</p>
+  <p><strong>实战问题</strong>：如果 <code>onDraw</code> 里创建 <code>Paint</code>/<code>Path</code>/<code>Bitmap</code>，每次 invalidate 都会重新分配，导致 GC 和录制时间上升；如果自定义 View 在 <code>onDraw</code> 里调用 <code>invalidate()</code>，会形成“录制→失效→再录制”的循环，表现为持续掉帧。用 <code>dumpsys gfxinfo</code> 看 Draw 时间，用 Perfetto 看 <code>Record View#draw()</code> 的调用频率和 <code>onDraw</code> 切片。</p>
+  <p><strong>主线位置</strong>：上游 <code>ViewGroup#drawChild()</code> 或 <code>ThreadedRenderer#updateRootDisplayList()</code>；本方法 <code>View#updateDisplayListIfDirty()</code>；下游 <code>RenderNode#beginRecording()</code>、<code>View#draw()</code>、<code>RenderNode#endRecording()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>View.draw：背景、内容、子节点、装饰</h3>
+  <p><code>View.draw(Canvas)</code> 的顺序是固定的：背景、内容（<code>onDraw</code>）、子节点（<code>dispatchDraw</code>）、前景/滚动条、焦点高亮。硬件加速时，这个 <code>Canvas</code> 是 <code>RecordingCanvas</code>，所以 <code>onDraw</code> 里的 <code>canvas.drawRect()</code> 只是往当前 View 的 DisplayList 里追加一条命令，并没有立刻画到屏幕。</p>
+
+  <div class="code-block">
+    <div class="filename">View.java:22616-22660（裁剪）</div>
+    <pre><span class="kw">public void</span> <span class="fn">draw</span>(Canvas canvas) {
+    <span class="kw">final int</span> privateFlags = mPrivateFlags;
+    mPrivateFlags = (privateFlags &amp; ~PFLAG_DIRTY_MASK) | PFLAG_DRAWN;
+
+    <span class="cm">// 1. 背景</span>
+    <span class="fn">drawBackground</span>(canvas);
+
+    <span class="kw">final int</span> viewFlags = mViewFlags;
+    <span class="kw">boolean</span> horizontalEdges = (viewFlags &amp; FADING_EDGE_HORIZONTAL) != <span class="num">0</span>;
+    <span class="kw">boolean</span> verticalEdges = (viewFlags &amp; FADING_EDGE_VERTICAL) != <span class="num">0</span>;
+    <span class="kw">if</span> (!verticalEdges &amp;&amp; !horizontalEdges) {
+        <span class="cm">// 3. 内容：自定义 View 通常重写这里</span>
+        <span class="fn">onDraw</span>(canvas);
+
+        <span class="cm">// 4. 子节点：ViewGroup 重写 dispatchDraw</span>
+        <span class="fn">dispatchDraw</span>(canvas);
+
+        <span class="cm">// … 省略：autofill/overlay</span>
+
+        <span class="cm">// 6. 前景、滚动条</span>
+        <span class="fn">onDrawForeground</span>(canvas);
+
+        <span class="cm">// 7. 默认焦点高亮</span>
+        <span class="fn">drawDefaultFocusHighlight</span>(canvas);
+    }
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：按固定顺序把当前 View 的绘制命令写进 DisplayList。<code>onDraw</code> 只负责“自己”，<code>dispatchDraw</code> 负责“子节点”；大多数 ViewGroup 不需要重写 <code>onDraw</code>，只需要保证 <code>dispatchDraw</code> 被调用。</p>
+  <p><strong>设计意图</strong>：固定顺序保证背景在内容下面、子节点在内容上面、前景在最上面；同时让自定义 View 只需要关心 <code>onDraw</code>，把子节点遍历交给 <code>ViewGroup.dispatchDraw</code>。</p>
+  <p><strong>实战问题</strong>：在 <code>onDraw</code> 里做耗时计算、分配对象、读磁盘/网络，都会直接拉长 UI 线程录制时间；<code>onDraw</code> 被调用的频率取决于 invalidate，而不是 VSync。别把“onDraw 里少画点”当成唯一优化，先确认它是否真的每帧都在跑。</p>
+  <p><strong>主线位置</strong>：上游 <code>View#updateDisplayListIfDirty()</code>；本方法 <code>View#draw(Canvas)</code>；下游 <code>View#onDraw()</code> 与 <code>ViewGroup#dispatchDraw()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>ViewGroup.dispatchDraw：子节点只是一条引用命令</h3>
+  <p><code>ViewGroup.dispatchDraw()</code> 遍历子 View，对每个可见子节点调用 <code>drawChild()</code>；<code>drawChild()</code> 再调用 <code>child.draw(canvas, this, drawingTime)</code>。硬件加速路径不会把子 View 的命令复制到父 DisplayList，而是让子 View 更新自己的 RenderNode，然后在父 DisplayList 里追加一条 <code>drawRenderNode(child.mRenderNode)</code>。</p>
+
+  <div class="code-block">
+    <div class="filename">ViewGroup.java:4261-4290 + View.java:22507-22510</div>
+    <pre><span class="cm">// ViewGroup.dispatchDraw()</span>
+<span class="kw">boolean</span> more = <span class="kw">false</span>;
+<span class="kw">final long</span> drawingTime = <span class="fn">getDrawingTime</span>();
+
+canvas.<span class="fn">enableZ</span>();
+<span class="cm">// … 省略：transient views 的下标处理</span>
+<span class="kw">final</span> ArrayList&lt;View&gt; preorderedList = <span class="fn">isHardwareAccelerated</span>()
+        ? <span class="kw">null</span> : <span class="fn">buildOrderedChildList</span>();
+<span class="kw">final boolean</span> customOrder = preorderedList == <span class="kw">null</span>
+        &amp;&amp; <span class="fn">isChildrenDrawingOrderEnabled</span>();
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">0</span>; i &lt; childrenCount; i++) {
+    <span class="cm">// … 省略：transient child</span>
+    <span class="kw">final int</span> childIndex = <span class="fn">getAndVerifyPreorderedIndex</span>(childrenCount, i, customOrder);
+    <span class="kw">final</span> View child = <span class="fn">getAndVerifyPreorderedView</span>(preorderedList, children, childIndex);
+    <span class="kw">if</span> ((child.mViewFlags &amp; VISIBILITY_MASK) == VISIBLE || child.<span class="fn">getAnimation</span>() != <span class="kw">null</span>) {
+        more |= <span class="fn">drawChild</span>(canvas, child, drawingTime);
+    }
+}
+canvas.<span class="fn">disableZ</span>();
+
+<span class="cm">// ViewGroup.drawChild()</span>
+<span class="kw">protected boolean</span> <span class="fn">drawChild</span>(Canvas canvas, View child, <span class="kw">long</span> drawingTime) {
+    <span class="kw">return</span> child.<span class="fn">draw</span>(canvas, <span class="kw">this</span>, drawingTime);
+}
+
+<span class="cm">// View.draw(Canvas, ViewGroup, long) 的硬件分支</span>
+<span class="kw">if</span> (drawingWithRenderNode) {
+    mPrivateFlags &amp;= ~PFLAG_DIRTY_MASK;
+    <span class="cm">// 【注】父 DisplayList 只追加对子 RenderNode 的引用</span>
+    ((RecordingCanvas) canvas).<span class="fn">drawRenderNode</span>(renderNode);
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：硬件加速时，<code>preorderedList</code> 为 null，因为 Z 排序由 HWUI 在回放阶段处理；每个子 View 先 <code>updateDisplayListIfDirty()</code>，然后父 Canvas 记录一条 <code>drawRenderNode</code>。子 View 的 DisplayList 是独立对象，父节点不复制它。</p>
+  <p><strong>设计意图</strong>：这是 RenderNode 树能“局部更新”的关键。滚动列表时，父容器位置不变，子 item 的 DisplayList 可以单独重录；父 DisplayList 仍然是同一串引用，不需要整棵重录。<code>canvas.enableZ()</code> 允许 HWUI 在回放时按 Z/elevation 重新排序，而不是在录制时固定顺序。</p>
+  <p><strong>实战问题</strong>：<code>clipChildren=false</code>、<code>elevation</code>、<code>translationZ</code> 会让子 View 超出父边界或改变绘制顺序；如果自定义 ViewGroup 自己维护绘制顺序，要注意硬件路径和软件路径的 <code>preorderedList</code> 行为不同。出现“软件绘制正常、硬件加速后层级错乱”时，先查是否依赖了软件路径的预排序。</p>
+  <p><strong>主线位置</strong>：上游 <code>View#draw(Canvas)</code>；本方法 <code>ViewGroup#dispatchDraw()</code> / <code>View#draw(Canvas, ViewGroup, long)</code>；下游 <code>RecordingCanvas#drawRenderNode()</code> 与 <code>RenderNode</code> 树。</p>
+</div>
+
+<div class="card">
+  <h3>RecordingCanvas 与 RenderNode：命令表怎么挂上去</h3>
+  <p><code>RenderNode.beginRecording()</code> 返回一个 <code>RecordingCanvas</code>；<code>RecordingCanvas.drawRenderNode()</code> 调 native <code>nDrawRenderNode()</code>，把子 RenderNode 的 native 指针写进当前 DisplayList。<code>RenderNode.endRecording()</code> 调用 <code>canvas.finishRecording(this)</code>，完成命令表并 attach 到 RenderNode。</p>
+
+  <div class="code-block">
+    <div class="filename">RenderNode.java:394-435 + RecordingCanvas.java:178-180</div>
+    <pre><span class="kw">public</span> @NonNull RecordingCanvas <span class="fn">beginRecording</span>(<span class="kw">int</span> width, <span class="kw">int</span> height) {
+    <span class="kw">if</span> (mCurrentRecordingCanvas != <span class="kw">null</span>) {
+        <span class="kw">throw new</span> IllegalStateException(
+                <span class="str">"Recording currently in progress - missing #endRecording() call?"</span>);
+    }
+    mCurrentRecordingCanvas = RecordingCanvas.<span class="fn">obtain</span>(<span class="kw">this</span>, width, height);
+    <span class="kw">return</span> mCurrentRecordingCanvas;
+}
+
+<span class="kw">public void</span> <span class="fn">endRecording</span>() {
+    <span class="kw">if</span> (mCurrentRecordingCanvas == <span class="kw">null</span>) {
+        <span class="kw">throw new</span> IllegalStateException(
+                <span class="str">"No recording in progress, forgot to call #beginRecording()?"</span>);
+    }
+    RecordingCanvas canvas = mCurrentRecordingCanvas;
+    mCurrentRecordingCanvas = <span class="kw">null</span>;
+    canvas.<span class="fn">finishRecording</span>(<span class="kw">this</span>);
+    canvas.<span class="fn">recycle</span>();
+}
+
+<span class="cm">// RecordingCanvas</span>
+<span class="kw">public void</span> <span class="fn">drawRenderNode</span>(@NonNull RenderNode renderNode) {
+    <span class="fn">nDrawRenderNode</span>(mNativeCanvasWrapper, renderNode.mNativeRenderNode);
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：<code>beginRecording</code> 创建一个录制用的 Canvas；<code>drawRenderNode</code> 往当前命令表里写“引用某个子 RenderNode”；<code>endRecording</code> 完成并回收 Canvas。</p>
+  <p><strong>设计意图</strong>：DisplayList 是 retained mode 的载体，必须能跨帧保存、能局部替换、能被 RT 安全读取。RecordingCanvas 用完后回收，避免每帧分配；RenderNode 的 native 对象则长期存在，作为树节点被父命令引用。</p>
+  <p><strong>实战问题</strong>：<code>beginRecording</code> 抛 <code>IllegalStateException</code> 通常意味着上一次录制没有 <code>endRecording</code>（自定义 View 直接操作 RenderNode 时容易犯）。<code>RenderNode</code> 数量过多（例如 RecyclerView 的每个 item 都创建额外 RenderNode）会增加内存和同步成本；用 <code>dumpsys gfxinfo</code> 的 RenderNode 统计或 Perfetto 的 <code>RenderNode</code> 相关切片观察。</p>
+  <p><strong>主线位置</strong>：上游 <code>View#updateDisplayListIfDirty()</code>；本方法 <code>RenderNode#beginRecording()</code> / <code>RecordingCanvas#drawRenderNode()</code> / <code>RenderNode#endRecording()</code>；下游 <code>HardwareRenderer#syncAndDrawFrame()</code> 把整棵树同步给 RT。</p>
+</div>
+<!-- ============================================================ -->
+
+<h2 id="p5"><span class="num">五</span>交接：ThreadedRenderer 与 RenderThread</h2>
+
+<div class="card">
+  <p>UI 线程录完 RenderNode 树后，并不会自己调用 GPU。<code>ThreadedRenderer.draw()</code> 的最后一步是 <code>syncAndDrawFrame(frameInfo)</code>：它通过 JNI 进入 native <code>RenderProxy</code>，把这一帧交给 <code>DrawFrameTask</code>，然后<strong>在 UI 线程上等待一次“同步完成”</strong>。注意，等的是同步，不是 GPU 画完。</p>
+
+  <div class="code-block">
+    <div class="filename">ThreadedRenderer.java:632-644 + HardwareRenderer.java:455-456</div>
+    <pre><span class="kw">final</span> FrameInfo frameInfo = attachInfo.mViewRootImpl.<span class="fn">getUpdatedFrameInfo</span>();
+
+<span class="cm">// 【注】JNI 到 native；返回值是一组 SYNC_* 标志</span>
+<span class="kw">int</span> syncResult = <span class="fn">syncAndDrawFrame</span>(frameInfo);
+<span class="kw">if</span> ((syncResult &amp; SYNC_LOST_SURFACE_REWARD_IF_FOUND) != <span class="num">0</span>) {
+    Log.<span class="fn">w</span>(<span class="str">"OpenGLRenderer"</span>, <span class="str">"Surface lost, forcing relayout"</span>);
+    <span class="cm">// Surface 丢了：请求下一次 relayout，换一块新 Surface</span>
+    attachInfo.mViewRootImpl.mForceNextWindowRelayout = <span class="kw">true</span>;
+    attachInfo.mViewRootImpl.<span class="fn">requestLayout</span>();
+}
+<span class="kw">if</span> ((syncResult &amp; SYNC_REDRAW_REQUESTED) != <span class="num">0</span>) {
+    <span class="cm">// RT 侧还有动画/失效，要求 UI 线程下一帧再录一次</span>
+    attachInfo.mViewRootImpl.<span class="fn">invalidate</span>();
+}
+
+<span class="cm">// HardwareRenderer.java</span>
+<span class="kw">public int</span> <span class="fn">syncAndDrawFrame</span>(@NonNull FrameInfo frameInfo) {
+    <span class="kw">return</span> <span class="fn">nSyncAndDrawFrame</span>(mNativeProxy, frameInfo.frameInfo, frameInfo.frameInfo.length);
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：把 <code>FrameInfo</code>（vsync id、deadline、各阶段时间戳）和根 RenderNode 指针交给 native；根据返回值处理 Surface 丢失、需要重绘等异常。</p>
+  <p><strong>设计意图</strong>：UI 线程只负责“提交这一帧的输入”，不负责“等 GPU 完成”。如果 UI 线程等 GPU，流水线就退化成串行，下一帧的 measure/layout 会被浪费。<code>SYNC_*</code> 返回值是 RT 给 UI 的反馈通道，用于处理 Surface 生命周期和动画续帧。</p>
+  <p><strong>实战问题</strong>：<code>SYNC_LOST_SURFACE_REWARD_IF_FOUND</code> 常见于转屏、分屏、窗口被移除；如果应用在 <code>onDraw</code> 里持有了旧的 <code>Surface</code>/<code>Canvas</code>，可能继续往无效目标画。<code>SYNC_REDRAW_REQUESTED</code> 常见于 RT 动画（如 <code>RenderNodeAnimator</code>）还在跑，UI 线程需要继续调度下一帧。</p>
+  <p><strong>主线位置</strong>：上游 <code>ThreadedRenderer#draw()</code>；本方法 <code>HardwareRenderer#syncAndDrawFrame()</code>；下游 <code>RenderProxy#syncAndDrawFrame()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>DrawFrameTask：UI 线程等什么，RT 什么时候画</h3>
+  <p><code>RenderProxy::syncAndDrawFrame()</code> 只做一件事：调用 <code>mDrawFrameTask.drawFrame()</code>。<code>DrawFrameTask</code> 是“一次帧提交”的任务对象；<code>drawFrame()</code> 把 <code>run()</code> 投递到 RenderThread，然后 UI 线程在 <code>mSignal</code> 上等待。RT 的 <code>run()</code> 先做 <code>syncFrameState()</code>，再决定要不要提前唤醒 UI 线程，最后调用 <code>CanvasContext::draw()</code>。</p>
+
+  <div class="code-block">
+    <div class="filename">DrawFrameTask.cpp:125-139 + 141-193（裁剪）</div>
+    <pre><span class="kw">int</span> <span class="fn">DrawFrameTask::drawFrame</span>() {
+    LOG_ALWAYS_FATAL_IF(!mContext, <span class="str">"Cannot drawFrame with no CanvasContext!"</span>);
+
+    mSyncResult = SyncResult::OK;
+    mSyncQueued = <span class="fn">systemTime</span>(SYSTEM_TIME_MONOTONIC);
+    <span class="fn">postAndWait</span>();
+
+    <span class="kw">return</span> mSyncResult;
+}
+
+<span class="kw">void</span> <span class="fn">DrawFrameTask::postAndWait</span>() {
+    AutoMutex _lock(mLock);
+    <span class="cm">// 【注】把 run() 投到 RenderThread 的 WorkQueue</span>
+    mRenderThread-&gt;<span class="fn">queue</span>().<span class="fn">post</span>([<span class="kw">this</span>]() { <span class="fn">run</span>(); });
+    <span class="cm">// 【注】UI 线程在这里睡，直到 syncFrameState 完成或整帧画完</span>
+    mSignal.<span class="fn">wait</span>(mLock);
+}
+
+<span class="kw">void</span> <span class="fn">DrawFrameTask::run</span>() {
+    <span class="cm">// … 省略：vsyncId / syncDelay 统计</span>
+
+    <span class="kw">bool</span> canUnblockUiThread;
+    <span class="kw">bool</span> canDrawThisFrame;
+    {
+        TreeInfo info(TreeInfo::MODE_FULL, *mContext);
+        <span class="cm">// 【注】同步 RenderNode 树、纹理、动画；返回值表示能否提前放 UI 线程</span>
+        canUnblockUiThread = <span class="fn">syncFrameState</span>(info);
+        canDrawThisFrame = info.out.canDrawThisFrame;
+    }
+
+    <span class="cm">// … 省略：复制 callback / frameInfo，避免 this 被释放后访问</span>
+
+    <span class="kw">if</span> (canUnblockUiThread) {
+        <span class="cm">// 【注】同步完了就放 UI 线程去准备下一帧，RT 继续画这一帧</span>
+        <span class="fn">unblockUiThread</span>();
+    }
+
+    <span class="kw">nsecs_t</span> dequeueBufferDuration = <span class="num">0</span>;
+    <span class="kw">if</span> (CC_LIKELY(canDrawThisFrame)) {
+        <span class="cm">// 【注】这里才真正回放 DisplayList、提交 GPU、swap buffer</span>
+        dequeueBufferDuration = context-&gt;<span class="fn">draw</span>();
+    } <span class="kw">else</span> {
+        <span class="cm">// … 省略：跳过帧但 flush 纹理、等待 fence</span>
+    }
+
+    <span class="kw">if</span> (!canUnblockUiThread) {
+        <span class="cm">// 纹理缓存不足等情况下，UI 线程要等 RT 画完才能继续</span>
+        <span class="fn">unblockUiThread</span>();
+    }
+
+    <span class="cm">// … 省略：PerformanceHint 上报</span>
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：<code>drawFrame()</code> 是 UI 线程的“提交并等待同步”；<code>postAndWait()</code> 把 <code>run()</code> 投到 RT 并阻塞 UI；<code>run()</code> 先 <code>syncFrameState()</code>，再 <code>unblockUiThread()</code>（如果允许），最后 <code>CanvasContext::draw()</code>。</p>
+  <p><strong>设计意图</strong>：把“同步 RenderNode”和“GPU 绘制”拆成两个阶段。同步必须在 UI 线程的帧边界内完成，否则 UI 修改树和 RT 读树会竞争；GPU 绘制可以异步进行，让 UI 线程继续准备下一帧。<code>canUnblockUiThread</code> 取决于纹理缓存是否吃紧：如果 <code>prepareTextures</code> 失败，UI 必须等 RT 画完，避免下一帧继续堆积纹理上传。</p>
+  <p><strong>实战问题</strong>：如果 UI 线程在 <code>syncAndDrawFrame</code> 里卡很久，先看 Perfetto 的 <code>syncFrameState</code>/<code>prepareTree</code>，再看 <code>dequeueBuffer</code>。<code>syncFrameState</code> 本身包含 <code>mContext->prepareTree()</code>（DrawFrameTask.cpp:235），它会遍历 RenderNode 树、应用属性、准备纹理；如果树很大或纹理上传很多，UI 线程会被拖住。</p>
+  <p><strong>主线位置</strong>：上游 <code>HardwareRenderer#syncAndDrawFrame()</code>；本方法 <code>DrawFrameTask#drawFrame()</code> / <code>run()</code>；下游 <code>CanvasContext#draw()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>syncFrameState：RenderNode 树在这里“过河”</h3>
+  <p><code>syncFrameState()</code> 是 UI 树和 RT 树之间的同步点。它先 <code>makeCurrent()</code> 绑定 GPU 上下文，应用待处理的 <code>DeferredLayerUpdater</code>，设置内容边界，然后调用 <code>mContext->prepareTree()</code>。<code>prepareTree()</code> 会遍历 <code>mRenderNodes</code>，对每个根节点执行 <code>node->prepareTree(info)</code>，把 DisplayList 里的命令、属性、动画状态同步到 RT 可见的 native 结构。</p>
+
+  <div class="code-block">
+    <div class="filename">DrawFrameTask.cpp:218-258（裁剪）</div>
+    <pre><span class="kw">bool</span> <span class="fn">DrawFrameTask::syncFrameState</span>(TreeInfo&amp; info) {
+    ATRACE_CALL();
+    <span class="cm">// … 省略：从 mFrameInfo 取 vsync/deadline，喂给 TimeLord</span>
+
+    <span class="kw">bool</span> canDraw = mContext-&gt;<span class="fn">makeCurrent</span>();
+    mContext-&gt;<span class="fn">unpinImages</span>();
+
+    <span class="cm">// 应用 DeferredLayerUpdater（TextureView/SurfaceView 等）</span>
+    <span class="kw">for</span> (<span class="kw">size_t</span> i = <span class="num">0</span>; i &lt; mLayers.size(); i++) {
+        mLayers[i]-&gt;<span class="fn">apply</span>();
+    }
+    mLayers.<span class="fn">clear</span>();
+    mContext-&gt;<span class="fn">setContentDrawBounds</span>(mContentDrawBounds);
+
+    <span class="cm">// 【注】核心：遍历 RenderNode 树，把 UI 线程的修改同步到 RT</span>
+    mContext-&gt;<span class="fn">prepareTree</span>(info, mFrameInfo, mSyncQueued, mTargetNode);
+
+    <span class="kw">if</span> (CC_UNLIKELY(!mContext-&gt;<span class="fn">hasSurface</span>() || !canDraw)) {
+        <span class="kw">if</span> (!mContext-&gt;<span class="fn">hasSurface</span>()) {
+            mSyncResult |= SyncResult::LostSurfaceRewardIfFound;
+        } <span class="kw">else</span> {
+            mSyncResult |= SyncResult::ContextIsStopped;
+        }
+        info.out.canDrawThisFrame = <span class="kw">false</span>;
+    }
+
+    <span class="kw">if</span> (info.out.hasAnimations) {
+        <span class="kw">if</span> (info.out.requiresUiRedraw) {
+            mSyncResult |= SyncResult::UIRedrawRequired;
+        }
+    }
+    <span class="kw">if</span> (!info.out.canDrawThisFrame) {
+        mSyncResult |= SyncResult::FrameDropped;
+    }
+
+    <span class="cm">// 返回 false 表示纹理缓存不足，UI 线程不能提前解锁</span>
+    <span class="kw">return</span> info.prepareTextures;
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：把 UI 线程录制的 RenderNode 树、DeferredLayerUpdater、内容边界、动画状态同步给 RT；如果 Surface 丢失或上下文停止，设置对应的 <code>SyncResult</code>；最后返回“纹理是否准备好”，决定 UI 线程能否提前解锁。</p>
+  <p><strong>设计意图</strong>：RenderNode 的 Java 对象和 native 对象必须跨线程安全共享。<code>prepareTree</code> 在 RT 线程执行，但同步点由 UI 线程等待；这样 UI 线程不会在 RT 读树时继续改树。纹理上传也在这里做，因为 Skia 的 GPU 上下文属于 RT。</p>
+  <p><strong>实战问题</strong>：如果自定义 View 在 <code>onDraw</code> 里创建大量 <code>Bitmap</code>/<code>Shader</code>，<code>prepareTree</code> 的纹理上传会变长，<code>prepareTextures</code> 可能返回 false，导致 UI 线程等 RT 画完，帧率进一步下降。优化方向是复用 Bitmap/Shader、减少每帧新纹理、把大图解码移出绘制路径。</p>
+  <p><strong>主线位置</strong>：上游 <code>DrawFrameTask#run()</code>；本方法 <code>DrawFrameTask#syncFrameState()</code>；下游 <code>CanvasContext#prepareTree()</code> 与 <code>RenderNode#prepareTree()</code>。</p>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p6"><span class="num">六</span>GPU：CanvasContext、Skia、EGL 与 BufferQueue</h2>
+
+<div class="card">
+  <p><code>CanvasContext</code> 是 RT 侧“这个 Window 怎么画”的上下文。<code>CanvasContext::draw()</code> 负责计算 damage、选择渲染管线、回放 RenderNode、提交 GPU、swap buffer，并处理 swap 失败/超时/帧时间线信息。它不关心 View 树，只关心 RenderNode 根节点和一个 <code>ANativeWindow</code>。</p>
+
+  <div class="code-block">
+    <div class="filename">CanvasContext.cpp:473-532（裁剪）</div>
+    <pre><span class="kw">nsecs_t</span> <span class="fn">CanvasContext::draw</span>() {
+    <span class="cm">// … 省略：GrContext abandoned 检查</span>
+
+    SkRect dirty;
+    mDamageAccumulator.<span class="fn">finish</span>(&amp;dirty);
+
+    <span class="kw">if</span> (dirty.<span class="fn">isEmpty</span>() &amp;&amp; Properties::skipEmptyFrames &amp;&amp; !<span class="fn">surfaceRequiresRedraw</span>()) {
+        <span class="cm">// 没有 damage，也没有必须重绘的 Surface：跳过这一帧</span>
+        mCurrentFrameInfo-&gt;<span class="fn">addFlag</span>(FrameInfoFlags::SkippedFrame);
+        <span class="cm">// … 省略：flush、waitOnFences、frame callbacks</span>
+        <span class="kw">return</span> <span class="num">0</span>;
+    }
+
+    <span class="cm">// 【注】标记帧时间线：issueDrawCommandsStart</span>
+    mCurrentFrameInfo-&gt;<span class="fn">markIssueDrawCommandsStart</span>();
+
+    Frame frame = mRenderPipeline-&gt;<span class="fn">getFrame</span>();
+    SkRect windowDirty = <span class="fn">computeDirtyRect</span>(frame, &amp;dirty);
+
+    <span class="cm">// 【注】Skia 回放：把 RenderNode 树画进当前 EGL back buffer</span>
+    <span class="kw">bool</span> drew = mRenderPipeline-&gt;<span class="fn">draw</span>(frame, windowDirty, dirty, mLightGeometry, &amp;mLayerUpdateQueue,
+                                      mContentDrawBounds, mOpaque, mLightInfo, mRenderNodes,
+                                      &amp;(<span class="fn">profiler</span>()));
+
+    <span class="kw">int64_t</span> frameCompleteNr = <span class="fn">getFrameNumber</span>();
+
+    <span class="fn">waitOnFences</span>();
+
+    <span class="kw">if</span> (mNativeSurface) {
+        <span class="cm">// 把 frame timeline 信息写进 ANativeWindow，供 SF/Perfetto 对齐</span>
+        <span class="kw">const auto</span> vsyncId = mCurrentFrameInfo-&gt;<span class="fn">get</span>(FrameInfoIndex::FrameTimelineVsyncId);
+        <span class="kw">if</span> (vsyncId != UiFrameInfoBuilder::INVALID_VSYNC_ID) {
+            <span class="fn">native_window_set_frame_timeline_info</span>(mNativeSurface-&gt;<span class="fn">getNativeWindow</span>(), vsyncId,
+                                                    inputEventId);
+        }
+    }
+
+    <span class="kw">bool</span> requireSwap = <span class="kw">false</span>;
+    <span class="kw">int</span> error = OK;
+    <span class="cm">// 【注】swapBuffers 会 queue 当前 buffer，并 dequeue 下一块</span>
+    <span class="kw">bool</span> didSwap = mRenderPipeline-&gt;<span class="fn">swapBuffers</span>(frame, drew, windowDirty, mCurrentFrameInfo, &amp;requireSwap);
+
+    mIsDirty = <span class="kw">false</span>;
+
+    <span class="kw">if</span> (requireSwap) {
+        <span class="kw">bool</span> didDraw = <span class="kw">true</span>;
+        error = mNativeSurface-&gt;<span class="fn">getAndClearError</span>();
+        <span class="kw">if</span> (error == TIMED_OUT) {
+            <span class="cm">// dequeue 超时：下一帧重试，并把整屏标记为 damage</span>
+            mRenderThread.<span class="fn">postFrameCallback</span>(<span class="kw">this</span>);
+            didDraw = <span class="kw">false</span>;
+        } <span class="kw">else if</span> (error != OK || !didSwap) {
+            <span class="fn">setSurface</span>(<span class="kw">nullptr</span>);
+            didDraw = <span class="kw">false</span>;
+        }
+        <span class="cm">// … 省略：SwapHistory / dequeue 统计</span>
+    }
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：把 damage 转成 Skia 可用的 dirty rect；调用渲染管线回放 RenderNode 树；把帧时间线信息写入 ANativeWindow；调用 <code>swapBuffers</code> 提交并获取下一块 buffer；处理超时和 Surface 丢失。</p>
+  <p><strong>设计意图</strong>：把“画什么”（RenderNode 树）和“画到哪”（EGLSurface/BufferQueue）分开。<code>CanvasContext</code> 不直接操作 BufferQueue，而是通过 <code>SkiaOpenGLPipeline</code> 和 <code>EglManager</code> 使用 EGL 的 swap 语义；这样 OpenGL/Vulkan 后端可以共享上层逻辑。</p>
+  <p><strong>实战问题</strong>：<code>dirty.isEmpty()</code> 时跳过帧是正常的省电优化，但 <code>surfaceRequiresRedraw</code> 为 true 时必须重绘（例如 Surface 刚创建、内容被清空）。如果看到“画面不动但日志没有 draw”，先确认是不是这个 early return；如果是，检查内容是否真的没有 damage。</p>
+  <p><strong>主线位置</strong>：上游 <code>DrawFrameTask#run()</code>；本方法 <code>CanvasContext#draw()</code>；下游 <code>SkiaOpenGLPipeline#draw()</code> / <code>#swapBuffers()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>Skia 回放：从 DisplayList 到 GPU 命令</h3>
+  <p><code>SkiaOpenGLPipeline::draw()</code> 把当前 EGL back buffer 包装成 <code>SkSurface</code>，然后调用 <code>renderFrame()</code> 回放 <code>mRenderNodes</code>。<code>renderFrame</code> 会递归处理根 RenderNode 和子节点，把 DisplayList 里的 <code>drawRect</code>、<code>drawText</code>、<code>drawRenderNode</code> 等命令转换成 Skia 的 GPU 绘制调用。最后 <code>surface->flushAndSubmit()</code> 把命令提交给 GPU。</p>
+
+  <div class="code-block">
+    <div class="filename">SkiaOpenGLPipeline.cpp:98-122 + 133-147 + EglManager.cpp:519-527</div>
+    <pre><span class="cm">// SkiaOpenGLPipeline::draw()</span>
+GrBackendRenderTarget backendRT(frame.width(), frame.height(), <span class="num">0</span>, STENCIL_BUFFER_SIZE, fboInfo);
+
+SkSurfaceProps props(<span class="num">0</span>, kUnknown_SkPixelGeometry);
+
+SkASSERT(mRenderThread.<span class="fn">getGrContext</span>() != <span class="kw">nullptr</span>);
+<span class="cm">// 【注】把 EGL 的 FBO 0 包装成 SkSurface；像素最终落在当前 back buffer</span>
+sk_sp&lt;SkSurface&gt; surface(SkSurface::<span class="fn">MakeFromBackendRenderTarget</span>(
+        mRenderThread.<span class="fn">getGrContext</span>(), backendRT, <span class="kw">this</span>-&gt;<span class="fn">getSurfaceOrigin</span>(), colorType,
+        mSurfaceColorSpace, &amp;props));
+
+LightingInfo::<span class="fn">updateLighting</span>(lightGeometry, lightInfo);
+<span class="cm">// 【注】renderFrame 递归回放 RenderNode 树</span>
+<span class="fn">renderFrame</span>(*layerUpdateQueue, dirty, renderNodes, opaque, contentDrawBounds, surface,
+            SkMatrix::<span class="fn">I</span>());
+
+<span class="cm">// … 省略：调试绘制</span>
+
+{
+    ATRACE_NAME(<span class="str">"flush commands"</span>);
+    <span class="cm">// 【注】提交 Skia 的 GPU 命令，但不等待 GPU 完成</span>
+    surface-&gt;<span class="fn">flushAndSubmit</span>();
+}
+layerUpdateQueue-&gt;<span class="fn">clear</span>();
+
+<span class="cm">// SkiaOpenGLPipeline::swapBuffers()</span>
+*requireSwap = drew || mEglManager.<span class="fn">damageRequiresSwap</span>();
+
+<span class="kw">if</span> (*requireSwap &amp;&amp; (CC_UNLIKELY(!mEglManager.<span class="fn">swapBuffers</span>(frame, screenDirty)))) {
+    <span class="kw">return false</span>;
+}
+
+<span class="cm">// EglManager::swapBuffers()</span>
+EGLint rects[<span class="num">4</span>];
+frame.<span class="fn">map</span>(screenDirty, rects);
+<span class="cm">// 【注】这一调用把当前 buffer 入队，并 dequeue 下一块可用 buffer</span>
+<span class="fn">eglSwapBuffersWithDamageKHR</span>(mEglDisplay, frame.mSurface, rects, screenDirty.<span class="fn">isEmpty</span>() ? <span class="num">0</span> : <span class="num">1</span>);</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：把 EGL 的 back buffer 包装成 Skia surface，回放 RenderNode 树，提交 GPU 命令，最后通过 <code>eglSwapBuffersWithDamageKHR</code> 把 buffer 交给 BufferQueue。</p>
+  <p><strong>设计意图</strong>：Skia 的 GPU 后端负责把高层绘制命令转成 GL/Vulkan 调用；HWUI 只负责树遍历、属性应用和管线管理。<code>flushAndSubmit</code> 只提交命令，不阻塞等 GPU；真正的同步由 EGL 的 acquire fence 和 BufferQueue 承担。</p>
+  <p><strong>实战问题</strong>：<code>eglSwapBuffersWithDamageKHR</code> 不只是“显示”，它还会触发 buffer 入队和下一块 buffer 的 dequeue。如果 BufferQueue 没有空闲 slot，这一调用会阻塞，进而让 RT 卡住；UI 线程随后在 <code>syncAndDrawFrame</code> 或下一帧的 <code>prepareTree</code> 里被背压。看到 <code>dequeueBuffer</code> 长，不要只盯着 GPU，先看 SF 是否在正常消费。</p>
+  <p><strong>主线位置</strong>：上游 <code>CanvasContext#draw()</code>；本方法 <code>SkiaOpenGLPipeline#draw()</code> / <code>#swapBuffers()</code>；下游 <code>EglManager#swapBuffers()</code> 与 <code>BufferQueueProducer#queueBuffer()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>BufferQueue：像素跨进程的那条队列</h3>
+  <p><code>eglSwapBuffersWithDamageKHR</code> 最终会走 <code>ANativeWindow</code> 的 dequeue/queue 接口，也就是 <code>BufferQueueProducer</code>。生产者从空闲 slot 里 dequeue 一块 buffer，GPU 画完后 <code>queueBuffer</code> 带上 acquire fence；SurfaceFlinger 作为消费者 acquire，合成完再 release。队列里的每个 slot 都有明确状态，不能随便复用。</p>
+
+  <div class="code-block">
+    <div class="filename">BufferQueueProducer.cpp:441-445 + 904-905（裁剪）</div>
+    <pre><span class="cm">// dequeueBuffer：没有空闲 slot 就 etc</span>
+<span class="kw">int</span> found = BufferItem::INVALID_BUFFER_SLOT;
+<span class="kw">while</span> (found == BufferItem::INVALID_BUFFER_SLOT) {
+    <span class="cm">// 【注】这里可能阻塞等待 SF release buffer；这是背压的源头之一</span>
+    status_t status = <span class="fn">waitForFreeSlotThenRelock</span>(FreeSlotCaller::Dequeue, lock, &amp;found);
+    <span class="kw">if</span> (status != NO_ERROR) {
+        <span class="kw">return</span> status;
+    }
+    <span class="cm">// … 省略：检查 buffer 尺寸/格式，必要时重分配</span>
+}
+
+<span class="cm">// queueBuffer：把画好的 buffer 交还给消费者</span>
+mSlots[slot].mFence = acquireFence;
+mSlots[slot].mBufferState.<span class="fn">queue</span>();
+<span class="cm">// … 省略：frame number、listener 回调、output 参数</span></pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：dequeue 找一个 FREE slot；如果没有，就等消费者 release。queue 把 slot 标记为 QUEUED，并保存 acquire fence，通知消费者有新帧。</p>
+  <p><strong>设计意图</strong>：BufferQueue 是生产者/消费者的解耦层，也是背压机制。App 不能无限生产 buffer，否则内存会爆；队列满时 dequeue 阻塞，迫使 App 放慢。fence 则让 GPU、SF、HWC 可以并行，而不需要 CPU 忙等。</p>
+  <p><strong>实战问题</strong>：<code>dequeueBuffer</code> 长时间阻塞通常不是 App 的锅，而是 SF/HWC 没有及时 release。用 <code>dumpsys SurfaceFlinger</code> 看对应 Layer 的 buffer 状态，用 Perfetto 看 <code>dequeueBuffer</code> 和 <code>SurfaceFlinger</code> 的时间关系。<code>BufferQueue has been abandoned</code> 表示消费者已经断开，通常是 Surface 被销毁或进程死亡。</p>
+  <p><strong>主线位置</strong>：上游 <code>EglManager#swapBuffers()</code> / <code>ANativeWindow</code>；本方法 <code>BufferQueueProducer#dequeueBuffer()</code> / <code>#queueBuffer()</code>；下游 SurfaceFlinger 的 <code>acquireBuffer</code> / <code>latchBuffer</code>。</p>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p7"><span class="num">七</span>合成：SurfaceFlinger 的 Layer 树</h2>
+
+<div class="card">
+  <p>SurfaceFlinger 在 VSync 到来后做两件事：先把各 Layer 的最新 buffer latch 到 drawing state，再按 Z 序构建合成计划，交给 CompositionEngine 和 HWC。它不遍历 View 树，只遍历 Layer 树；每个 <code>BufferLayer</code> 的内容就是 App 提交的一整块窗口 buffer。</p>
+
+  <div class="code-block">
+    <div class="filename">SurfaceFlinger.cpp:2049-2068 + 2106（裁剪）</div>
+    <pre><span class="kw">void</span> <span class="fn">SurfaceFlinger::onMessageRefresh</span>() {
+    ATRACE_CALL();
+
+    mRefreshPending = <span class="kw">false</span>;
+
+    compositionengine::CompositionRefreshArgs refreshArgs;
+    <span class="kw">const auto</span>&amp; displays = <span class="fn">ON_MAIN_THREAD</span>(mDisplays);
+    refreshArgs.outputs.<span class="fn">reserve</span>(displays.<span class="fn">size</span>());
+    <span class="kw">for</span> (<span class="kw">const auto</span>&amp; [_, display] : displays) {
+        refreshArgs.outputs.<span class="fn">push_back</span>(display-&gt;<span class="fn">getCompositionDisplay</span>());
+    }
+
+    <span class="cm">// 【注】按 Z 序收集 Layer：这就是 SF 的“层级树”遍历</span>
+    mDrawingState.<span class="fn">traverseInZOrder</span>([&amp;refreshArgs](Layer* layer) {
+        <span class="kw">if</span> (<span class="kw">auto</span> layerFE = layer-&gt;<span class="fn">getCompositionEngineLayerFE</span>())
+            refreshArgs.layers.<span class="fn">push_back</span>(layerFE);
+    });
+
+    <span class="cm">// 只把“有新帧”的 Layer 放进 layersWithQueuedFrames</span>
+    refreshArgs.layersWithQueuedFrames.<span class="fn">reserve</span>(mLayersWithQueuedFrames.<span class="fn">size</span>());
+    <span class="kw">for</span> (<span class="kw">auto</span> layer : mLayersWithQueuedFrames) {
+        <span class="kw">if</span> (<span class="kw">auto</span> layerFE = layer-&gt;<span class="fn">getCompositionEngineLayerFE</span>())
+            refreshArgs.layersWithQueuedFrames.<span class="fn">push_back</span>(layerFE);
+    }
+
+    <span class="cm">// … 省略：颜色管理、调试开关、present time 计算</span>
+
+    <span class="cm">// 【注】交给 CompositionEngine：选择 device/client 合成并 present</span>
+    mCompositionEngine-&gt;<span class="fn">present</span>(refreshArgs);
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：构建 <code>CompositionRefreshArgs</code>，把当前 drawing state 的所有 Layer 按 Z 序放进 <code>refreshArgs.layers</code>，并把有新帧的 Layer 单独列出；然后交给 <code>CompositionEngine</code> 做合成。</p>
+  <p><strong>设计意图</strong>：SF 只关心“Layer 树 + buffer 状态”，不关心 App 内部 View。<code>traverseInZOrder</code> 保证合成顺序；<code>layersWithQueuedFrames</code> 让合成器只处理有新内容的 Layer，避免每帧重算所有 Layer。</p>
+  <p><strong>实战问题</strong>：如果某个 Layer 不在 <code>mLayersWithQueuedFrames</code> 里，它这一帧不会更新；如果 Layer 的 Z 序错了，会出现遮挡/闪烁。用 <code>dumpsys SurfaceFlinger</code> 看 Layer 列表和 Z，用 Winscope 看 transaction 与 layer 树。</p>
+  <p><strong>主线位置</strong>：上游 VSync / <code>onMessageInvalidate</code>；本方法 <code>SurfaceFlinger#onMessageRefresh()</code>；下游 <code>CompositionEngine#present()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>latch：把“已入队”变成“可合成”</h3>
+  <p>App 的 <code>queueBuffer</code> 只是把 buffer 标记为 QUEUED；SurfaceFlinger 还要在合适的时机 <code>latchBuffer</code>，等待 acquire fence 生效，再把 buffer 变成当前帧的 <code>activeBuffer</code>。<code>BufferLayer::latchBuffer()</code> 里最关键的两步是 <code>fenceHasSignaled()</code> 和 <code>updateTexImage()</code>。</p>
+
+  <div class="code-block">
+    <div class="filename">SurfaceFlinger.cpp:3352-3366 + BufferLayer.cpp:509-526（裁剪）</div>
+    <pre><span class="cm">// SurfaceFlinger::handlePageFlip()</span>
+<span class="kw">if</span> (!mLayersWithQueuedFrames.<span class="fn">empty</span>()) {
+    <span class="cm">// mStateLock 保护 latchBuffer 对 Layer current state 的写入</span>
+    Mutex::Autolock <span class="fn">lock</span>(mStateLock);
+
+    <span class="kw">for</span> (<span class="kw">const auto</span>&amp; layer : mLayersWithQueuedFrames) {
+        <span class="cm">// 【注】latchBuffer 返回 true 表示这一层有新内容要合成</span>
+        <span class="kw">if</span> (layer-&gt;<span class="fn">latchBuffer</span>(visibleRegions, latchTime, expectedPresentTime)) {
+            mLayersPendingRefresh.<span class="fn">push_back</span>(layer);
+        }
+        layer-&gt;<span class="fn">useSurfaceDamage</span>();
+        <span class="kw">if</span> (layer-&gt;<span class="fn">isBufferLatched</span>()) {
+            newDataLatched = <span class="kw">true</span>;
+        }
+    }
+}
+
+<span class="cm">// BufferLayer::latchBuffer()</span>
+<span class="cm">// 队头 buffer 的 acquire fence 还没 signaling：等下一拍</span>
+<span class="kw">if</span> (!<span class="fn">fenceHasSignaled</span>()) {
+    ATRACE_NAME(<span class="str">"!fenceHasSignaled()"</span>);
+    mFlinger-&gt;<span class="fn">signalLayerUpdate</span>();
+    <span class="kw">return false</span>;
+}
+
+<span class="cm">// … 省略：保存旧状态，便于比较 opacity/visible region</span>
+
+<span class="cm">// 【注】真正把 buffer 换到当前 Layer；内部会更新 activeBuffer</span>
+status_t err = <span class="fn">updateTexImage</span>(recomputeVisibleRegions, latchTime, expectedPresentTime);
+<span class="kw">if</span> (err != NO_ERROR) {
+    <span class="kw">return false</span>;
+}
+
+err = <span class="fn">updateActiveBuffer</span>();
+<span class="kw">if</span> (err != NO_ERROR) {
+    <span class="kw">return false</span>;
+}
+
+err = <span class="fn">updateFrameNumber</span>(latchTime);
+<span class="kw">if</span> (err != NO_ERROR) {
+    <span class="kw">return false</span>;
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：SF 遍历“有 queued frame”的 Layer，等 acquire fence signaling，然后 <code>updateTexImage()</code> 把新 buffer 换成当前 buffer，并更新 frame number/active buffer。</p>
+  <p><strong>设计意图</strong>：GPU 可能还没画完，queue 时带的 acquire fence 就是“完成凭证”。SF 不能直接读 buffer，必须等 fence；否则会读到半张图。<code>mStateLock</code> 保护 Layer 状态，避免 latch 与事务提交竞争。</p>
+  <p><strong>实战问题</strong>：如果 <code>fenceHasSignaled()</code> 长期不满足，说明 GPU/生产者没有完成，或者 fence 出错；表现为 SF 一直不更新该 Layer。用 <code>dumpsys SurfaceFlinger</code> 看 Layer 的 <code>ActiveBuffer</code>/<code>QueuedFrames</code>，用 Perfetto 看 <code>fenceHasSignaled</code> 和 GPU 完成时间。</p>
+  <p><strong>主线位置</strong>：上游 <code>SurfaceFlinger#onMessageInvalidate()</code> / <code>handlePageFlip()</code>；本方法 <code>BufferLayer#latchBuffer()</code>；下游 <code>SurfaceFlinger#onMessageRefresh()</code> 与 <code>CompositionEngine#present()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>present：device composition 与 client composition</h3>
+  <p><code>Output::present()</code> 是合成策略的总入口。它先更新颜色/合成状态，调用 <code>planComposition()</code> 决定哪些 Layer 走 HWC 硬件叠加（device composition），哪些需要 GPU 先合成到 client target（client composition），然后 <code>prepareFrame()</code>、<code>finishFrame()</code>、<code>postFramebuffer()</code>。</p>
+
+  <div class="code-block">
+    <div class="filename">Output.cpp:423-438</div>
+    <pre><span class="kw">void</span> <span class="fn">Output::present</span>(<span class="kw">const</span> compositionengine::CompositionRefreshArgs&amp; refreshArgs) {
+    ATRACE_CALL();
+    ALOGV(__FUNCTION__);
+
+    <span class="fn">updateColorProfile</span>(refreshArgs);
+    <span class="fn">updateCompositionState</span>(refreshArgs);
+    <span class="cm">// 【注】决定 device/client 合成策略</span>
+    <span class="fn">planComposition</span>();
+    <span class="fn">writeCompositionState</span>(refreshArgs);
+    <span class="fn">setColorTransform</span>(refreshArgs);
+    <span class="fn">beginFrame</span>();
+    <span class="fn">prepareFrame</span>();
+    <span class="fn">devOptRepaintFlash</span>(refreshArgs);
+    <span class="fn">finishFrame</span>(refreshArgs);
+    <span class="cm">// 【注】提交给 HWC，并处理 present/release fence</span>
+    <span class="fn">postFramebuffer</span>();
+    <span class="fn">renderCachedSets</span>(refreshArgs);
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：把 Layer 状态转成 HWC 的 composition state，选择合成方式，准备帧，最后提交。<code>planComposition()</code> 会根据 Layer 数量、格式、缩放、遮挡、HWC 能力等决定 device/client；<code>postFramebuffer()</code> 负责真正的 present 和 fence 回收。</p>
+  <p><strong>设计意图</strong>：HWC 的硬件叠加层数量有限，不是所有 Layer 都能走 device composition；GPU client composition 是兜底，但更耗电/带宽。SF 每帧重新规划，以适应当前 Layer 组合。</p>
+  <p><strong>实战问题</strong>：如果某个 Layer 突然从 device 掉到 client composition，功耗/带宽会上升，可能出现掉帧。用 <code>dumpsys SurfaceFlinger</code> 看 <code>Composition type</code>，用 Winscope 看 HWC 的 layer 计划；常见原因是缩放、格式不支持、平面数量不够、透明/混合模式。</p>
+  <p><strong>主线位置</strong>：上游 <code>CompositionEngine#present()</code>；本方法 <code>Output#present()</code>；下游 <code>Output#postFramebuffer()</code> 与 <code>HWC2::Display#present()</code>。</p>
+</div>
+
+<div class="card">
+  <h3>postFramebuffer：present fence 与 release fence</h3>
+  <p><code>postFramebuffer()</code> 先 <code>mRenderSurface->flip()</code>，然后 <code>presentAndGetFrameFences()</code> 取 present/release fence。对每个 Layer，它把 HWC 返回的 release fence 交给 <code>onLayerDisplayed()</code>；这个 fence 最终回到 BufferQueue，告诉生产者“这块 buffer 可以重用了”。</p>
+
+  <div class="code-block">
+    <div class="filename">Output.cpp:1277-1300 + HWC2.cpp:362-372</div>
+    <pre><span class="kw">for</span> (<span class="kw">auto</span>* layer : <span class="fn">getOutputLayersOrderedByZ</span>()) {
+    <span class="cm">// 上一帧的 buffer 只有在 HWC 的 release fence signaling 后才能释放</span>
+    sp&lt;Fence&gt; releaseFence = Fence::NO_FENCE;
+
+    <span class="kw">if</span> (<span class="kw">auto</span> hwcLayer = layer-&gt;<span class="fn">getHwcLayer</span>()) {
+        <span class="kw">if</span> (<span class="kw">auto</span> f = frame.layerFences.<span class="fn">find</span>(hwcLayer); f != frame.layerFences.<span class="fn">end</span>()) {
+            releaseFence = f-&gt;second;
+        }
+    }
+
+    <span class="cm">// client composition 还要合并 client target 的 acquire fence</span>
+    <span class="kw">if</span> (outputState.usesClientComposition) {
+        releaseFence = Fence::<span class="fn">merge</span>(<span class="str">"LayerRelease"</span>, releaseFence,
+                frame.clientTargetAcquireFence);
+    }
+
+    <span class="cm">// 【注】把 release fence 交回 Layer，最终释放 BufferQueue slot</span>
+    layer-&gt;<span class="fn">getLayerFE</span>().<span class="fn">onLayerDisplayed</span>(releaseFence);
+}
+
+<span class="cm">// HWC2::Display::present()</span>
+<span class="kw">Error</span> <span class="fn">Display::present</span>(sp&lt;Fence&gt;* outPresentFence) {
+    <span class="kw">int32_t</span> presentFenceFd = -<span class="num">1</span>;
+    <span class="cm">// 【注】HWC HAL 的 presentDisplay；返回 present fence</span>
+    <span class="kw">auto</span> intError = mComposer.<span class="fn">presentDisplay</span>(mId, &amp;presentFenceFd);
+    <span class="kw">auto</span> error = <span class="kw">static_cast</span>&lt;Error&gt;(intError);
+    <span class="kw">if</span> (error != Error::NONE) {
+        <span class="kw">return</span> error;
+    }
+
+    *outPresentFence = <span class="kw">new</span> <span class="fn">Fence</span>(presentFenceFd);
+    <span class="kw">return</span> Error::NONE;
+}</pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：把 HWC 的 release fence 分配给每个 Layer；client composition 时还要合并 client target 的 acquire fence。<code>HWC2::Display::present()</code> 调用 HAL 的 <code>presentDisplay</code>，拿到 present fence。</p>
+  <p><strong>设计意图</strong>：present fence 表示“这一帧已经上屏”，release fence 表示“这块 buffer 可以被生产者复用”。两者分开，允许 SF 在 display 还没扫描完时提前准备下一帧，同时保证生产者不会覆盖正在显示的像素。</p>
+  <p><strong>实战问题</strong>：如果 release fence 迟迟不 signaling，BufferQueue 的 slot 不会回到 FREE，App 的 <code>dequeueBuffer</code> 就会阻塞。用 Perfetto 看 <code>presentFence</code>/<code>releaseFence</code> 的 signaling 时间，用 <code>dumpsys SurfaceFlinger</code> 看 Layer 的 buffer 状态。</p>
+  <p><strong>主线位置</strong>：上游 <code>Output#present()</code>；本方法 <code>Output#postFramebuffer()</code> / <code>HWC2::Display#present()</code>；下游 <code>BufferQueue</code> 的 release 与显示扫描。</p>
+</div>
+<!-- ============================================================ -->
+
+<h2 id="p8"><span class="num">八</span>上屏：HWC 与显示扫描</h2>
+
+<div class="card">
+  <p>最后一步不是“GPU 把像素推给屏幕”，而是 <strong>HWC 把合成计划提交给显示控制器，显示控制器按扫描顺序从 framebuffer/overlay 内存里读取像素</strong>。GPU 只负责把内容画进 buffer；真正让像素发光的是 display controller 的扫描输出。</p>
+
+  <div class="calltree"><pre>
+CompositionEngine#present                         <span class="loc">[CompositionEngine.cpp:91]</span>
+└─ Output#present                                 <span class="loc">[Output.cpp:423]</span>
+   ├─ updateCompositionState / planComposition
+   ├─ prepareFrame
+   └─ postFramebuffer                              <span class="loc">[Output.cpp:1261]</span>
+      ├─ mRenderSurface#flip
+      ├─ presentAndGetFrameFences                  <span class="loc">[Output.cpp:1339]</span>
+      └─ HWC2::Display#present                     <span class="loc">[HWC2.cpp:362]</span>
+         └─ ComposerHal#presentDisplay             <span class="loc">[ComposerHal.cpp:492]</span>
+            └─ display controller scanout
+               ├─ present fence                    // 这一帧已经上屏
+               └─ release fence                    // 这些 buffer 可以复用
+</pre></div>
+
+  <p><strong>present fence 与 release fence 的区别</strong>：<code>present fence</code> 在显示控制器真正开始/完成这一帧的扫描时 signaling；<code>release fence</code> 在 HWC 不再需要某个 Layer 的 buffer 时 signaling。前者用于帧统计/背压，后者用于 BufferQueue 回收。两者不是同一个时间点，也不一定是同一个 fence。</p>
+
+  <table>
+    <tr><th>时间点</th><th>发生什么</th><th>谁被唤醒</th><th>数据变化</th></tr>
+    <tr><td>t0</td><td>VSync 到来</td><td>SF / App Choreographer</td><td>新一帧开始</td></tr>
+    <tr><td>t1</td><td>App 录制 DisplayList</td><td>UI 线程</td><td>RenderNode 树更新</td></tr>
+    <tr><td>t2</td><td>RT 回放 + GPU 提交</td><td>RenderThread</td><td>GraphicBuffer 填充，queue 到 BufferQueue</td></tr>
+    <tr><td>t3</td><td>SF latch + 合成</td><td>SurfaceFlinger</td><td>Layer 状态更新，composition plan</td></tr>
+    <tr><td>t4</td><td>HWC present</td><td>HWC / display</td><td>扫描输出，present fence</td></tr>
+    <tr><td>t5</td><td>release fence signaling</td><td>BufferQueue</td><td>slot 回到 FREE，App 可 dequeue</td></tr>
+  </table>
+
+  <div class="annotation star3">
+    <p><span class="tag">为什么感觉“慢半拍”</span> 因为流水线是并行的：UI 线程在录第 N 帧时，RT 可能在画第 N-1 帧，SF 可能在合成第 N-2 帧，显示在扫描第 N-3 帧。多缓冲让吞吐更高，但也带来一帧以上的延迟。游戏/手写笔等低延迟场景会通过减少缓冲、预测、front buffer 渲染等方式压缩这条流水线。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p9"><span class="num">九</span>类与方法：谁负责什么</h2>
+
+<div class="card">
+  <h3>类职责表</h3>
+  <table>
+    <tr><th>类 / 组件</th><th>所在层</th><th>核心职责</th><th>不负责什么</th></tr>
+    <tr><td><code>View</code></td><td>App / UI</td><td>测量、布局、绘制自身内容；持有 <code>mRenderNode</code></td><td>不直接分配 GPU buffer，不直接和 SF 通信</td></tr>
+    <tr><td><code>ViewGroup</code></td><td>App / UI</td><td>遍历子 View，调用 <code>drawChild</code>，维护子节点顺序/Z</td><td>不负责子 View 的内部绘制命令</td></tr>
+    <tr><td><code>ViewRootImpl</code></td><td>App / UI</td><td>Window 的 View 树根管家；调度 traversal、持有 Surface/Renderer</td><td>不负责具体 View 的 onDraw</td></tr>
+    <tr><td><code>Choreographer</code></td><td>App / UI</td><td>VSync 回调调度；input/animation/traversal/commit 排序</td><td>不做 measure/layout/draw</td></tr>
+    <tr><td><code>ThreadedRenderer</code></td><td>App / Java</td><td>硬件加速 Renderer 的 Java 门面；根 DisplayList、Surface 绑定</td><td>不直接执行 GPU 命令</td></tr>
+    <tr><td><code>HardwareRenderer</code></td><td>App / Java</td><td>Renderer 基类；持有 native proxy、根 RenderNode、Surface</td><td>不管理 View 树</td></tr>
+    <tr><td><code>RenderNode</code></td><td>App / UI+RT</td><td>DisplayList + 绘制属性（位置、alpha、transform、clip）</td><td>不持有 Window/Surface</td></tr>
+    <tr><td><code>RecordingCanvas</code></td><td>App / UI</td><td>把绘制调用录成 DisplayList 命令</td><td>不执行光栅化</td></tr>
+    <tr><td><code>RenderProxy</code></td><td>App / native</td><td>Java Renderer 与 RT 之间的代理；持有 DrawFrameTask/CanvasContext</td><td>不做具体绘制</td></tr>
+    <tr><td><code>DrawFrameTask</code></td><td>App / native</td><td>一次帧提交；同步 RenderNode 树、唤醒 UI、触发 draw</td><td>不决定 View 内容</td></tr>
+    <tr><td><code>RenderThread</code></td><td>App / native</td><td>进程级渲染线程；执行 DrawFrameTask、RT 动画、GPU 提交</td><td>不持有 View 对象</td></tr>
+    <tr><td><code>CanvasContext</code></td><td>App / native</td><td>一个 Window 的 RT 上下文；damage、pipeline、swap、fence</td><td>不遍历 View 树</td></tr>
+    <tr><td><code>SkiaOpenGLPipeline</code></td><td>App / native</td><td>Skia GPU 后端；把 RenderNode 回放成 GL 命令</td><td>不管理 BufferQueue 生命周期</td></tr>
+    <tr><td><code>EglManager</code></td><td>App / native</td><td>EGLSurface/GL context 管理；swapBuffers</td><td>不决定绘制内容</td></tr>
+    <tr><td><code>Surface</code></td><td>App / Java</td><td>生产者端句柄；lockCanvas/queueBuffer 等</td><td>不持有 Layer 树</td></tr>
+    <tr><td><code>BLASTBufferQueue</code></td><td>App / Java</td><td>把 SurfaceControl 与 BufferQueue 绑定；事务同步</td><td>不做合成</td></tr>
+    <tr><td><code>BufferQueueProducer</code></td><td>Native</td><td>dequeue/queue buffer；slot 状态与 fence</td><td>不决定何时显示</td></tr>
+    <tr><td><code>SurfaceFlinger</code></td><td>System / native</td><td>Layer 树管理、latch、合成调度</td><td>不感知 View 树</td></tr>
+    <tr><td><code>BufferLayer</code></td><td>System / native</td><td>持有一个窗口的 buffer；latch/updateTexImage</td><td>不处理容器层级</td></tr>
+    <tr><td><code>CompositionEngine</code></td><td>System / native</td><td>构建合成计划；device/client 合成决策</td><td>不直接读 App 内存</td></tr>
+    <tr><td><code>HWComposer / HWC2</code></td><td>HAL</td><td>把 Layer 计划提交给显示硬件；present/release fence</td><td>不生成 UI 内容</td></tr>
+    <tr><td><code>Display</code></td><td>Hardware</td><td>扫描输出、VSync、物理分辨率/刷新率</td><td>不关心 Layer 的业务含义</td></tr>
+  </table>
+
+  <h3>方法逐个看</h3>
+  <table>
+    <tr><th>方法</th><th>类</th><th>谁调它</th><th>作用</th><th>下一步</th></tr>
+    <tr><td><code>doFrame()</code></td><td>Choreographer</td><td>VSync 回调</td><td>按顺序跑 input/animation/traversal/commit</td><td><code>ViewRootImpl#doTraversal()</code></td></tr>
+    <tr><td><code>doTraversal()</code></td><td>ViewRootImpl</td><td>Choreographer</td><td>移除同步屏障，进入遍历</td><td><code>performTraversals()</code></td></tr>
+    <tr><td><code>performTraversals()</code></td><td>ViewRootImpl</td><td>doTraversal</td><td>measure/layout/draw 的总调度</td><td><code>performDraw()</code></td></tr>
+    <tr><td><code>performDraw()</code></td><td>ViewRootImpl</td><td>performTraversals</td><td>判断全量/局部重绘，进入 draw</td><td><code>draw(boolean)</code></td></tr>
+    <tr><td><code>draw(boolean)</code></td><td>ViewRootImpl</td><td>performDraw</td><td>检查 Surface/脏区，选择硬件或软件路径</td><td><code>ThreadedRenderer#draw()</code></td></tr>
+    <tr><td><code>draw()</code></td><td>ThreadedRenderer</td><td>ViewRootImpl</td><td>更新根 DisplayList，提交 RT</td><td><code>updateRootDisplayList()</code> / <code>syncAndDrawFrame()</code></td></tr>
+    <tr><td><code>updateRootDisplayList()</code></td><td>ThreadedRenderer</td><td>ThreadedRenderer#draw</td><td>录根节点，引用 DecorView RenderNode</td><td><code>View#updateDisplayListIfDirty()</code></td></tr>
+    <tr><td><code>updateDisplayListIfDirty()</code></td><td>View</td><td>drawChild / 根节点</td><td>按失效状态重录或复用 DisplayList</td><td><code>RenderNode#beginRecording()</code></td></tr>
+    <tr><td><code>draw(Canvas)</code></td><td>View</td><td>updateDisplayListIfDirty</td><td>背景/onDraw/子节点/前景</td><td><code>onDraw()</code> / <code>dispatchDraw()</code></td></tr>
+    <tr><td><code>dispatchDraw()</code></td><td>ViewGroup</td><td>View#draw</td><td>遍历子 View，调用 drawChild</td><td><code>View#draw(Canvas, ViewGroup, long)</code></td></tr>
+    <tr><td><code>drawRenderNode()</code></td><td>RecordingCanvas</td><td>View#draw(child)</td><td>把子 RenderNode 引用写进父 DisplayList</td><td>native DisplayList</td></tr>
+    <tr><td><code>syncAndDrawFrame()</code></td><td>HardwareRenderer</td><td>ThreadedRenderer#draw</td><td>JNI 提交帧，等待同步</td><td><code>RenderProxy#syncAndDrawFrame()</code></td></tr>
+    <tr><td><code>drawFrame()</code></td><td>DrawFrameTask</td><td>RenderProxy</td><td>投递 run 并等待 sync</td><td><code>postAndWait()</code></td></tr>
+    <tr><td><code>run()</code></td><td>DrawFrameTask</td><td>RenderThread</td><td>同步 RenderNode 树，然后 draw</td><td><code>syncFrameState()</code> / <code>CanvasContext#draw()</code></td></tr>
+    <tr><td><code>syncFrameState()</code></td><td>DrawFrameTask</td><td>run</td><td>prepareTree、纹理、Surface 状态检查</td><td><code>CanvasContext#prepareTree()</code></td></tr>
+    <tr><td><code>draw()</code></td><td>CanvasContext</td><td>DrawFrameTask#run</td><td>damage、Skia 回放、swap、fence</td><td><code>SkiaOpenGLPipeline#draw()</code></td></tr>
+    <tr><td><code>draw()</code></td><td>SkiaOpenGLPipeline</td><td>CanvasContext</td><td>把 EGL back buffer 包装成 SkSurface，回放 RenderNode</td><td><code>renderFrame()</code></td></tr>
+    <tr><td><code>swapBuffers()</code></td><td>EglManager</td><td>SkiaOpenGLPipeline</td><td><code>eglSwapBuffersWithDamageKHR</code></td><td>BufferQueue</td></tr>
+    <tr><td><code>queueBuffer()</code></td><td>BufferQueueProducer</td><td>EGL/ANativeWindow</td><td>入队 buffer + acquire fence</td><td>SurfaceFlinger</td></tr>
+    <tr><td><code>latchBuffer()</code></td><td>BufferLayer</td><td>SurfaceFlinger</td><td>等 fence，更新 active buffer</td><td><code>updateTexImage()</code></td></tr>
+    <tr><td><code>present()</code></td><td>Output</td><td>CompositionEngine</td><td>plan/prepare/finish/postFramebuffer</td><td><code>HWC2::Display#present()</code></td></tr>
+    <tr><td><code>presentDisplay()</code></td><td>ComposerHal</td><td>HWC2</td><td>提交 HWC 合成，返回 present fence</td><td>display scanout</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p10"><span class="num">十</span>稳态闭环：一帧的生命周期与排障</h2>
+
+<div class="card">
+  <h3>一帧的稳态闭环</h3>
+  <div class="calltree"><pre>
+VSync
+└─ Choreographer#doFrame
+   └─ ViewRootImpl#doTraversal
+      └─ performTraversals
+         ├─ measure / layout
+         └─ performDraw
+            └─ ThreadedRenderer#draw
+               ├─ Record RenderNode tree (UI thread)
+               │  ├─ View#updateDisplayListIfDirty
+               │  ├─ View#draw / ViewGroup#dispatchDraw
+               │  └─ RecordingCanvas#drawRenderNode
+               └─ syncAndDrawFrame
+                  └─ RenderThread: DrawFrameTask#run
+                     ├─ syncFrameState
+                     └─ CanvasContext#draw
+                        ├─ SkiaOpenGLPipeline#draw
+                        └─ eglSwapBuffers
+                           └─ BufferQueue
+                              └─ SurfaceFlinger#latchBuffer
+                                 └─ CompositionEngine#present
+                                    └─ HWC2::Display#present
+                                       └─ Display scanout
+                                          └─ release fence
+                                             └─ BufferQueue slot FREE
+</pre></div>
+
+  <p>这条闭环里，UI 线程、RT、SF、HWC 是<strong>流水线并行</strong>的：UI 线程准备第 N 帧，RT 画第 N-1 帧，SF 合成第 N-2 帧，显示扫描第 N-3 帧。每一段都有自己的截止时间；任何一个环节慢了，最终都会表现为“错过 VSync”。</p>
+
+  <h3>卡顿分诊表</h3>
+  <table>
+    <tr><th>症状</th><th>优先怀疑</th><th>看什么</th><th>常见原因</th></tr>
+    <tr><td>滑动时周期性掉帧，UI 线程 trace 很长</td><td>measure/layout/draw 录制</td><td><code>Choreographer#doFrame</code>、<code>Record View#draw()</code></td><td>层级过深、onDraw 耗时、频繁 invalidate、文本/图片解码</td></tr>
+    <tr><td>UI 线程 trace 不长，但帧率上不去</td><td>RT/GPU 或 BufferQueue</td><td><code>DrawFrames</code>、<code>dequeueBuffer</code>、<code>queueBuffer</code></td><td>Shader 编译、纹理上传、过度绘制、buffer stuffing</td></tr>
+    <tr><td>画面整体停顿，所有 App 都卡</td><td>SurfaceFlinger/HWC</td><td><code>onMessageRefresh</code>、<code>HwcPresentDisplay</code></td><td>合成策略退化、HWC 失败、显示驱动/带宽</td></tr>
+    <tr><td>只有某个窗口黑/旧帧</td><td>该 Layer 的 buffer 生命周期</td><td><code>latchBuffer</code>、<code>fenceHasSignaled</code></td><td>Surface 丢失、fence 未 signaling、Layer 不可见</td></tr>
+    <tr><td>应用启动/转屏瞬间卡</td><td>Surface 创建/relayout</td><td><code>ViewRootImpl#relayoutWindow</code>、<code>setSurface</code></td><td>新 Surface 首帧、BLAST 事务同步、尺寸变化</td></tr>
+  </table>
+
+  <h3>常用命令</h3>
+  <div class="code-block">
+    <div class="filename">adb / Perfetto 速查</div>
+    <pre><span class="cm"># 帧统计：Measure/Layout/Draw/Sync/RT 各阶段耗时</span>
+adb shell dumpsys gfxinfo &lt;package&gt; framestats
+
+<span class="cm"># 掉帧/卡顿汇总</span>
+adb shell dumpsys gfxinfo &lt;package&gt;
+
+<span class="cm"># SurfaceFlinger 的 Layer 列表与合成状态</span>
+adb shell dumpsys SurfaceFlinger --list
+adb shell dumpsys SurfaceFlinger
+
+<span class="cm"># 某个 Layer 的 present 时间戳</span>
+adb shell dumpsys SurfaceFlinger --latency &lt;layer-name&gt;
+
+<span class="cm"># 抓一段 gfx/view/sched 的 atrace</span>
+adb shell atrace -t 5 gfx view sched freq -a &lt;package&gt;
+
+<span class="cm"># Perfetto：建议抓 gfx, view, sched, freq, binder_driver, surfaceflinger</span>
+<span class="cm"># 关注切片：Choreographer#doFrame / DrawFrames / dequeueBuffer /</span>
+<span class="cm">#          HwcPresentDisplay / onMessageRefresh</span></pre>
+  </div>
+
+  <h3>五个常见误区</h3>
+  <ol>
+    <li><strong>“View 树直接变成 SurfaceFlinger 的 Layer 树。”</strong> 错。View 树先被压平成一块窗口 buffer；SF 只看到窗口级 Layer。</li>
+    <li><strong>“onDraw 每帧都会执行。”</strong> 错。只有 invalidate 的 View 才重录；有效的 DisplayList 会跨帧复用。</li>
+    <li><strong>“GPU 画完就上屏。”</strong> 错。GPU 画完只是 queue buffer；还要 SF latch、合成、HWC present、显示扫描。</li>
+    <li><strong>“120Hz 屏幕就是每秒渲染 120 帧。”</strong> 错。120Hz 是 VSync 频率；实际帧率取决于每帧能否在 deadline 前完成。</li>
+    <li><strong>“invalidate() 会立刻 draw。”</strong> 错。它只是标记失效并安排下一次 traversal；真正绘制在下一个 VSync 回调里。</li>
+  </ol>
+
+  <div class="insight">
+    <p><strong>设计取舍</strong>：Android 选择 retained mode + 多缓冲 + 独立合成器，是为了在“UI 结构复杂、窗口多、硬件差异大”的前提下，让 App 和系统解耦。代价是链路长、延迟高、排障需要跨进程看时间线；收益是局部更新、并行流水线、HWC 硬件叠加和统一合成。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p11"><span class="num">十一</span>源码速查与自测</h2>
+
+<div class="card">
+  <h3>源码锚点速查</h3>
+  <div class="code-block">
+    <div class="filename">AOSP 12 /home/book/aosp12</div>
+    <pre><span class="cm"># UI 线程：遍历、绘制、RenderNode 录制</span>
+grep -n "performTraversals\|performDraw\|private boolean draw" \
+  frameworks/base/core/java/android/view/ViewRootImpl.java
+
+grep -n "updateRootDisplayList\|void draw(View" \
+  frameworks/base/core/java/android/view/ThreadedRenderer.java
+
+grep -n "updateDisplayListIfDirty\|public void draw(Canvas" \
+  frameworks/base/core/java/android/view/View.java
+
+grep -n "dispatchDraw\|drawChild" \
+  frameworks/base/core/java/android/view/ViewGroup.java
+
+<span class="cm"># 交接：JNI、DrawFrameTask、CanvasContext</span>
+grep -n "syncAndDrawFrame" \
+  frameworks/base/graphics/java/android/graphics/HardwareRenderer.java \
+  frameworks/base/libs/hwui/renderthread/RenderProxy.cpp \
+  frameworks/base/libs/hwui/renderthread/DrawFrameTask.cpp
+
+grep -n "prepareTree\|CanvasContext::draw" \
+  frameworks/base/libs/hwui/renderthread/CanvasContext.cpp
+
+<span class="cm"># GPU 与 BufferQueue</span>
+grep -n "SkiaOpenGLPipeline::draw\|swapBuffers" \
+  frameworks/base/libs/hwui/pipeline/skia/SkiaOpenGLPipeline.cpp
+
+grep -n "dequeueBuffer\|queueBuffer" \
+  frameworks/native/libs/gui/BufferQueueProducer.cpp
+
+<span class="cm"># SurfaceFlinger 与 HWC</span>
+grep -n "onMessageRefresh\|latchBuffer\|handlePageFlip" \
+  frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp \
+  frameworks/native/services/surfaceflinger/BufferLayer.cpp
+
+grep -n "void Output::present\|postFramebuffer" \
+  frameworks/native/services/surfaceflinger/CompositionEngine/src/Output.cpp
+
+grep -n "presentDisplay" \
+  frameworks/native/services/surfaceflinger/DisplayHardware/HWC2.cpp \
+  frameworks/native/services/surfaceflinger/DisplayHardware/ComposerHal.cpp</pre>
+  </div>
+
+  <h3>🧠 自测：4 个问题</h3>
+
+  <details>
+    <summary>1. 为什么 onDraw 不是每帧都执行？什么情况下会重新录制？</summary>
+    <div class="ans">因为硬件加速走 retained mode：每个 View 的绘制命令保存在 <code>RenderNode</code> 的 DisplayList 里。只有 <code>PFLAG_DRAWING_CACHE_VALID</code> 失效、RenderNode 没有 DisplayList、或 <code>mRecreateDisplayList</code> 为 true 时，<code>updateDisplayListIfDirty()</code> 才会重新 <code>beginRecording()</code> 并调用 <code>draw()</code>。普通 invalidate 只标记失效并安排下一次 traversal；如果整棵树都没有失效，甚至 <code>performDraw()</code> 会跳过绘制。</div>
+  </details>
+
+  <details>
+    <summary>2. UI 线程在 syncAndDrawFrame() 里等什么？为什么不等 GPU 画完？</summary>
+    <div class="ans">它等的是 <code>DrawFrameTask#syncFrameState()</code> 完成：RenderNode 树、纹理、动画状态同步到 RT，UI 线程就可以安全地准备下一帧。GPU 绘制在 <code>CanvasContext#draw()</code> 里继续，UI 线程不等待；否则流水线会退化成串行。只有在纹理缓存不足、<code>prepareTextures</code> 返回 false 时，UI 线程才会被留到 RT 画完。</div>
+  </details>
+
+  <details>
+    <summary>3. 为什么说“View 树不是 SurfaceFlinger 的 Layer 树”？一个 Activity 会有几个 Layer？</summary>
+    <div class="ans">SurfaceFlinger 只认识 SurfaceControl/Layer，不认识 View。一个 Window 通常对应一个 BufferLayer，App 的一整棵 View 树被压平成一块窗口 buffer。一个 Activity 至少有一个主 Window Layer；如果用了 <code>SurfaceView</code>、<code>TextureView</code>、<code>PopupWindow</code>、<code>Dialog</code> 等，会额外创建 Surface/Layer。所以是“一个 Window 一个 Layer”，不是“一个 View 一个 Layer”。</div>
+  </details>
+
+  <details>
+    <summary>4. 用户说“这一帧是黑的/旧的”，你怎么用 trace 和 dumpsys 定位是哪一段的问题？</summary>
+    <div class="ans">先看 App 侧：<code>dumpsys gfxinfo &lt;pkg&gt; framestats</code> 是否有 Draw/Sync 异常；Perfetto 看 <code>Choreographer#doFrame</code>、<code>DrawFrames</code>、<code>dequeueBuffer</code>。再看 SF：<code>dumpsys SurfaceFlinger --list</code> 确认 Layer 存在，<code>dumpsys SurfaceFlinger</code> 看 <code>ActiveBuffer</code>/<code>QueuedFrames</code>/fence；Perfetto 看 <code>latchBuffer</code>、<code>onMessageRefresh</code>、<code>HwcPresentDisplay</code>。如果 App 正常 queue、SF 正常 latch、HWC 正常 present，但屏幕仍旧，查显示/背光/刷新率或 Layer 可见性。</div>
+  </details>
+</div>
+
+<div class="footer">
+  <p>📚 Android 窗口层级专题 · 渲染深潜篇（临时稿）｜ 基于 AOSP 12 <code>android-12.0.0_r32</code></p>
+  <p>源码路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实 · 本文未分配系列编号</p>
+  <p style="margin-top:10px;"><a href="android-window-roadmap.html">🗺️ 学习路线图</a></p>
+  <p style="margin-top:8px; color:var(--muted);">这是阶段一临时稿：确认内容后，再下发正式落盘命令，才会并入系列、更新 index 与上下篇链接。</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

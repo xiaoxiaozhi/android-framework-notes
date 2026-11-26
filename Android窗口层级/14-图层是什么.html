@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SurfaceFlinger Trace 里的图层是什么 — Winscope × AOSP 12</title>
+<style>
+:root{
+  --bg:#faf8f5; --bg-card:#ffffff; --bg-soft:#f3efe9; --text:#2b2723; --text-2:#6b6259;
+  --border:#e6ded3; --accent:#b94732; --accent-2:#2f6f6a; --accent-soft:rgba(185,71,50,.09);
+  --code-bg:#1f1d1b; --code-text:#e9e2d8; --ok:#2f7d4f; --warn:#a86a12;
+  --shadow-sm:0 1px 2px rgba(40,30,20,.06),0 4px 14px rgba(40,30,20,.05);
+  --shadow-md:0 6px 24px rgba(40,30,20,.10);
+  --mono:"Cascadia Code","JetBrains Mono",Consolas,"SF Mono",monospace;
+}
+html[data-theme="dark"]{
+  --bg:#16151a; --bg-card:#1e1d23; --bg-soft:#26242c; --text:#e8e3db; --text-2:#a49b90;
+  --border:#33303a; --accent:#e07a5f; --accent-2:#6fb3ac; --accent-soft:rgba(224,122,95,.12);
+  --code-bg:#121116; --code-text:#ddd5c9; --ok:#7bc496; --warn:#e0b062;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.3),0 4px 14px rgba(0,0,0,.25);
+  --shadow-md:0 8px 30px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  line-height:1.75; font-size:16px; transition:background .3s,color .3s;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 80px}
+header.hero{
+  padding:64px 0 40px; border-bottom:1px solid var(--border); margin-bottom:36px;
+  background:radial-gradient(900px 280px at 12% -10%,var(--accent-soft),transparent 70%);
+}
+.kicker{font:600 12px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:16px}
+h1{font-size:clamp(30px,4.2vw,46px);line-height:1.22;margin:0 0 16px;letter-spacing:-.02em}
+h1 em{font-style:normal;color:var(--accent)}
+.sub{font-size:18px;color:var(--text-2);max-width:760px;margin:0}
+.meta{margin-top:22px;display:flex;gap:18px;flex-wrap:wrap;font:13px var(--mono);color:var(--text-2)}
+.meta b{color:var(--text);font-weight:600}
+h2{font-size:27px;margin:56px 0 8px;letter-spacing:-.01em;scroll-margin-top:20px}
+h2 .num{font:600 13px var(--mono);color:var(--accent);vertical-align:middle;margin-right:10px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card)}
+h3{font-size:19px;margin:30px 0 10px}
+p{margin:12px 0}
+a{color:var(--accent);text-decoration:none;border-bottom:1px solid transparent}
+a:hover{border-bottom-color:var(--accent)}
+.lead{font-size:17px;color:var(--text-2);max-width:860px}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px 28px;box-shadow:var(--shadow-sm);margin:20px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:22px 0}
+.mini{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-sm)}
+.mini .t{font:600 12px var(--mono);color:var(--accent);letter-spacing:.08em;margin-bottom:6px}
+.mini .v{font-size:15px;line-height:1.55}
+.mini code{font-size:12.5px}
+code{font-family:var(--mono);font-size:.9em;background:var(--bg-soft);padding:.12em .38em;border-radius:5px;border:1px solid var(--border)}
+.code-block{background:var(--code-bg);border-radius:12px;overflow:hidden;margin:18px 0;border:1px solid rgba(255,255,255,.06)}
+.code-block .filename{font:12px var(--mono);color:#b9ae9f;background:rgba(255,255,255,.04);padding:9px 16px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;justify-content:space-between;gap:10px}
+.code-block .filename span{color:#8b8175}
+.code-block pre{margin:0;padding:16px 18px;overflow-x:auto;color:var(--code-text);font:13px/1.7 var(--mono)}
+.code-block .cm{color:#8b9c86;font-style:italic}
+.code-block .kw{color:#e0a06f}
+.code-block .fn{color:#8fc1c9}
+.code-block .st{color:#d7b57a}
+.code-block .hl{background:rgba(224,122,95,.16);border-radius:4px;padding:0 3px;display:inline-block}
+.callout{border-left:4px solid var(--accent);background:var(--accent-soft);padding:16px 20px;border-radius:0 10px 10px 0;margin:18px 0}
+.callout.green{border-left-color:var(--accent-2);background:rgba(47,111,106,.10)}
+.callout b{color:var(--accent)}
+.callout.green b{color:var(--accent-2)}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14.5px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font:600 12px var(--mono);color:var(--text-2);letter-spacing:.05em;text-transform:uppercase;background:var(--bg-soft)}
+tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+.tag{display:inline-block;font:600 11px var(--mono);padding:2px 7px;border-radius:20px;background:var(--accent-soft);color:var(--accent);border:1px solid var(--border)}
+.toc{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:26px 0 10px}
+.toc a{display:block;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-size:14px;box-shadow:var(--shadow-sm)}
+.toc a:hover{border-color:var(--accent);color:var(--accent);transform:translateX(2px)}
+.toc a b{font:600 11px var(--mono);color:var(--accent);margin-right:8px}
+
+/* ====== lab ====== */
+.lab{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-md);overflow:hidden;margin:24px 0}
+.lab-head{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:var(--bg-soft)}
+.lab-head h3{margin:0;font-size:18px}
+.lab-head .hint{font:12px var(--mono);color:var(--text-2)}
+.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:14px 22px;border-bottom:1px solid var(--border)}
+button{font:600 13px/1 inherit;padding:10px 14px;border-radius:9px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;transition:.15s}
+button:hover:not(:disabled){border-color:var(--accent);color:var(--accent);transform:translateY(-1px)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover:not(:disabled){color:#fff;filter:brightness(1.08)}
+button.ghost{background:transparent}
+.ctrl-note{font:12px var(--mono);color:var(--text-2);margin-left:auto}
+.lab-grid{display:grid;grid-template-columns:1.05fr 1.25fr;gap:0}
+.lab-col{padding:18px 20px;min-width:0}
+.lab-col + .lab-col{border-left:1px solid var(--border)}
+.col-title{font:600 12px var(--mono);letter-spacing:.08em;color:var(--text-2);text-transform:uppercase;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center}
+.tree{font-size:13.5px;line-height:1.5;min-width:0}
+.node-row{position:relative;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;transition:background .15s,opacity .3s;min-width:0;overflow:hidden}
+.node-row:hover{background:var(--bg-soft)}
+.node-row.sel{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.node-row .caret{width:12px;color:var(--text-2);font-size:10px;flex:none;text-align:center}
+.node-row .dot{width:8px;height:8px;border-radius:50%;background:var(--text-2);flex:none;opacity:.45}
+.node-row.has-surface .dot{background:var(--accent);opacity:1}
+.node-row.zboost .dot{background:var(--warn);opacity:1}
+.node-row .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:12.2px;min-width:0;flex:1 1 auto}
+.node-row .kind{font:10px var(--mono);color:var(--text-2);border:1px solid var(--border);padding:1px 5px;border-radius:4px;flex:none}
+.node-row .badge{margin-left:auto;font:600 10.5px var(--mono);color:var(--accent);flex:none}
+.node-row.new{animation:pop .45s ease}
+.node-row.zset .badge{animation:pop .45s ease}
+@keyframes pop{0%{transform:scale(.96);opacity:.2}60%{transform:scale(1.02)}100%{transform:scale(1);opacity:1}}
+.kids{margin-left:16px;border-left:1px dashed var(--border);padding-left:8px}
+.kids.collapsed{display:none}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font:11.5px var(--mono);color:var(--text-2);margin-top:12px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:var(--accent)}
+.legend i.w{background:var(--warn)}
+.legend i.g{background:var(--text-2);opacity:.45}
+
+.sf-row{display:grid;grid-template-columns:46px minmax(0,1fr) 34px 44px;gap:8px;align-items:center;padding:6px 8px;border-radius:8px;font:12px var(--mono);cursor:pointer;min-width:0}
+.sf-row:hover{background:var(--bg-soft)}
+.sf-row.sel{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.sf-row .lid{color:var(--accent);font-weight:600}
+.sf-row .lname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.sf-row .lz{text-align:center;color:var(--text-2)}
+.sf-row .lz b{color:var(--accent-2)}
+.sf-row .lstack{text-align:right;color:var(--text-2);font-size:11px}
+.sf-head{display:grid;grid-template-columns:46px minmax(0,1fr) 34px 44px;gap:8px;padding:0 8px 6px;font:10.5px var(--mono);color:var(--text-2);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);margin-bottom:5px}
+.sf-empty{color:var(--text-2);font:12px var(--mono);padding:14px 8px;text-align:center;border:1px dashed var(--border);border-radius:8px}
+.detail{margin-top:14px;border-top:1px solid var(--border);padding-top:12px;font-size:13px;color:var(--text-2);min-height:44px}
+.detail b{color:var(--text)}
+.detail code{font-size:11.5px}
+.status-line{display:flex;gap:18px;flex-wrap:wrap;font:11.5px var(--mono);color:var(--text-2);padding:10px 22px;border-top:1px solid var(--border);background:var(--bg-soft)}
+.status-line b{color:var(--accent)}
+.json-box{margin-top:14px}
+.json-box summary{cursor:pointer;font:600 12px var(--mono);color:var(--accent);padding:6px 0}
+.json-box pre{background:var(--code-bg);color:var(--code-text);border-radius:10px;padding:14px;overflow:auto;max-height:300px;font:11.5px/1.6 var(--mono);margin:8px 0 0}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);background:var(--text);color:var(--bg);padding:10px 18px;border-radius:24px;font:13px var(--mono);opacity:0;pointer-events:none;transition:.3s;z-index:60}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.fab{position:fixed;right:22px;bottom:22px;width:50px;height:50px;border-radius:50%;border:1px solid var(--border);background:var(--bg-card);box-shadow:var(--shadow-md);font-size:20px;cursor:pointer;z-index:50;display:grid;place-items:center}
+.fab:hover{transform:scale(1.06)}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--border);color:var(--text-2);font-size:13px}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:6px 14px;font-size:13.5px;margin:12px 0}
+.kv dt{font:600 11.5px var(--mono);color:var(--text-2);text-transform:uppercase;letter-spacing:.04em;padding-top:3px}
+.kv dd{margin:0}
+@media(max-width:900px){.grid4{grid-template-columns:1fr 1fr}.grid2{grid-template-columns:1fr}.lab-grid{grid-template-columns:1fr}.lab-col + .lab-col{border-left:none;border-top:1px solid var(--border)}.toc{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.grid4,.toc{grid-template-columns:1fr}.wrap{padding:0 16px 60px}header.hero{padding:44px 0 28px}.ctrl-note{margin-left:0;width:100%}.node-row .kind{display:none}.kids{margin-left:10px;padding-left:5px}.sf-head,.sf-row{grid-template-columns:38px minmax(0,1fr) 26px 32px;gap:5px;font-size:11px}.lab-col{padding:14px 12px}.lab-head,.controls{padding-left:14px;padding-right:14px}}
+@media print{.fab,.controls{display:none}.lab{break-inside:avoid}}
+</style>
+</head>
+
+<body>
+<div class="toast" id="toast"></div>
+<button class="fab" id="themeBtn" title="主题：自动 → 浅色 → 深色">🌓</button>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">AOSP 12 · SurfaceFlinger · Winscope</div>
+  <h1>Trace 里的“图层”，<br>到底是什么<em>东西</em>？</h1>
+  <p class="sub">Winscope 的 SurfaceFlinger trace 里每个图层都有名字和编号。它们不是 UI 控件，也不是 WMS 的 WindowState——而是 SurfaceFlinger 进程里真实存在的 <b>C++ Layer 对象</b>。下面把四个问题一次讲清：是什么、叫什么、编号哪来的、层级树怎么变成图层。</p>
+  <div class="meta">
+    <span>源码基线 <b>AOSP 12 / android-12.0.0_r*</b></span>
+    <span>源码树 <b>/home/book/aosp12</b></span>
+    <span>行号 <b>已现场核对</b></span>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#answer"><b>01</b>先给结论</a>
+  <a href="#code"><b>02</b>逐条对应源码</a>
+  <a href="#read"><b>03</b>Winscope 面板怎么读</a>
+  <a href="#lab"><b>04</b>交互实验：树 → 图层</a>
+  <a href="#pitfalls"><b>05</b>四个高频误解</a>
+  <a href="#cheat"><b>06</b>速查命令</a>
+</nav>
+
+<h2 id="answer"><span class="num">01</span>先给结论</h2>
+<p class="lead">四个问题，四句话。后面的源码和实验都在证明这四句。</p>
+
+<div class="grid4">
+  <div class="mini">
+    <div class="t">图层是什么</div>
+    <div class="v">SurfaceFlinger 里的一个 <code>Layer</code> 对象：一块可被合成的内容 + 一棵子树 + 一个 Z 值。trace 里是它的序列化快照 <code>LayerProto</code>。</div>
+  </div>
+  <div class="mini">
+    <div class="t">有名字吗</div>
+    <div class="v">有。<code>LayerProto.name</code> 就是创建 SurfaceControl 时传的名字。WMS 用容器名，WindowState 是 <code>十六进制hash + 窗口标题</code>，重名自动加 <code>#n</code>。</div>
+  </div>
+  <div class="mini">
+    <div class="t">编号哪来的</div>
+    <div class="v"><code>Layer::sequence</code>，进程内原子自增，从 1 开始。跟 Z、数组下标、WMS hash 都无关；删除不回收，SF 重启才重置。</div>
+  </div>
+  <div class="mini">
+    <div class="t">树能变成图层吗</div>
+    <div class="v">不是“转换”，是<b>投影</b>：WMS 树在创建 SurfaceControl 时就在 SF 里长出了对应的 Layer 树；trace 只是把这棵树拍下来。</div>
+  </div>
+</div>
+
+<div class="callout">
+  <b>一句话串起来：</b>你在屏幕上看到的每一层，在 WMS 里是一个 <code>WindowContainer</code>，在 SF 里就是一个 <code>Layer</code>；<code>SurfaceControl</code> 是这两棵树之间的“联结点/遥控器”。Winscope 的 SF trace 不读 WMS，它直接 dump SF 自己的那棵树。
+</div>
+
+<h3>先把三个“id”分开</h3>
+<table>
+  <thead><tr><th>你看到的</th><th>出处</th><th>含义</th><th>会不会重用</th></tr></thead>
+  <tbody>
+    <tr><td><code>LayerProto.id</code> / Winscope 的 id 列</td><td><code>Layer::sequence</code></td><td>SF 进程内图层创建序号，从 1 开始</td><td>不重用；SF 重启归零</td></tr>
+    <tr><td><code>LayerProto.z</code></td><td>WMS <code>assignChildLayers</code> → <code>setLayer</code></td><td>同一父节点下的绘制顺序，越大越靠上</td><td>每帧/每次 relayout 都可能重排</td></tr>
+    <tr><td>WMS 里的 <code>System.identityHashCode</code></td><td><code>WindowState.getName()</code></td><td>只用于调试命名，出现在名字前缀里</td><td>Java 对象回收后可能被复用</td></tr>
+  </tbody>
+</table>
+
+<h2 id="code"><span class="num">02</span>逐条对应源码</h2>
+
+<h3>2.1 trace 里的一个 layer，就是 LayerProto</h3>
+<p>Winscope 的 SurfaceFlinger trace 文件是 <code>LayersTraceFileProto</code>，里面按时间戳存了很多帧，每帧一份 <code>LayersProto</code>；<code>LayersProto.layers</code> 的每一项就是 <code>LayerProto</code>。</p>
+<div class="code-block">
+  <div class="filename">frameworks/native/services/surfaceflinger/layerproto/layerstrace.proto<span>L27–L50</span></div>
+<pre><span class="kw">message</span> LayersTraceFileProto {
+  <span class="cm">// 一次 trace 里的所有快照</span>
+  repeated LayersTraceProto entry = 2;
+}
+<span class="kw">message</span> LayersTraceProto {
+  <span class="cm">// 时间戳、HWC 信息……</span>
+  optional LayersProto layers = 3;   <span class="cm">// ★ 这一帧的整棵图层树</span>
+}</pre>
+</div>
+<div class="code-block">
+  <div class="filename">frameworks/native/services/surfaceflinger/layerproto/layers.proto<span>L30–L46</span></div>
+<pre><span class="kw">message</span> LayerProto {
+  int32  id = 1;          <span class="cm">// unique id per layer ← Layer::sequence</span>
+  string name = 2;        <span class="cm">// unique name per layer ← SurfaceControl 名</span>
+  repeated int32 children = 3;  <span class="cm">// 子图层 id 列表（树结构）</span>
+  repeated int32 relatives = 4; <span class="cm">// Z 相对图层</span>
+  uint32 layer_stack = 9;       <span class="cm">// 属于哪个 display 的 layer stack</span>
+  int32  z = 10;                <span class="cm">// 同一父节点下的 Z 序</span>
+  int32  parent = 25;           <span class="cm">// 父图层 id（根为 0 / 空）</span>
+  int32  z_order_relative_of = 26;
+}</pre>
+</div>
+<p>注意 proto 里同时有 <code>parent</code> 和 <code>children</code>：父子关系被冗余存了两份，Winscope 还原树时用哪个都行，这也是为什么你在面板里点一个节点能立刻展开它的子树。</p>
+
+<h3>2.2 编号：Layer 构造时自增的 sequence</h3>
+<div class="code-block">
+  <div class="filename">frameworks/native/services/surfaceflinger/Layer.h<span>L87 / L878</span></div>
+<pre><span class="kw">static</span> std::atomic&lt;int32_t&gt; sSequence;   <span class="cm">// L87，进程级计数器</span>
+
+<span class="cm">// L878：每个 Layer 在构造时领一个号</span>
+int32_t sequence{sSequence++};          <span class="cm">// ★ 1, 2, 3, … 单调递增</span></pre>
+</div>
+<div class="code-block">
+  <div class="filename">frameworks/native/services/surfaceflinger/Layer.cpp<span>L87</span></div>
+<pre>std::atomic&lt;int32_t&gt; Layer::sSequence{1};   <span class="cm">// ★ 从 1 开始，不是 0</span></pre>
+</div>
+<p>SurfaceFlinger 建完图层后，把这个号原样返回给客户端：</p>
+<div class="code-block">
+  <div class="filename">frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp<span>L4289 / L4362</span></div>
+<pre><span class="kw">status_t</span> <span class="fn">SurfaceFlinger::createLayer</span>(...) {
+    ...
+    *outLayerId = layer-&gt;sequence;   <span class="cm">// ★ 客户端拿到的 layer id</span>
+    <span class="kw">return</span> result;
+}</pre>
+</div>
+<div class="callout green">
+  <b>为什么 trace 里 id 经常不是连续的？</b>因为号是“创建即领取”，已经销毁的图层不会把号还回来。你看到 1、2、7、8，说明中间 3–6 已被销毁；下次再抓还是这几个号，除非 SF 重启。id 永远不要拿来当数组下标用。
+</div>
+
+<h3>2.3 名字：SurfaceControl 名字 + 去重后缀</h3>
+<p>名字在创建 SurfaceControl 时确定。WMS 的容器树统一走 <code>makeChildSurface</code>，把 <code>child.getName()</code> 作为图层名：</p>
+<div class="code-block">
+  <div class="filename">frameworks/base/services/core/java/com/android/server/wm/DisplayContent.java<span>L4733–L4743</span></div>
+<pre><span class="kw">SurfaceControl.Builder</span> <span class="fn">makeChildSurface</span>(WindowContainer child) {
+    ...
+    <span class="kw">return</span> b.setName(child.getName())   <span class="cm">// ★ 子容器名 → SurfaceControl 名</span>
+            .setParent(mSurfaceControl);
+}</pre>
+</div>
+<div class="code-block">
+  <div class="filename">frameworks/base/services/core/java/com/android/server/wm/WindowState.java<span>L4373–L4375</span></div>
+<pre><span class="kw">String</span> <span class="fn">getName</span>() {
+    <span class="kw">return</span> Integer.<span class="fn">toHexString</span>(System.identityHashCode(<span class="kw">this</span>))
+            + <span class="st">" "</span> + <span class="fn">getWindowTag</span>();   <span class="cm">// ★ 例：7f2a1b0 com.demo/com.demo.MainActivity</span>
+}</pre>
+</div>
+<p>真正的 <code>Layer</code> 名由 SF 再包一层：即使不重名也会加 <code>#0</code>，重名则 <code>#1</code>、<code>#2</code> 递增。</p>
+<div class="code-block">
+  <div class="filename">frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp<span>L4366–L4388</span></div>
+<pre><span class="kw">std::string</span> <span class="fn">SurfaceFlinger::getUniqueLayerName</span>(<span class="kw">const char</span>* name) {
+    <span class="kw">unsigned</span> dupeCounter = 0;
+    <span class="cm">// 不管有没有重名都先加 #0；重名则 ++dupeCounter 再试</span>
+    std::string uniqueName = base::StringPrintf(<span class="st">"%s#%u"</span>, name, dupeCounter);
+    ...
+    <span class="kw">return</span> uniqueName;
+}</pre>
+</div>
+<p>所以你会在 trace 里看到这些典型名字：</p>
+<table>
+  <thead><tr><th>名字样例</th><th>来自哪个容器</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><code>Display 0#0</code></td><td>DisplayContent</td><td>display 根图层，layer_stack 一般为 0</td></tr>
+    <tr><td><code>Task=12#0</code></td><td>Task</td><td><code>Task.getName()</code> 直接拼 taskId</td></tr>
+    <tr><td><code>7f2a1b0 com.demo/com.demo.MainActivity#0</code></td><td>WindowState</td><td>hex hash + window title；hash 是 Java 对象 identity hash</td></tr>
+    <tr><td><code>SurfaceView[com.demo/...](BLAST)#0</code></td><td>SurfaceView 的 SurfaceControl</td><td>应用自己 setName，WMS 只负责挂父节点</td></tr>
+    <tr><td><code>StatusBar#0</code> / <code>NavigationBar0#0</code></td><td>SystemUI 窗口</td><td>窗口标题直接作为名字</td></tr>
+  </tbody>
+</table>
+
+<h3>2.4 层级树怎么“长”成图层：assignChildLayers 两遍</h3>
+<p>WMS 每次遍历窗口树时，会给每个父容器的子节点重新分配 Z。这里的“子节点”就是子 <code>WindowContainer</code>，每个容器都有自己的 SurfaceControl，因此也都有自己的 Layer。核心是两遍循环：</p>
+<div class="code-block">
+  <div class="filename">frameworks/base/services/core/java/com/android/server/wm/WindowContainer.java<span>L2290–L2307</span></div>
+<pre><span class="kw">void</span> <span class="fn">assignChildLayers</span>(Transaction t) {
+    <span class="kw">int</span> layer = 0;
+    <span class="cm">// 第一遍：普通子节点先占 Z，并递归处理整棵子树</span>
+    <span class="kw">for</span> (<span class="kw">int</span> j = 0; j &lt; mChildren.size(); ++j) {
+        <span class="kw">final</span> WindowContainer wc = mChildren.get(j);
+        wc.<span class="fn">assignChildLayers</span>(t);            <span class="cm">// ★ 先下后上（后序）</span>
+        <span class="kw">if</span> (!wc.<span class="fn">needsZBoost</span>()) {
+            wc.<span class="fn">assignLayer</span>(t, layer++);       <span class="cm">// Z = 0,1,2…</span>
+        }
+    }
+    <span class="cm">// 第二遍：需要 Z-boost 的子节点统一提到最后</span>
+    <span class="kw">for</span> (<span class="kw">int</span> j = 0; j &lt; mChildren.size(); ++j) {
+        <span class="kw">final</span> WindowContainer wc = mChildren.get(j);
+        <span class="kw">if</span> (wc.<span class="fn">needsZBoost</span>()) {
+            wc.<span class="fn">assignLayer</span>(t, layer++);
+        }
+    }
+}</pre>
+</div>
+<div class="code-block">
+  <div class="filename">frameworks/base/services/core/java/com/android/server/wm/WindowContainer.java<span>L2240–L2249</span></div>
+<pre><span class="kw">void</span> <span class="fn">assignLayer</span>(Transaction t, <span class="kw">int</span> layer) {
+    ...
+    <span class="kw">if</span> (mSurfaceControl != <span class="kw">null</span> &amp;&amp; changed) {
+        <span class="fn">setLayer</span>(t, layer);        <span class="cm">// ★ 最终落到 SurfaceControl.Transaction.setLayer</span>
+        mLastLayer = layer;
+    }
+}</pre>
+</div>
+<div class="callout green">
+  <b>关键：</b>WMS 分配的是“同一个父容器下”的 Z，不是全局 Z。SF 合成时按树做深度优先遍历，父节点和它的子树整体处在某个位置——所以 <code>LayerProto.z</code> 只在兄弟之间有意义，别拿两个不同父节点的 z 直接比大小。
+</div>
+
+<h3>2.5 trace 是怎么把这棵树拍下来的</h3>
+<div class="code-block">
+  <div class="filename">frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp<span>L4949–L4956</span></div>
+<pre>LayersProto <span class="fn">SurfaceFlinger::dumpDrawingStateProto</span>(uint32_t traceFlags) <span class="kw">const</span> {
+    <span class="kw">const auto</span> display = <span class="fn">ON_MAIN_THREAD</span>(<span class="fn">getDefaultDisplayDeviceLocked</span>());
+    LayersProto layersProto;
+    <span class="kw">for</span> (<span class="kw">const</span> sp&lt;Layer&gt;&amp; layer : mDrawingState.layersSortedByZ) {
+        layer-&gt;<span class="fn">writeToProto</span>(layersProto, traceFlags, display.get());
+    }
+    <span class="kw">return</span> layersProto;
+}</pre>
+</div>
+<div class="code-block">
+  <div class="filename">frameworks/native/services/surfaceflinger/Layer.cpp<span>L2011–L2027</span></div>
+<pre>LayerProto* <span class="fn">Layer::writeToProto</span>(LayersProto&amp; layersProto, ...) {
+    LayerProto* layerProto = layersProto.<span class="fn">add_layers</span>();  <span class="cm">// 先写自己</span>
+    <span class="fn">writeToProtoDrawingState</span>(layerProto, ...);
+    <span class="fn">writeToProtoCommonState</span>(layerProto, ...);
+
+    <span class="kw">for</span> (<span class="kw">const</span> sp&lt;Layer&gt;&amp; layer : mDrawingChildren) {
+        layer-&gt;<span class="fn">writeToProto</span>(layersProto, traceFlags, display);  <span class="cm">// ★ 再递归子树</span>
+    }
+    <span class="kw">return</span> layerProto;
+}</pre>
+</div>
+<p>于是 trace 里 <code>layers[]</code> 的数组顺序是“先序 DFS”：父在前、子在后；树结构本身靠 <code>parent</code> / <code>children</code> 字段还原。Winscope 读的就是这份数据，跟 WMS 没有直接关系——这也是为什么有时你在 Winscope 里看到的树比 recent tasks 里的层级“多几层”或“少几层”。</p>
+
+<h2 id="read"><span class="num">03</span>Winscope 面板怎么读</h2>
+<p>打开 SurfaceFlinger trace 后，左侧是图层树，右侧是选中图层的属性。把面板字段和 proto 对上，就不会再觉得它神秘：</p>
+<table>
+  <thead><tr><th>面板里看到</th><th>对应 proto</th><th>怎么理解</th></tr></thead>
+  <tbody>
+    <tr><td>树节点的 <code>#123</code> / id 列</td><td><code>LayerProto.id</code></td><td>Layer 的 creation sequence，稳定主键</td></tr>
+    <tr><td>节点文字</td><td><code>LayerProto.name</code></td><td>SurfaceControl 名，末尾带 <code>#n</code> 去重后缀</td></tr>
+    <tr><td>缩进关系</td><td><code>parent</code> / <code>children</code></td><td>SF 自己的 Layer 树，不一定等于 View 树</td></tr>
+    <tr><td>Z / layer stack</td><td><code>z</code> / <code>layer_stack</code></td><td>兄弟间顺序 + 属于哪个显示设备</td></tr>
+    <tr><td>时间轴拖动</td><td><code>LayersTraceFileProto.entry[]</code></td><td>每帧一份快照；id 不变，z/children 可能变</td></tr>
+    <tr><td>Bounds / crop / transform</td><td><code>bounds</code> / <code>crop</code> / <code>transform</code></td><td>图层在合成时的几何信息</td></tr>
+  </tbody>
+</table>
+<div class="callout">
+  <b>最快的判断方法：</b>先看名字判断“这是谁”（Display / Task / Window / SurfaceView / StatusBar），再看 id 跟踪“还是不是同一个图层”，最后看 z 和 children 判断“这一帧它被放到了哪”。名字用于识别，id 用于追踪，z 用于排序——三者不要混用。
+</div>
+
+<h2 id="lab"><span class="num">04</span>交互实验：层级树怎样变成图层</h2>
+<p class="lead">下面是一个按 AOSP 12 逻辑运行的迷你“编译器”：左边是 WMS 容器树，右边是 SurfaceFlinger 的 Layer 树。依次点三步，看 <code>SurfaceControl</code> 如何长出来、Z 如何两遍分配、proto 快照如何序列化。点任意节点可以左右对照。</p>
+
+<div class="lab">
+  <div class="lab-head">
+    <h3>WMS Tree → SF Layer Tree</h3>
+    <span class="hint">模型按真实字段简化；id 从 1 开始自增</span>
+  </div>
+  <div class="controls">
+    <button id="b1" class="primary">① 创建 SurfaceControl</button>
+    <button id="b2" disabled>② 两遍分配 Z</button>
+    <button id="b3" disabled>③ 生成 LayerProto</button>
+    <button id="play" class="ghost">▶ 自动播放</button>
+    <button id="reset" class="ghost">↺ 重置</button>
+    <label class="hint" style="display:flex;align-items:center;gap:6px;margin-left:6px">
+      <input type="checkbox" id="zboost"> Task 需要 Z-boost
+    </label>
+    <span class="ctrl-note" id="stepLabel">等待开始</span>
+  </div>
+  <div class="lab-grid">
+    <div class="lab-col">
+      <div class="col-title"><span>WMS 层级树（输入）</span><span id="wmsCount">0 个容器</span></div>
+      <div id="wmsTree" class="tree"></div>
+      <div class="legend">
+        <span><i></i>有 SurfaceControl</span>
+        <span><i class="w"></i>needsZBoost</span>
+        <span><i class="g"></i>尚未创建图层</span>
+      </div>
+    </div>
+    <div class="lab-col">
+      <div class="col-title"><span>SF Layer 树（输出）</span><span id="sfCount">0 layers</span></div>
+      <div id="sfTree"><div class="sf-empty">点「① 创建 SurfaceControl」后出现</div></div>
+      <div class="detail" id="detail">点左边或右边的任意节点，这里会显示它在两棵树里的身份。</div>
+      <details class="json-box">
+        <summary>查看 LayerProto 快照（JSON）</summary>
+        <pre id="json">// 完成第 ③ 步后生成</pre>
+      </details>
+    </div>
+  </div>
+  <div class="status-line">
+    <span>阶段：<b id="phase">未开始</b></span>
+    <span>已创建 Layer：<b id="statLayers">0</b></span>
+    <span>trace 数组长度：<b id="statArray">0</b></span>
+    <span>下一个 sequence：<b id="statNext">1</b></span>
+  </div>
+</div>
+
+<div class="grid2">
+  <div class="mini">
+    <div class="t">第 ① 步发生了什么</div>
+    <div class="v">WMS 为每个 <code>WindowContainer</code> 调用 <code>makeSurface()</code> → <code>SurfaceControl.Builder.build()</code>；SF 侧执行 <code>createLayer()</code>，构造 <code>Layer</code> 时领取 <code>sequence</code>，并把父子关系写进 <code>mDrawingChildren</code>。名字在这里定型。</div>
+  </div>
+  <div class="mini">
+    <div class="t">第 ② 步发生了什么</div>
+    <div class="v">每个父容器对子节点跑两遍 <code>assignChildLayers</code>：普通节点按顺序拿 0,1,2…，<code>needsZBoost()</code> 的节点跳过第一遍、在第二遍补到末尾。事务提交后，SF 的 <code>z</code> 才更新。</div>
+  </div>
+  <div class="mini">
+    <div class="t">第 ③ 步发生了什么</div>
+    <div class="v">SF 从 <code>mDrawingState.layersSortedByZ</code> 的根开始，对每棵子树做 <code>writeToProto</code> 先序递归，得到 <code>LayersProto.layers[]</code>。数组顺序 ≠ 合成顺序，树靠 <code>parent/children</code> 还原。</div>
+  </div>
+  <div class="mini">
+    <div class="t">为什么 id 不从 0 开始</div>
+    <div class="v"><code>Layer::sSequence{1}</code>。0 留给 proto 里“没有父节点”的默认值，因此根图层的 <code>parent</code> 字段读出来是 0，而它自己的 id 是 1。</div>
+  </div>
+</div>
+
+<h2 id="pitfalls"><span class="num">05</span>四个高频误解</h2>
+
+<div class="callout">
+  <b>误解一：id 就是 Z，或者就是列表下标。</b><br>
+  id 来自 <code>Layer::sequence</code>，只在“创建”时领一次；Z 来自 WMS 的 <code>assignChildLayers</code>，随时可能重排。trace 里 <code>layers[]</code> 的顺序是先序 DFS，和 id 大小没有必然关系。<b>用 id 认身份，用 z 排顺序。</b>
+</div>
+
+<div class="callout">
+  <b>误解二：名字是唯一的，可以直接当主键。</b><br>
+  SF 的 <code>getUniqueLayerName</code> 会给重名追加 <code>#1</code>、<code>#2</code>，所以同一时刻名字确实唯一；但名字会随窗口标题/重建变化，跨快照追踪并不可靠。<b>跨帧追踪请用 id。</b>
+</div>
+
+<div class="callout">
+  <b>误解三：WMS 树和 SF 树一定一一对应。</b><br>
+  大体对应，但 SF 侧还会出现 WMS 树里没有的图层：动画用的 leash、dimmer、屏幕旋转截图、offscreen 合成层等；反过来，尚未 attach 或没有 SurfaceControl 的容器也不会出现。<b>Winscope 的 SF trace 是 SF 视角的真相，不是 WMS 树的镜像。</b>
+</div>
+
+<div class="callout">
+  <b>误解四：trace 里看到的层级就是 View 树。</b><br>
+  View 树在应用进程里，通过 BufferQueue/BLAST 把 buffer 交给一个 SurfaceView 或窗口图层；SF 只认识 Layer。一个 Window 内部的 View 层级不会出现在 SF trace 里，除非它们各自拥有 Surface（如多个 SurfaceView）。
+</div>
+
+<h2 id="cheat"><span class="num">06</span>速查与核对</h2>
+<div class="code-block">
+  <div class="filename">设备侧 —— 只看名字和顺序<span>无需 root 的大部分场景</span></div>
+<pre><span class="cm"># 列出当前所有图层名（名字末尾就是 SF 的 #n 后缀）</span>
+adb shell dumpsys SurfaceFlinger --list
+
+<span class="cm"># 看完整状态：层级、Z、buffer、合成方式</span>
+adb shell dumpsys SurfaceFlinger
+
+<span class="cm"># 抓 trace 后用 Winscope 打开 SurfaceFlinger 标签页</span>
+<span class="cm"># 时间轴每一格 = 一份 LayersTraceProto 快照</span></pre>
+</div>
+<div class="code-block">
+  <div class="filename">源码侧 —— 本页引用的位置<span>/home/book/aosp12</span></div>
+<pre>frameworks/native/services/surfaceflinger/layerproto/layers.proto        <span class="cm">L30-46  LayerProto</span>
+frameworks/native/services/surfaceflinger/layerproto/layerstrace.proto   <span class="cm">L43-50  LayersTraceProto</span>
+frameworks/native/services/surfaceflinger/Layer.h                        <span class="cm">L87,878 sSequence/sequence</span>
+frameworks/native/services/surfaceflinger/Layer.cpp                      <span class="cm">L87,2011-2027</span>
+frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp             <span class="cm">L4289,4362,4366-4388,4949-4956</span>
+frameworks/base/services/core/java/com/android/server/wm/WindowContainer.java  <span class="cm">L2240-2249,2290-2307</span>
+frameworks/base/services/core/java/com/android/server/wm/DisplayContent.java    <span class="cm">L4733-4743</span>
+frameworks/base/services/core/java/com/android/server/wm/WindowState.java       <span class="cm">L4373-4375</span></pre>
+</div>
+
+<div class="foot">
+  <p><b>一句话收尾：</b>Winscope 里的图层不是“界面元素”，而是 SurfaceFlinger 进程里带序号、带名字、带 Z 的 <code>Layer</code> 对象；WMS 的层级树通过 SurfaceControl 在 SF 里投影出同一棵树。看 trace 时：<b>名字认人，id 追踪，z 排序，parent/children 看结构。</b></p>
+  <p>基于 AOSP 12 源码现场核对（WSL <code>/home/book/aosp12</code>）。行号随版本可能漂移，以函数名为准。</p>
+</div>
+
+</div>
+
+<script>
+'use strict';
+
+/* ============================================================
+ * 数据模型：WMS 容器树（字段名对应 AOSP 12）
+ * surface: 该容器是否会创建 SurfaceControl（默认 true）
+ * zBoost : WindowContainer.needsZBoost() 的示意开关
+ * ============================================================ */
+const WMS_TREE = {
+  key: 'display', kind: 'DisplayContent', base: 'Display 0', surface: true,
+  children: [
+    { key: 'wallpaper', kind: 'WallpaperToken', base: 'Wallpaper', surface: true },
+    { key: 'task', kind: 'Task', base: 'Task=12', surface: true, zBoost: true,
+      children: [
+        { key: 'activity', kind: 'ActivityRecord', base: 'ActivityRecord{3f9c2a1 u0 com.demo/.MainActivity t12}',
+          surface: true, children: [
+            { key: 'window', kind: 'WindowState', base: '7f2a1b0 com.demo/com.demo.MainActivity',
+              surface: true, children: [
+                { key: 'surfaceview', kind: 'SurfaceView', base: 'SurfaceView[com.demo/com.demo.MainActivity](BLAST)', surface: true },
+                { key: 'background', kind: 'Background', base: 'Background for com.demo/com.demo.MainActivity', surface: true }
+              ] }
+          ] }
+      ] },
+    { key: 'statusbar', kind: 'WindowState', base: 'StatusBar', surface: true },
+    { key: 'navbar', kind: 'WindowState', base: 'NavigationBar0', surface: true },
+    { key: 'ime', kind: 'WindowState', base: 'InputMethod', surface: true }
+  ]
+};
+
+const state = {
+  started: false,
+  zDone: false,
+  protoDone: false,
+  zboost: false,
+  seq: 0,
+  layers: new Map(),      // key -> layer
+  order: [],              // 创建顺序（先序 DFS）
+  revealed: new Set(),    // 第 ① 步动画已揭示
+  zRevealed: new Set(),   // 第 ② 步动画已揭示
+  selected: null,
+  running: false
+};
+
+let nameCounts = new Map();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function uniqueLayerName(base) {
+  const n = nameCounts.get(base) || 0;   // 对应 getUniqueLayerName：无论是否重名都带 #n
+  nameCounts.set(base, n + 1);
+  return base + '#' + n;
+}
+
+function eachNode(node, fn, depth, parent) {
+  fn(node, depth || 0, parent || null);
+  (node.children || []).forEach((c) => eachNode(c, fn, (depth || 0) + 1, node));
+}
+
+function totalNodes() {
+  let n = 0;
+  eachNode(WMS_TREE, () => n++);
+  return n;
+}
+
+/* 第 ① 步：先序 DFS 创建图层。父图层 = 最近一个拥有 layer 的祖先 */
+function buildAll() {
+  state.seq = 0;
+  state.layers.clear();
+  state.order = [];
+  nameCounts = new Map();
+
+  const dfs = (node, parentLayer) => {
+    let self = parentLayer;
+    if (node.surface !== false) {
+      const id = ++state.seq;                       // Layer::sSequence++
+      const layer = {
+        id,
+        name: uniqueLayerName(node.base || node.name),
+        parent: parentLayer ? parentLayer.id : 0,   // proto 里根节点的 parent = 0
+        children: [],
+        z: 0,
+        node
+      };
+      state.layers.set(node.key, layer);
+      state.order.push(layer);
+      if (parentLayer) parentLayer.children.push(id);
+      node.layer = layer;
+      self = layer;
+    } else {
+      node.layer = null;
+    }
+    (node.children || []).forEach((c) => dfs(c, self));
+  };
+  dfs(WMS_TREE, null);
+  state.started = true;
+  state.zDone = false;
+  state.protoDone = false;
+  state.revealed = new Set();
+  state.zRevealed = new Set();
+  return state.order;
+}
+
+/* 第 ② 步：WindowContainer.assignChildLayers 两遍算法 */
+function needsBoost(node) {
+  return !!(state.zboost && node.zBoost);
+}
+
+function assignZ(node) {
+  let z = 0;
+  const kids = node.children || [];
+  // 第一遍：普通子节点先占 Z，同时递归整棵子树（先下后上）
+  for (const c of kids) {
+    assignZ(c);
+    if (!needsBoost(c) && c.layer) c.layer.z = z++;
+  }
+  // 第二遍：Z-boost 子节点补到最后
+  for (const c of kids) {
+    if (needsBoost(c) && c.layer) c.layer.z = z++;
+  }
+  if (node.layer && node === WMS_TREE) node.layer.z = 0;  // 根图层不在兄弟序列里
+}
+
+function postOrder() {
+  const out = [];
+  const dfs = (n) => { (n.children || []).forEach(dfs); out.push(n); };
+  dfs(WMS_TREE);
+  return out;
+}
+
+/* 第 ③ 步：模拟 Layer::writeToProto —— 先写自己，再递归 children */
+function buildProto() {
+  const layers = [];
+  const dfs = (n) => {
+    if (n.layer) {
+      layers.push({
+        id: n.layer.id,
+        name: n.layer.name,
+        parent: n.layer.parent,
+        children: n.layer.children.slice(),
+        z: n.layer.z,
+        layer_stack: 0
+      });
+    }
+    (n.children || []).forEach(dfs);
+  };
+  dfs(WMS_TREE);
+  return { entry: [{ layers: { layers } }] };
+}
+
+function findNode(key) {
+  let found = null;
+  eachNode(WMS_TREE, (n) => { if (n.key === key) found = n; });
+  return found;
+}
+
+function resetState() {
+  eachNode(WMS_TREE, (n) => { n.layer = null; });
+  state.started = false;
+  state.zDone = false;
+  state.protoDone = false;
+  state.seq = 0;
+  state.layers.clear();
+  state.order = [];
+  state.revealed = new Set();
+  state.zRevealed = new Set();
+  state.selected = null;
+}
+
+/* 测试钩子：同步跑完整条流水线，返回最终状态 */
+function runAllSync(zboost) {
+  resetState();
+  state.zboost = !!zboost;
+  buildAll();
+  state.revealed = new Set(state.order.map((l) => l.node.key));
+  assignZ(WMS_TREE);
+  state.zDone = true;
+  state.zRevealed = new Set(postOrder().map((n) => n.key));
+  state.protoDone = true;
+  return { order: state.order, proto: buildProto() };
+}
+
+window.__lab = { WMS_TREE, state, buildAll, assignZ, buildProto, runAllSync, findNode, totalNodes };
+
+'use strict';
+
+/* ================= 主题：自动 / 浅色 / 深色 ================= */
+const THEME_KEY = 'sf-layers-theme';
+let themeMode = localStorage.getItem(THEME_KEY) || 'auto';
+const themeBtn = document.getElementById('themeBtn');
+
+function applyTheme() {
+  const h = new Date().getHours();
+  const dark = themeMode === 'dark' || (themeMode === 'auto' && (h >= 22 || h < 7));
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  themeBtn.textContent = themeMode === 'auto' ? '🌓' : themeMode === 'light' ? '☀️' : '🌙';
+  themeBtn.title = '主题：' + (themeMode === 'auto' ? '自动（7:00–22:00 浅色）' : themeMode === 'light' ? '浅色' : '深色');
+}
+themeBtn.addEventListener('click', () => {
+  themeMode = themeMode === 'auto' ? 'light' : themeMode === 'light' ? 'dark' : 'auto';
+  localStorage.setItem(THEME_KEY, themeMode);
+  applyTheme();
+});
+applyTheme();
+setInterval(applyTheme, 60000);
+
+/* ================= 工具 ================= */
+const $ = (id) => document.getElementById(id);
+let toastTimer = null;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const isShown = (node) => !!(node.layer && state.revealed.has(node.key));
+
+/* ================= 渲染 WMS 树 ================= */
+function buildWmsNode(node, depth) {
+  const wrap = document.createElement('div');
+  const row = document.createElement('div');
+  const hasLayer = isShown(node);
+  row.className = 'node-row' + (hasLayer ? ' has-surface' : '') + (needsBoost(node) ? ' zboost' : '');
+  if (state.selected === node.key) row.classList.add('sel');
+  row.dataset.key = node.key;
+  row.style.paddingLeft = (depth * 15 + 6) + 'px';
+  row.title = node.base + ' （' + node.kind + '）';
+
+  const caret = document.createElement('span');
+  caret.className = 'caret';
+  caret.textContent = (node.children && node.children.length) ? '▼' : '·';
+
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+
+  const nm = document.createElement('span');
+  nm.className = 'nm';
+  nm.textContent = node.base;
+
+  const kind = document.createElement('span');
+  kind.className = 'kind';
+  kind.textContent = node.kind;
+
+  row.append(caret, dot, nm, kind);
+
+  const badge = document.createElement('span');
+  badge.className = 'badge';
+  badge.textContent = hasLayer ? '#' + node.layer.id : '';
+  row.appendChild(badge);
+
+  const kids = document.createElement('div');
+  kids.className = 'kids';
+  (node.children || []).forEach((c) => kids.appendChild(buildWmsNode(c, depth + 1)));
+
+  caret.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (node.children && node.children.length) kids.classList.toggle('collapsed');
+  });
+  row.addEventListener('click', () => selectNode(node.key));
+
+  wrap.append(row, kids);
+  return wrap;
+}
+
+function renderWms() {
+  const host = $('wmsTree');
+  host.innerHTML = '';
+  host.appendChild(buildWmsNode(WMS_TREE, 0));
+  $('wmsCount').textContent = totalNodes() + ' 个容器';
+}
+
+/* ================= 渲染 SF 树 ================= */
+function renderSf() {
+  const host = $('sfTree');
+  host.innerHTML = '';
+  if (!state.started || state.revealed.size === 0) {
+    host.innerHTML = '<div class="sf-empty">点「① 创建 SurfaceControl」后出现</div>';
+    $('sfCount').textContent = '0 layers';
+    return;
+  }
+  const head = document.createElement('div');
+  head.className = 'sf-head';
+  head.innerHTML = '<span>id</span><span>name</span><span>z</span><span>stack</span>';
+  host.appendChild(head);
+
+  const dfs = (node, depth) => {
+    if (isShown(node)) {
+      const row = document.createElement('div');
+      row.className = 'sf-row' + (state.selected === node.key ? ' sel' : '');
+      row.dataset.key = node.key;
+      row.style.paddingLeft = (depth * 14 + 8) + 'px';
+      const zShown = state.zDone || state.zRevealed.has(node.key);
+      row.innerHTML =
+        '<span class="lid">#' + node.layer.id + '</span>' +
+        '<span class="lname" title="' + esc(node.layer.name) + '">' + esc(node.layer.name) + '</span>' +
+        '<span class="lz"><b>' + (zShown ? node.layer.z : '–') + '</b></span>' +
+        '<span class="lstack">L0</span>';
+      row.addEventListener('click', () => selectNode(node.key));
+      host.appendChild(row);
+    }
+    (node.children || []).forEach((c) => dfs(c, isShown(node) ? depth + 1 : depth));
+  };
+  dfs(WMS_TREE, 0);
+  $('sfCount').textContent = state.revealed.size + ' layers';
+}
+
+/* ================= 详情 / 状态 ================= */
+function renderDetail() {
+  const host = $('detail');
+  if (!state.selected) {
+    host.innerHTML = '点左边或右边的任意节点，这里会显示它在两棵树里的身份。';
+    return;
+  }
+  const node = findNode(state.selected);
+  if (!node) return;
+  const layer = node.layer && state.revealed.has(node.key) ? node.layer : null;
+  const zShown = layer && (state.zDone || state.zRevealed.has(node.key));
+  const bits = [];
+  bits.push('<b>' + esc(node.base) + '</b>');
+  bits.push('WMS 类型 <code>' + esc(node.kind) + '</code>');
+  if (!layer) {
+    bits.push('尚未创建 SurfaceControl / Layer');
+  } else {
+    bits.push('Layer id <code>#' + layer.id + '</code>');
+    bits.push('名字 <code>' + esc(layer.name) + '</code>');
+    bits.push('parent <code>' + layer.parent + '</code>');
+    bits.push('children <code>[' + layer.children.join(', ') + ']</code>');
+    bits.push('z <code>' + (zShown ? layer.z : '未分配') + '</code>');
+  }
+  host.innerHTML = bits.join(' ｜ ');
+}
+
+function syncStats() {
+  $('statLayers').textContent = state.revealed.size;
+  let arrLen = 0;
+  if (state.protoDone) {
+    eachNode(WMS_TREE, (n) => { if (isShown(n)) arrLen++; });
+  }
+  $('statArray').textContent = arrLen;
+  $('statNext').textContent = state.seq + 1;
+  $('phase').textContent = state.protoDone ? '快照已生成' : state.zDone ? 'Z 已分配' : state.started ? '图层已创建' : '未开始';
+}
+
+function syncButtons() {
+  $('b1').disabled = state.running;
+  $('b2').disabled = state.running || !state.started || state.zDone;
+  $('b3').disabled = state.running || !state.zDone || state.protoDone;
+  $('play').disabled = state.running;
+}
+
+function renderAll() {
+  renderWms();
+  renderSf();
+  renderDetail();
+  syncStats();
+}
+
+function selectNode(key) {
+  state.selected = key;
+  renderAll();
+}
+
+/* ================= 三步流程 ================= */
+async function runCreate() {
+  resetState();
+  renderAll();
+  $('json').textContent = '// 完成第 ③ 步后生成';
+  buildAll();
+  state.started = true;
+  for (const layer of state.order) {
+    state.revealed.add(layer.node.key);
+    renderAll();
+    await sleep(230);
+  }
+  $('stepLabel').textContent = '① 完成：' + state.seq + ' 个 Layer';
+  syncButtons();
+}
+
+async function runZ() {
+  if (!state.started) return;
+  assignZ(WMS_TREE);
+  const post = postOrder();
+  for (const node of post) {
+    if (!node.layer) continue;
+    state.zRevealed.add(node.key);
+    renderAll();
+    await sleep(80);
+  }
+  state.zDone = true;
+  $('stepLabel').textContent = '② 完成：每个父容器内的 Z 已重排';
+  syncButtons();
+}
+
+async function runProto() {
+  if (!state.zDone) return;
+  state.protoDone = true;
+  const proto = buildProto();
+  $('json').textContent = JSON.stringify(proto, null, 2);
+  $('stepLabel').textContent = '③ 完成：layers[] 先序 DFS 共 ' + proto.entry[0].layers.layers.length + ' 项';
+  renderAll();
+  syncButtons();
+}
+
+function withGuard(fn) {
+  return async () => {
+    if (state.running) return;
+    state.running = true;
+    syncButtons();
+    try { await fn(); } finally { state.running = false; syncButtons(); }
+  };
+}
+
+$('b1').addEventListener('click', withGuard(async () => {
+  await runCreate();
+  toast('SurfaceControl 已创建，id 按 Layer::sSequence 递增');
+}));
+
+$('b2').addEventListener('click', withGuard(async () => {
+  await runZ();
+  toast('assignChildLayers：两遍循环完成');
+}));
+
+$('b3').addEventListener('click', withGuard(async () => {
+  await runProto();
+  toast('LayerProto 快照已生成');
+}));
+
+$('play').addEventListener('click', withGuard(async () => {
+  await runCreate();
+  await sleep(280);
+  await runZ();
+  await sleep(280);
+  await runProto();
+}));
+
+$('reset').addEventListener('click', () => {
+  if (state.running) return;
+  resetState();
+  $('json').textContent = '// 完成第 ③ 步后生成';
+  $('stepLabel').textContent = '等待开始';
+  renderAll();
+  syncButtons();
+});
+
+$('zboost').addEventListener('change', (e) => {
+  if (state.running) { e.target.checked = !e.target.checked; return; }
+  state.zboost = e.target.checked;
+  resetState();
+  $('json').textContent = '// 完成第 ③ 步后生成';
+  $('stepLabel').textContent = '已重置：Z-boost 开关会改变两遍分配的结果';
+  renderAll();
+  syncButtons();
+});
+
+/* 初始 */
+renderAll();
+syncButtons();
+window.__lab.uiReady = true;
+
+</script>
+</body>
+</html>

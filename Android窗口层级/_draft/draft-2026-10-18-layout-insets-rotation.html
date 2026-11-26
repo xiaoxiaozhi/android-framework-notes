@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>窗口的尺寸与身体：布局、Insets 与旋转 — AOSP 12 源码深度分析</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol","Apple Symbols",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .draft-note { border:1px dashed var(--accent); background:var(--tag-bg); border-radius:8px; padding:12px 18px; margin-bottom:24px; font-size:.88rem; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .think .qtag { color:var(--accent3); font-weight:bold; }
+    .analogy { border-left:4px solid var(--accent2); background:var(--bg-card); border:1px solid var(--border); border-left-width:4px; padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .analogy .tag { color:var(--accent2); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:10px 16px; margin:14px 0; font-size:.9rem; color:var(--text2); }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:14px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-size:.82rem; font-weight:bold; margin-right:8px; }
+    .why { color:var(--accent2); font-weight:bold; }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>📐 窗口的尺寸与身体：布局、Insets 与旋转</h1>
+<p class="subtitle">03 篇讲「遍历怎么跑」，本篇讲「每一遍到底算了什么」：frame 怎么定、系统栏怎么让位、旋转怎么不闪 · AOSP 12 源码逐行核实</p>
+<p class="series">📚 Android 窗口层级专题 08（临时稿） | 上承 03 篇遍历、06 篇上树 | 主线阶段 3：布局 / Insets / 旋转与配置</p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="draft-note">
+  📝 <strong>临时稿（_draft）</strong>：本文件尚未分配系列编号、未放入正式目录、未更新 index.html。请直接在本文件上审阅修改；改完后由你下发正式落盘命令，再以本文件为唯一准稿并入系列。生成日期 2026-10-18。
+</div>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p1">一、全景：布局是「谁给谁量尺寸」</a>
+  <a href="#p2">二、布局主循环：performLayoutNoTrace 与 mPerformLayout</a>
+  <a href="#p3">三、frame 是怎么算出来的：WindowState.computeFrame</a>
+  <a href="#p4">四、谁先谁后：DisplayPolicy 定系统装饰窗的 frame</a>
+  <a href="#p5">五、Insets 三件套：状态、来源与策略</a>
+  <a href="#p6">六、旋转：DisplayRotation 与冻结显示</a>
+  <a href="#p7">七、配置变更：谁收到、谁重建</a>
+  <a href="#p8">八、完整链路与源码速查</a>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+
+<h2 id="p1">一、全景：布局是「谁给谁量尺寸」</h2>
+
+<div class="card">
+  <p>你在 03 篇学过：窗口变了会触发一次遍历（<code>performSurfacePlacement</code>），遍历里会 <code>forAllWindows</code> 走 DFS、会分配 Z 序、会提一笔事务给 SurfaceFlinger。但那篇解决的是<strong>「怎么跑」</strong>，留下一个问题没答：<strong>每个窗口的 <code>mFrame</code> 到底是谁算的、按什么规则算的？</strong></p>
+
+  <p>更要紧的是：窗口的尺寸<strong>从来不是它自己说了算</strong>。一个 App 的 Activity 想要「铺满整屏」，但屏幕上方 100px 被状态栏占了、下方 150px 被导航栏占了、右下角还有手势条、转屏时还要重算一遍——这些「别人占掉的地方」就是 <strong>Insets</strong>。本篇就是把这条链走完。</p>
+
+  <div class="analogy">
+    <span class="tag">类比</span> 03 篇讲的是「装修队怎么进场、按什么顺序施工」；本篇讲的是<strong>「每间屋子最终多大」</strong>——先由物业（系统装饰窗口）划走楼道、电梯、消防通道，剩下的才是你屋子（App 窗口）的面积；你要是想看图，还得知道那些楼道是<strong>谁画的</strong>（Insets 来源）、<strong>能不能临时拆掉</strong>（Insets 控制权）。
+  </div>
+
+  <div class="tree">本篇在主线中的位置
+
+03 篇（遍历怎么跑）              ← 已学
+   │
+   ├── 本 篇（每遍算了什么）      ← 你现在在这里
+   │     ├─ frame 怎么定
+   │     ├─ insets 怎么扣
+   │     └─ 旋转/配置怎么重算
+   │
+   └── 09 篇（动画与过渡）        ← 下一步：转场时这些 frame 怎么被临时改造</div>
+
+  <div class="hint">🔗 前置：03 篇（<code>forAllWindows</code> / <code>performLayout</code> 的位置）、06 篇（窗口上树那一刻 frame 还是空的）。本篇的每个方法都能在 03 篇的遍历堆栈里找到调用点。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+
+<h2 id="p2">二、布局主循环：performLayoutNoTrace 与 mPerformLayout</h2>
+
+<div class="card">
+  <p>布局入口在 <code>DisplayContent</code>。注意它的设计：主循环本身很短，真正的活是<strong>逐窗口回调</strong> <code>mPerformLayout</code>。</p>
+
+  <h3>块 A：布局总入口（DisplayContent.java:4417 起，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">DisplayContent.java:4417-4460（裁剪）</div>
+    <pre><span class="kw">private void</span> <span class="fn">performLayoutNoTrace</span>(<span class="kw">boolean</span> initial, <span class="kw">boolean</span> updateInputWindows) {
+    <span class="kw">if</span> (!<span class="fn">isLayoutNeeded</span>()) <span class="kw">return</span>;
+    <span class="cm">// ① why 开关式短路：布局标记由 mPerformLayout 结尾清掉，没有标记直接返回——</span>
+    <span class="cm">//    这就是 03 篇 deferred 机制能「攒一堆变化只做一次遍历」的前提</span>
+
+    mLayoutNeeded = <span class="kw">false</span>;
+    <span class="kw">final int</span> displayId = getDisplayId();
+    <span class="fn">updateWindowsFreeformClientSide</span>();
+    <span class="cm">// … 省略：setDisplayLayoutNeeded / 输入窗口准备（4440-4480）</span>
+
+    <span class="fn">forAllWindows</span>(mPerformLayout, <span class="kw">true</span> <span class="cm">/* traverseTopToBottom */</span>);
+    <span class="cm">// ② why 自顶向下：父容器先拿到自己的 frame，子窗口才能相对它布局；</span>
+    <span class="cm">//    03 篇的 DFS 在这里被复用（同一个 forAllWindows，两种遍历方向两种用途）</span>
+
+    <span class="cm">// … 省略：泄露检测 debug、setLayoutNeeded(false) 等收尾</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：先判断「这次要不要真布局」，然后自顶向下把所有窗口过一遍回调，最后收尾。</p>
+  <p><strong>设计意图</strong>：<span class="why">自顶向下</span>是布局与 Z 序遍历的关键差异——Z 序要自底向上（先算下面的），布局要自顶向下（先定父的）。同一个 <code>forAllWindows</code> 靠传入不同的回调顺序服务两种目的。</p>
+  <div class="think"><span class="qtag">🧠 思考（单块）</span> 如果布局改成自底向上会怎样？想想 06 篇里那个「<code>mLayoutAttached</code> 的子窗口 frame 相对父窗口坐标系计算」——父的 frame 还没定，子的相对位置算得出来吗？</div>
+
+  <h3>块 B：逐窗口布局回调（DisplayContent.java:781 起，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">DisplayContent.java:781-820（裁剪）</div>
+    <pre><span class="kw">private final</span> Consumer&lt;WindowState&gt; mPerformLayout = w -&gt; {
+    <span class="kw">final boolean</span> gone = w.<span class="fn">isGoneForLayout</span>();
+    <span class="cm">// ① why 先判「是不是可以跳过」：正在播退场动画、或可见性为 GONE 的窗口，</span>
+    <span class="cm">//    给它重算 frame 纯属浪费，还可能让动画中的画面跳变</span>
+
+    <span class="cm">// If this view is GONE, then skip it -- keep the current frame, and let the caller know</span>
+    <span class="cm">// so they can ignore it if they want.  (We do the normal layout for INVISIBLE windows,</span>
+    <span class="cm">// since that means "perform layout as normal, just don't display").</span>
+    <span class="kw">if</span> ((!gone || !w.mHaveFrame || w.mLayoutNeeded) &amp;&amp; !w.mLayoutAttached) {
+        <span class="kw">if</span> (mTmpInitial) w.<span class="fn">resetContentChanged</span>();
+        w.mSurfacePlacementNeeded = <span class="kw">true</span>;
+        w.mLayoutNeeded = <span class="kw">false</span>;
+        w.<span class="fn">prelayout</span>();
+        <span class="kw">final boolean</span> firstLayout = !w.<span class="fn">isLaidOut</span>();
+        <span class="fn">getDisplayPolicy</span>().<span class="fn">layoutWindowLw</span>(w, <span class="kw">null</span>, mDisplayFrames);
+        <span class="cm">// ② why 真正的 frame 计算交给 DisplayPolicy：窗口大小不只是「我的尺寸」，</span>
+        <span class="cm">//    还要受状态栏/导航栏/IME/裁剪区/屏幕装饰影响——这些策略只有 policy 知道</span>
+        w.mLayoutSeq = mLayoutSeq;
+
+        <span class="cm">// If this is the first layout, we need to initialize the last frames and inset values,</span>
+        <span class="cm">// as otherwise we'd immediately cause an unnecessary resize.</span>
+        <span class="kw">if</span> (firstLayout) {
+            <span class="cm">// … 省略：首布局时对齐 last frame / 触发一次 resize（822-860）</span>
+        }
+    }
+    <span class="cm">// … 省略：mLayoutAttached 的子窗口由父窗口带着走，不在这里单独处理</span>
+};</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：决定这个窗口这轮要不要重排；要的话清标记、预处理，然后把算 frame 的活交给 <code>DisplayPolicy.layoutWindowLw()</code>。</p>
+  <p><strong>设计意图</strong>：<span class="why">frame 计算外包给 policy</span>。因为「状态栏多高、导航栏在哪、IME 是否顶起、屏幕是否圆角/挖孔」这些是<strong>设备与厂商策略</strong>，WMS 核心不该硬编码——这也是 ROM 定制影响布局的入口。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>窗口 frame 不对（黑边/被状态栏盖住/全屏失效）</strong>。<strong>因果</strong>：<code>isGoneForLayout()</code> 判真 → 直接跳过，frame 保持旧值；常见于窗口刚 add、还没 relayout（呼应 06 篇「上树 ≠ 显示」）。<strong>怎么查</strong>：<code>dumpsys window windows</code> 看该窗口的 <code>mHaveFrame</code>、<code>mLayoutNeeded</code>、<code>frame=</code> 三项；<code>mHaveFrame=false</code> 说明它从没被真正布局过。<code>DisplayPolicy.layoutWindowLw()</code> 里打断点看它是否被调用。</div>
+  <p><strong>在主线中的位置</strong>：<code>performSurfacePlacement → DisplayContent.performLayoutNoTrace → forAllWindows(mPerformLayout) → DisplayPolicy.layoutWindowLw → WindowState.computeFrame</code>（下一块）。</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+
+<h2 id="p3">三、frame 是怎么算出来的：WindowState.computeFrame</h2>
+
+<div class="card">
+  <p>上一块把活交给了 policy，policy 最终会调到 <code>WindowState.computeFrame()</code>。这里才是「这个窗口到底占哪块矩形」的收官。</p>
+
+  <h3>块 C：computeFrame 的入口与前置判断（WindowState.java:1262/1274，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">WindowState.java:1262-1274（转发）+ 1274-1310（裁剪）</div>
+    <pre><span class="kw">void</span> <span class="fn">computeFrameAndUpdateSourceFrame</span>() {
+    <span class="fn">computeFrame</span>();
+    <span class="fn">updateSourceFrame</span>(getLayoutingWindowFrames().mFrame);
+    <span class="cm">// ① why 两件事：算 frame，再把 frame 同步给 insets 体系（下一节要用）</span>
+}
+
+<span class="kw">void</span> <span class="fn">computeFrame</span>() {
+    <span class="kw">if</span> (mWillReplaceWindow &amp;&amp; (mAnimatingExit || !mReplacingRemoveRequested)) {
+        <span class="kw">return</span>;
+        <span class="cm">// ② why 正在被替换的窗口冻结不动：旧窗口要停在原地等新窗口出现，</span>
+        <span class="cm">//    否则替换过程会出现两个窗口都在动的画面撕裂</span>
+    }
+    mHaveFrame = <span class="kw">true</span>;
+    <span class="cm">// ③ ★ 这一行就是「这个窗口真正被布局过」的官方标记——</span>
+    <span class="cm">//    dumpsys 里的 mHaveFrame 就是它，排障第一眼要看的值</span>
+
+    <span class="kw">final</span> Task task = <span class="fn">getTask</span>();
+    <span class="kw">final boolean</span> isFullscreenAndFillsArea = !<span class="fn">inMultiWindowMode</span>() &amp;&amp; <span class="fn">matchesDisplayAreaBounds</span>();
+    <span class="kw">final boolean</span> windowsAreFloating = task != <span class="kw">null</span> &amp;&amp; task.<span class="fn">isFloating</span>();
+    <span class="cm">// ④ why 先分清三种处境：全屏铺满 / 多窗口分屏 / 浮动自由窗口——</span>
+    <span class="cm">//    后面每一个 if 分支都靠这几个布尔量分流，frame 规则完全不同</span>
+    <span class="kw">final</span> DisplayContent dc = <span class="fn">getDisplayContent</span>();
+    <span class="kw">final</span> DisplayInfo displayInfo = <span class="fn">getDisplayInfo</span>();
+    <span class="kw">final</span> WindowFrames windowFrames = <span class="fn">getLayoutingWindowFrames</span>();
+    mInsetFrame.<span class="fn">set</span>(<span class="fn">getBounds</span>());
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：先排除「正在被替换」的特殊窗口，然后打上 <code>mHaveFrame</code> 标记，再按「全屏 / 分屏 / 浮动」三类处境准备后续分支的输入。</p>
+  <p><strong>设计意图</strong>：<span class="why">mHaveFrame 与 layoutInParentFrame() 两个布尔量决定一切</span>。前者答「布局过没有」，后者答「相对父窗口还是相对屏幕」——这与 06 篇你学过的 <code>mLayoutAttached</code> 是同一套坐标系逻辑。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>分屏/自由窗口下窗口位置错乱</strong>。<strong>因果</strong>：<code>windowsAreFloating</code> 与 <code>isFullscreenAndFillsArea</code> 的分流走错了分支，frame 用了屏幕坐标系而非 Task 坐标系。<strong>怎么查</strong>：dump 里对比该窗口的 <code>frame=</code> 与所属 <code>Task</code> 的 bounds；自由窗口模式下 frame 应落在 Task 范围内，若等于整屏 bounds 就是分支错了。</div>
+
+  <h3>块 D：Insets 参与 frame 计算（WindowState.java:1310 起，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">WindowState.java:1310-1345（裁剪）</div>
+    <pre><span class="cm">// Denotes the actual frame used to calculate the insets and to perform the layout. When</span>
+    <span class="cm">// resizing in docked mode, we'd like to freeze the layout, so we also need to freeze</span>
+    <span class="cm">// the insets temporarily. By the notion of a task having a different layout frame, we can</span>
+    <span class="cm">// achieve that while still moving the task around.</span>
+<span class="kw">final</span> Rect layoutContainingFrame;
+<span class="kw">final</span> Rect layoutDisplayFrame;
+<span class="kw">final int</span> layoutXDiff;
+<span class="kw">final int</span> layoutYDiff;
+
+<span class="kw">final</span> WindowState imeWin = mWmService.mRoot.<span class="fn">getCurrentInputMethodWindow</span>();
+<span class="kw">final</span> InsetsControlTarget imeTarget = dc.<span class="fn">getImeTarget</span>(IME_TARGET_LAYERING);
+<span class="kw">final boolean</span> isInputMethodAdjustTarget = windowsAreFloating
+        ? imeTarget != <span class="kw">null</span> &amp;&amp; task == imeTarget.<span class="fn">getWindow</span>().<span class="fn">getTask</span>()
+        : <span class="fn">isImeLayeringTarget</span>();
+<span class="kw">final boolean</span> isImeTarget =
+        imeWin != <span class="kw">null</span> &amp;&amp; imeWin.<span class="fn">isVisibleNow</span>() &amp;&amp; isInputMethodAdjustTarget;
+<span class="cm">// ① why 谁的 frame 要被 IME 顶起来，是布局阶段就要定的事：</span>
+<span class="cm">//    只有「当前 IME 的调整目标」才吃 IME inset，其他窗口不受影响</span>
+<span class="cm">//    （下一节讲这个「目标」是谁给的——InsetsControlTarget）</span>
+
+<span class="kw">if</span> (isFullscreenAndFillsArea || <span class="fn">layoutInParentFrame</span>()) {
+    layoutContainingFrame = layoutDisplayFrame = displayInfo.<span class="fn">appRect</span>;
+    layoutXDiff = layoutYDiff = <span class="num">0</span>;
+    <span class="cm">// ② why 全屏铺满：直接拿 appRect 当容身框——appRect 就是屏幕减掉系统装饰后的区域</span>
+} <span class="kw">else</span> {
+    <span class="cm">// … 省略：分屏/浮动窗口用 Task 的 bounds 当容身框，再算偏移（1346-1390）</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：确定「容身框」（containing frame）——全屏窗口直接用 <code>displayInfo.appRect</code>，其他窗口用 Task 的 bounds；同时算出 IME 目标，决定谁会因键盘让位。</p>
+  <p><strong>设计意图</strong>：<span class="why">appRect 就是 Insets 的产物</span>。它不是屏幕大小，而是「屏幕减掉系统装饰」。所以 App 窗口「看不见的那部分」不是被裁剪了，而是<strong>从一开始就没分给它</strong>。理解了这点，你就明白为什么改状态栏高度会连带影响所有 App 的布局。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>键盘弹起布局被顶乱 / 沉浸式下内容被导航栏盖住</strong>。<strong>因果</strong>：<code>isImeTarget</code> 判真与否决定 frame 是否被 IME 顶起；<code>isFullscreenAndFillsArea</code> 决定用 appRect 还是 Task bounds。<strong>怎么查</strong>：dump 看该窗口 frame 底边与 <code>dumpsys window displays</code> 里 appRect 的关系；再 <code>dumpsys input</code> 看 IME 目标是不是它。</div>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 B、块 C、块 D）</span> 一个 App 窗口的 frame 最终等于「屏幕 - 状态栏 - 导航栏」，这个减法<strong>发生在哪一步</strong>？是 computeFrame 里减的，还是它拿到的 appRect 早就减好了？如果状态栏高度在运行中改变（比如隐藏状态栏），这个窗口需要走哪些步骤才能跟着变？</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+
+<h2 id="p4">四、谁先谁后：DisplayPolicy 定系统装饰窗的 frame</h2>
+
+<div class="card">
+  <p>上一块多次提到 policy。现在看它真身：<code>DisplayPolicy.layoutWindowLw()</code>。它是<strong>所有窗口 frame 的唯一决策点</strong>（由 <code>mPerformLayout</code> 逐窗回调）。</p>
+
+  <h3>块 E：layoutWindowLw 开头（DisplayPolicy.java:1561 起，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">DisplayPolicy.java:1561-1620（裁剪）</div>
+    <pre><span class="kw">public void</span> <span class="fn">layoutWindowLw</span>(WindowState win, WindowState attached, DisplayFrames displayFrames) {
+    <span class="kw">if</span> (win.<span class="fn">getParentWindow</span>() != <span class="kw">null</span>) {
+        <span class="kw">return</span>;
+        <span class="cm">// ① why 有父窗口的直接返回：子窗口（Dialog/Panel）不参与本轮布局，</span>
+        <span class="cm">//    它跟随父窗口走——呼应 06 篇「子窗在构造函数里就挂在父 WindowState 下」</span>
+    }
+    <span class="kw">final boolean</span> isDefaultDisplay = win.<span class="fn">isDefaultDisplay</span>();
+    <span class="kw">if</span> (!isDefaultDisplay &amp;&amp; (<span class="fn">canHideNavigationBar</span>()
+            || win.mAttrs.type == TYPE_STATUS_BAR)) {
+        <span class="cm">// The magnification region should be inset from all sides of the screen by</span>
+        <span class="cm">// the minimum of the status bar and the nav bar...</span>
+        <span class="cm">// … 省略：辅助屏 / 放大镜区域的特殊处理（1570-1600）</span>
+    }
+    <span class="cm">// … 省略：mDisplayFrames 组装（cutout/rounded corner/导航栏模式）、</span>
+    <span class="cm">//   systemDecorBounds / nonDecorBounds / stableBounds 三个区间的计算（1600-1750）——</span>
+    <span class="cm">//   这三个 Rect 就是「系统装饰占多少」的量化结果，下一节 Insets 要从这里取值</span>
+
+    <span class="kw">final</span> LayoutParams attrs = win.mAttrs;
+    <span class="kw">final int</span> type = win.mAttrs.type;
+    win.<span class="fn">computeFrame</span>();
+    <span class="cm">// ② ★ 闭环点：policy 算完三个边界区间后，最后还是调 WindowState.computeFrame()</span>
+    <span class="cm">//    ——也就是说「frame 算法」在 WindowState，但「可用区间」由 policy 提供</span>
+    <span class="cm">// … 省略：按 type 分类处理（状态栏/导航栏/IME/应用窗口各自的布局规则）</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：先跳过子窗口，准备好「系统装饰 / 非装饰 / 稳定区」三个区间，然后按窗口类型分流，最后落到 <code>computeFrame()</code>。</p>
+  <p><strong>设计意图</strong>：<span class="why">三个 Rect 是整套布局的「预算表」</span>。系统装饰窗口（状态栏/导航栏/IME）先在这三个区间里占位，剩下的 <code>nonDecorBounds</code> 就是 App 能用的地方。这也是为什么 ROM 厂商改状态栏高度必须在 policy 层改——改的是这份预算表。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>状态栏隐藏后 App 内容没跟着长高</strong>。<strong>因果</strong>：policy 的 nonDecorBounds 变了，但窗口没被标记 <code>mLayoutNeeded</code>，所以 <code>performLayoutNoTrace</code> 在块 A 的①处直接 return。<strong>怎么查</strong>：开 <code>cmd window tracing</code> 看布局事件有没有发生；确认 Insets 变化后有触发 <code>requestTraversal()</code>（下一节）。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+
+<h2 id="p5">五、Insets 三件套：状态、来源与策略</h2>
+
+<div class="card">
+  <p>前四节反复出现 Insets，现在把它讲全。Insets 体系由三个类组成（AOSP 12）：</p>
+
+  <table>
+    <tr><th>类</th><th>行号</th><th>职责</th></tr>
+    <tr><td><code>InsetsStateController</code></td><td>InsetsStateController.java:64</td><td>每屏一份，「管所有 source」的总账本</td></tr>
+    <tr><td><code>InsetsSourceProvider</code></td><td>InsetsSourceProvider.java:68</td><td>一个 inset 源（状态栏 / 导航栏 / IME 之一）的管家</td></tr>
+    <tr><td><code>ImeInsetsSourceProvider</code></td><td>ImeInsetsSourceProvider.java:48</td><td>IME 专用管家（继承上面那个）</td></tr>
+    <tr><td><code>InsetsPolicy</code></td><td>InsetsPolicy.java:62</td><td>策略：谁该看见、谁被强制隐藏、谁拿到控制权</td></tr>
+    <tr><td><code>InsetsControlTarget</code></td><td>InsetsControlTarget.java:27</td><td>谁能控制系统栏显隐（接口）</td></tr>
+  </table>
+
+  <div class="analogy">
+    <span class="tag">类比</span> <code>InsetsStateController</code> 是<strong>物业管理处</strong>；每个 <code>InsetsSourceProvider</code> 是<strong>一类设施的管理员</strong>（电梯、消防通道、临时候车区）；<code>InsetsControlTarget</code> 是<strong>手里拿着“临时占用/拆除”审批单的人</strong>——比如要全屏看视频的 App，就向 IME 要控制权。
+  </div>
+
+  <h3>块 F：布局后同步（InsetsStateController.java:289 起）</h3>
+  <div class="code-block">
+    <div class="filename">InsetsStateController.java:289-330（裁剪）+ InsetsSourceProvider.java:198/304</div>
+    <pre><span class="kw">void</span> <span class="fn">onPostLayout</span>() {
+    <span class="cm">// ① why 时机：布局刚刚结束，每个窗口的 frame 已是最终值——</span>
+    <span class="cm">//    这时才能把「窗口实际占了多大」反哺给 insets 体系</span>
+    <span class="kw">boolean</span> changed = <span class="kw">false</span>;
+    <span class="kw">for</span> (<span class="kw">int</span> i = 0; i &lt; mProviders.size(); i++) {
+        <span class="kw">final</span> InsetsSourceProvider provider = mProviders.valueAt(i);
+        <span class="cm">// … 省略：逐个 provider 更新 frame 与控制权（295-310）</span>
+        provider.<span class="fn">updateSourceFrame</span>();
+        <span class="cm">// ② InsetsSourceProvider.java:198 —— 用宿主窗口的 frame 算出这个 inset 源的实际区域</span>
+        changed |= provider.<span class="fn">updateControlForTarget</span>(target, force);
+        <span class="cm">// ③ InsetsSourceProvider.java:304 —— 根据控制权目标，决定这个源是显示还是隐藏</span>
+    }
+    <span class="kw">if</span> (changed) {
+        <span class="fn">notifyInsetsChanged</span>();
+        <span class="cm">// ④ why 变化才通知：反馈给客户端（onApplyWindowInsets）并触发重新布局——</span>
+        <span class="cm">//    这是「状态栏一隐藏，App 内容跟着长高」那条回路的起点</span>
+    }
+}
+
+<span class="cm">// 客户端侧拿到的是什么？（呼应 03 篇的 traversal 回传）</span>
+<span class="cm">// WindowState.computeFrameAndUpdateSourceFrame() 里的 updateSourceFrame(getLayoutingWindowFrames().mFrame)</span>
+<span class="cm">// 就是把窗口 frame 写进 insets 体系的入口（见上一篇块 C 的 ① 注释）</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：布局跑完后，用每个窗口的最终 frame 去更新对应的 inset 源，并检查控制权是否变化；变了就通知客户端。</p>
+  <p><strong>设计意图</strong>：<span class="why">Insets 是「布局的输出」又是「下一次布局的输入」</span>——形成了闭环。所以系统栏显隐会引发一次新的遍历（不是同一次遍历里就自动完成）。这也解释了为什么「状态栏动画过程中 App 会跟滞顿一拍」。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>App 的 <code>onApplyWindowInsets()</code> 收到旧值 / 收不到</strong>。<strong>因果</strong>：<code>onPostLayout</code> 里 <code>changed</code> 为 false 就不通知；或控制权没交出去（<code>updateControlForTarget</code> 的目标不对）。<strong>怎么查</strong>：<code>dumpsys window displays</code> 看 InsetsState 里各 source 的 <code>frame</code> 与 <code>visible</code>；对比 App 打印的 insets 值定位是哪一侧没同步。</div>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 D、块 F）</span> 块 D 里 App 的 frame 依赖 <code>displayInfo.appRect</code>，而块 F 说 Insets 是「布局的输出」。既然输出依赖输入，<strong>第一轮布局时 appRect 从哪来</strong>？想想为什么必须有「上一轮的值」。
+</div>
+</div>
+
+<!-- ====================================================== -->
+
+<h2 id="p6">六、旋转：DisplayRotation 与冻结显示</h2>
+
+<div class="card">
+  <p>旋转是布局体系的“极端场景”：屏幕尺寸整个换掉，所有窗口的 frame 都要重算。它最难的地方不是计算，而是<strong>怎么让用户看不到中间态</strong>。</p>
+
+  <h3>块 G：决定新方向（DisplayRotation.java:415 起，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">DisplayRotation.java:415-500（裁剪）</div>
+    <pre><span class="kw">boolean</span> <span class="fn">updateRotationUnchecked</span>(<span class="kw">boolean</span> forceUpdate) {
+    <span class="kw">final boolean</span> useShellTransitions =
+            mService.mAtmService.<span class="fn">getTransitionController</span>().<span class="fn">getTransitionPlayer</span>() != <span class="kw">null</span>;
+    <span class="cm">// ① 12 上这个通常为 false（见 09 篇的版本事实）；它只影响旋转走哪条路，</span>
+    <span class="cm">//    不代表整体转场架构已经切到 Shell Transitions</span>
+
+    <span class="kw">if</span> (!forceUpdate &amp;&amp; !useShellTransitions) {
+        <span class="kw">if</span> (mDeferredRotationPauseCount &gt; <span class="num">0</span>) {
+            <span class="cm">// … 省略：被 App 主动暂停旋转（如相机预览中）</span>
+            <span class="kw">return false</span>;
+        }
+        <span class="kw">if</span> (mService.mDisplayFrozen) { <span class="kw">return false</span>; }
+        <span class="cm">// ② ★ 已经冻结就拒绝新的旋转请求：避免“旋转中又旋转”导致状态机错乱</span>
+    }
+
+    <span class="kw">final int</span> oldRotation = mRotation;
+    <span class="kw">final int</span> lastOrientation = mLastOrientation;
+    <span class="kw">final int</span> rotation = <span class="fn">rotationForOrientation</span>(lastOrientation, oldRotation);
+    <span class="cm">// ③ 综合三方决定：传感器方向（lastOrientation 由 WindowOrientationListener 提供）、</span>
+    <span class="cm">//    用户锁定（自动旋转开关）、App 请求的 screenOrientation —— 优先级在此裁决</span>
+
+    <span class="kw">if</span> (oldRotation == rotation) { <span class="kw">return false</span>; }
+    <span class="cm">// ④ 方向没变就直接返回：这是最常见的路径，避免无谓的冻结</span>
+
+    mRotation = rotation;
+    mDisplayContent.<span class="fn">setLayoutNeeded</span>();
+    <span class="cm">// ⑤ 标记需要重新布局——旋转的本质就是「让所有窗口重算 frame」，</span>
+    <span class="cm">//    即回到本篇第二节的 performLayoutNoTrace</span>
+    <span class="cm">// … 省略：等待配置（mWaitingForConfig）、通知 DisplayInfo 变化、</span>
+    <span class="cm">//   执行冻结/动画（500-560）</span>
+  }</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：裁决出一个新方向（传感器 / 用户锁定 / App 请求三方博弈），标记重新布局。</p>
+  <p><strong>设计意图</strong>：<span class="why">旋转的“计算”很简单，难点全在时序</span>。核心是：<strong>不能让用户看到“新旧方向同时存在”的中间帧</strong>。所以接下来要冻结。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>旋转不生效 / 转了一半又转回去</strong>。<strong>因果</strong>：<code>rotationForOrientation</code> 的优先级判断——如果 App 在 manifest 里写了 <code>screenOrientation="portrait"</code>，它会压过传感器；或者 <code>mDeferredRotationPauseCount &gt; 0</code>（有窗口请求暂停旋转，常见于视频/相机）。<strong>怎么查</strong>：开 <code>WM_DEBUG_ORIENTATION</code> ProtoLog，日志里会打印「selected orientation X, got rotation Y」以及每次 <code>return false</code> 的具体原因（注释里那几句 Deferring rotation 就是为排障写的）。</div>
+
+  <h3>块 H：冻结与解冻（WMS.java:5706 / 5762）</h3>
+  <div class="code-block">
+    <div class="filename">WindowManagerService.java:5706-5730、5762-5795（裁剪）</div>
+    <pre><span class="kw">void</span> <span class="fn">startFreezingDisplay</span>(<span class="kw">int</span> exitAnim, <span class="kw">int</span> enterAnim, DisplayContent displayContent,
+        <span class="kw">int</span> overrideOriginalRotation) {
+    <span class="kw">if</span> (mDisplayFrozen || displayContent.<span class="fn">getDisplayRotation</span>().<span class="fn">isRotatingSeamlessly</span>()) {
+        <span class="kw">return</span>;
+        <span class="cm">// ① 幂等：已经冻着就别再冻一次</span>
+    }
+    <span class="kw">if</span> (!displayContent.<span class="fn">isReady</span>() || !mPolicy.<span class="fn">isScreenOn</span>()
+            || !displayContent.<span class="fn">okToAnimate</span>()) {
+        <span class="kw">return</span>;
+        <span class="cm">// ② if 屏幕没亮/没准备好，不值得冻（否则解冻时机难保证）</span>
+    }
+    ProtoLog.<span class="fn">d</span>(WM_DEBUG_ORIENTATION,
+            <span class="cm">"startFreezingDisplayLocked: exitAnim=%d enterAnim=%d called by %s"</span>,
+            exitAnim, enterAnim, Debug.<span class="fn">getCallers</span>(<span class="num">8</span>));
+    <span class="cm">// ③ 打印 8 层调用栈——专门为“谁触发旋转”的排障设计</span>
+    mScreenFrozenLock.<span class="fn">acquire</span>();
+    mAtmService.<span class="fn">startLaunchPowerMode</span>(POWER_MODE_REASON_FREEZE_DISPLAY);
+    <span class="cm">// ④ 冻结期间要提频：旋转会引发大量重绘，不提频会明显卡</span>
+    <span class="cm">// … 省略：截屏（ScreenRotationAnimation）、冻结 surface</span>
+}
+
+<span class="kw">void</span> <span class="fn">stopFreezingDisplayLocked</span>() {
+    <span class="kw">if</span> (!mDisplayFrozen) <span class="kw">return</span>;
+    <span class="cm">// … 省略：取出 numOpeningApps / waitingForConfig 等状态</span>
+    <span class="kw">if</span> (waitingForConfig || waitingForRemoteRotation || mAppsFreezingScreen &gt; <span class="num">0</span>
+            || mWindowsFreezingScreen == WINDOWS_FREEZING_SCREENS_ACTIVE
+            || mClientFreezingScreen || numOpeningApps &gt; <span class="num">0</span>) {
+        <span class="kw">return</span>;
+        <span class="cm">// ⑤ ★ 这里是“旋转黑一下”的根源之一：解冻的条件很苛刻——</span>
+        <span class="cm">//    配置还没发下去、App 还在冻结屏、还有窗口在等首帧……只要有一项没满足，</span>
+        <span class="cm">//    就继续冻着（用户看到的是那张截屏）。任何一项卡住 = 冻结超时/黑屏</span>
+    }
+    ProtoLog.<span class="fn">d</span>(WM_DEBUG_ORIENTATION, <span class="cm">"stopFreezingDisplayLocked: Unfreezing now"</span>);
+    <span class="cm">// … 省略：真正解冻、播动画、释放 mScreenFrozenLock</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：冻结时截一张屏盖住画面、提频；解冻时检查六个条件全满足才放行。</p>
+  <p><strong>设计意图</strong>：<span class="why">用“截屏 + 冻结”换取“不闪”</span>。旋转时所有窗口都要重算 frame 并重绘，这个过程必然要几十毫秒。与其让用户看到撕裂的中间态，不如<strong>冻住旧画面、等新画面准备好再一次性切换</strong>——代价是那一瞬间画面是“死的”。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>旋转后一直黑屏 / 卡在旧画面</strong>。<strong>因果</strong>：<code>stopFreezingDisplayLocked</code> 的六个条件里有一项永远不满足。最常见的两个：<code>mAppsFreezingScreen &gt; 0</code>（某个 App 没调 <code>stopFreezingScreen</code>，通常是它自己卡住了）、<code>numOpeningApps &gt; 0</code>（有窗口一直没 drawn，回到 06 篇的“上树≠显示”）。<strong>怎么查</strong>：开 <code>WM_DEBUG_ORIENTATION</code>，日志会直接打印是哪个条件把解冻挡住的（代码里那行 ProtoLog 就是干这个的）。</div>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 G、块 H）</span> 旋转期间为什么要“截屏”而不是“让旧窗口继续画”？想想如果让旧窗口继续渲染，然后在某一帧突然换成新方向的图层树，用户会看到什么——这能解释 <code>ScreenRotationAnimation</code> 存在的意义。</div>
+</div>
+
+<!-- ====================================================== -->
+
+<h2 id="p7">七、配置变更：谁收到、谁重建</h2>
+
+<div class="card">
+  <p>旋转只是配置变更的一种。屏幕上任何影响尺寸/密度/语言/夜间模式的改变，都会走同一条路：<strong>计算新配置 → 沿树向下传播 → 决定谁重建</strong>。</p>
+
+  <h3>块 I：配置更新入口（DisplayContent.java:5511 起，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">DisplayContent.java:5511-5545（裁剪）</div>
+    <pre><span class="kw">boolean</span> <span class="fn">updateDisplayOverrideConfigurationLocked</span>() {
+    <span class="cm">// Preemptively cancel the running recents animation -- SysUI can't currently handle this</span>
+    <span class="cm">// case properly since the signals it receives all happen post-change</span>
+    <span class="fn">cancelRecentsAnimation</span>();
+    <span class="cm">// ① why 先取消最近任务动画：配置变化之后 SystemUI 收到的信号都是“事后”的，</span>
+    <span class="cm">//    继续跑那个动画会算错位置。这是“手势中旋转”类 bug 的防护</span>
+
+    Configuration values = <span class="kw">new</span> <span class="fn">Configuration</span>();
+    <span class="fn">computeScreenConfiguration</span>(values);
+    <span class="cm">// ② 重新算一份屏幕配置（尺寸/密度/方向/字体缩放等）</span>
+
+    mAtmService.mH.<span class="fn">sendMessage</span>(PooledLambda.<span class="fn">obtainMessage</span>(
+            ActivityManagerInternal::updateOomLevelsForDisplay, mAtmService.mAmInternal,
+            mDisplayId));
+    <span class="cm">// ③ 顺带更新 OOM 等级：屏幕变大了，进程内存阈值也要跟着调</span>
+
+    Settings.System.<span class="fn">clearConfiguration</span>(values);
+    <span class="fn">updateDisplayOverrideConfigurationLocked</span>(values, <span class="kw">null</span> <span class="cm">/* starting */</span>,
+            <span class="kw">false</span> <span class="cm">/* deferResume */</span>, mAtmService.mTmpUpdateConfigurationResult);
+    <span class="cm">// ④ 真正下发（重载版在 :5537，内含 deferWindowLayout + 沿树传播）</span>
+    <span class="kw">return</span> mAtmService.mTmpUpdateConfigurationResult.changes != <span class="num">0</span>;
+    <span class="cm">// ⑤ 返回“有没有变化”：调用方据此决定要不要继续重建流程</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：算出新配置，更新内存阈值，然后沿树把配置传下去。</p>
+  <p><strong>设计意图</strong>：<span class="why">配置在树上是“往下流”的</span>（呼应 01 篇讲的「状态广播」）。每个节点拿到父节点的新配置后，先算自己的 resolved 配置（可能被 override），再传给子节点。这就是为什么改屏幕密度会影响所有 App、但某个 Activity 可以用 <code>configChanges</code> 自己处理掉一部分。</p>
+
+  <h3>块 J：App 侧要不要重建（ActivityRecord.java:7950 起，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">ActivityRecord.java:7950-7990（裁剪）</div>
+    <pre><span class="kw">boolean</span> <span class="fn">ensureActivityConfiguration</span>(<span class="kw">int</span> globalChanges, <span class="kw">boolean</span> preserveWindow,
+        <span class="kw">boolean</span> ignoreVisibility) {
+    <span class="kw">final</span> Task rootTask = <span class="fn">getRootTask</span>();
+    <span class="kw">if</span> (rootTask.mConfigWillChange) { <span class="kw">return true</span>; }
+    <span class="cm">// ① 父容器马上还要变，就先跳过——避免“刚重建完又变”的双重开销</span>
+
+    <span class="kw">if</span> (finishing) {
+        <span class="fn">stopFreezingScreenLocked</span>(<span class="kw">false</span>);
+        <span class="kw">return true</span>;
+        <span class="cm">// ② ★ 正在结束的 Activity 不重建，但必须调 stopFreezingScreenLocked——</span>
+        <span class="cm">//    否则它会一直把它自己记在“冻结屏”名单里，导致系统解冻不了（块 H 的坑）</span>
+    }
+    <span class="cm">// … 省略：解析 override 配置、比对 manifest configChanges、</span>
+    <span class="cm">//   决定 relaunch 还是只回调 onConfigurationChanged（7990-8100）</span>
+}
+
+<span class="cm">// 相关的两个方法（本篇只点名，不展开）：</span>
+<span class="cm">// ActivityRecord.resolveOverrideConfiguration()  :7142  算出“本 Activity 的最终配置”</span>
+<span class="cm">// ActivityRecord.onConfigurationChanged()        :7697  不重建时把它回调给 App</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：判断这个 Activity 面对配置变化是“重建”还是“只回调”，并且顺手处理冻结屏计数。</p>
+  <p><strong>设计意图</strong>：<span class="why">manifest 里的 configChanges 是性能开关</span>。声明了就能自己处理（不重建、更快、但代码要自己适配）；没声明就必须重建（系统兜底、但会闪一下 + 丢状态）。这就是「横竖屏切换为什么有时闪有时不闪」的答案。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>旋转后 App 一直黑或不刷新</strong>。<strong>因果</strong>：Activity 声明了 <code>configChanges="orientation|screenSize"</code>，但代码里没重排布局——系统不重建，App 自己又没适配，于是画面停在旧尺寸。<strong>怎么查</strong>：<code>dumpsys activity activities</code> 看该 Activity 的 config 是否已更新；应用侧打日志确认 <code>onConfigurationChanged</code> 有没有被调到。</div>
+  <div class="think"><span class="qtag">🧠 思考（闭环·需结合：块 H、块 I、块 J）</span> 一次旋转从 块 G 决定方向，到 块 H 冻结、块 I 下发新配置、块 J 决定重建，最后解冻。请把「谁会阻止解冻」这件事串起来：如果某个 Activity 重建得特别慢，用户看到的是什么？如果它声明了 configChanges 自己处理，又会快在哪一步？</div>
+</div>
+
+<!-- ====================================================== -->
+
+<h2 id="p8">八、完整链路与源码速查</h2>
+
+<div class="card">
+  <h3>完整链路（一次旋转的全过程）</h3>
+  <div class="tree">① 传感器/用户/App 三方博弈
+   └─ DisplayRotation.updateRotationUnchecked()            :415
+        └─ rotationForOrientation(lastOrientation, oldRotation)
+        └─ mDisplayContent.setLayoutNeeded()
+
+② 冻结画面（盖住旧图，提频）
+   └─ WindowManagerService.startFreezingDisplay()          :5706
+        ├─ mScreenFrozenLock.acquire()
+        └─ startLaunchPowerMode(FREEZE_DISPLAY)
+
+③ 重算所有 frame（本篇第二、三、四节）
+   └─ DisplayContent.performLayoutNoTrace()                :4417
+        └─ forAllWindows(mPerformLayout)                   :781
+             └─ DisplayPolicy.layoutWindowLw()             :1561
+                  └─ WindowState.computeFrame()            :1274
+
+④ 同步 Insets（布局的输出）
+   └─ InsetsStateController.onPostLayout()                 :289
+        ├─ InsetsSourceProvider.updateSourceFrame()        :198
+        └─ updateControlForTarget()                        :304
+             └─ notifyInsetsChanged()  → 触发下一轮布局
+
+⑤ 下发新配置
+   └─ DisplayContent.updateDisplayOverrideConfigurationLocked() :5511/5537
+
+⑥ 决定谁重建
+   └─ ActivityRecord.ensureActivityConfiguration()         :7950
+        ├─ 重建 → relaunch，等新窗口首帧
+        └─ 不重建 → onConfigurationChanged()               :7697
+
+⑦ 解冻（六个条件全满足才放行）
+   └─ WindowManagerService.stopFreezingDisplayLocked()     :5762
+        └─ 条件：waitingForConfig / waitingForRemoteRotation /
+                 mAppsFreezingScreen / mWindowsFreezingScreen /
+                 mClientFreezingScreen / numOpeningApps</div>
+
+  <h3>源码速查（WSL AOSP 12，行号均已 grep 核实）</h3>
+  <div class="code-block">
+    <div class="filename">布局 / Insets / 旋转 关键位置</div>
+    <pre><span class="cm"># 布局主循环</span>
+sed -n '4417,4480p' wm/DisplayContent.java      <span class="cm"># performLayoutNoTrace</span>
+sed -n '781,860p'   wm/DisplayContent.java      <span class="cm"># mPerformLayout 逐窗回调</span>
+sed -n '1561,1700p' wm/DisplayPolicy.java       <span class="cm"># layoutWindowLw（frame 唯一决策点）</span>
+sed -n '1262,1345p' wm/WindowState.java         <span class="cm"># computeFrameAndUpdateSourceFrame / computeFrame</span>
+
+<span class="cm"># Insets 三件套</span>
+sed -n '64,120p'    wm/InsetsStateController.java    <span class="cm"># 总账本</span>
+sed -n '289,330p'   wm/InsetsStateController.java    <span class="cm"># onPostLayout</span>
+sed -n '198,240p'   wm/InsetsSourceProvider.java     <span class="cm"># updateSourceFrame</span>
+sed -n '304,360p'   wm/InsetsSourceProvider.java     <span class="cm"># updateControlForTarget</span>
+sed -n '27,60p'     wm/InsetsControlTarget.java      <span class="cm"># 控制权接口</span>
+sed -n '48,80p'     wm/ImeInsetsSourceProvider.java  <span class="cm"># IME 专用</span>
+
+<span class="cm"># 旋转与冻结</span>
+sed -n '84,120p'    wm/DisplayRotation.java     <span class="cm"># 类定义</span>
+sed -n '415,510p'   wm/DisplayRotation.java     <span class="cm"># updateRotationUnchecked</span>
+sed -n '5706,5800p' wm/WindowManagerService.java  <span class="cm"># startFreezingDisplay / stopFreezingDisplayLocked</span>
+
+<span class="cm"># 配置变更</span>
+sed -n '5511,5560p' wm/DisplayContent.java      <span class="cm"># updateDisplayOverrideConfigurationLocked</span>
+sed -n '7142,7180p' wm/ActivityRecord.java      <span class="cm"># resolveOverrideConfiguration</span>
+sed -n '7950,8010p' wm/ActivityRecord.java      <span class="cm"># ensureActivityConfiguration</span>
+sed -n '7697,7730p' wm/ActivityRecord.java      <span class="cm"># onConfigurationChanged</span>
+sed -n '436,440p'   wm/DisplayContent.java      <span class="cm"># mWaitingForConfig 字段</span>
+
+<span class="cm"># 设备侧观察</span>
+adb shell dumpsys window displays
+adb shell dumpsys activity activities
+adb shell cmd window user-rotation 0/1/2/3    <span class="cm"># 手动转屏</span>
+adb shell cmd window set-ignore-orientation-request true/false
+<span class="cm"># ProtoLog：WM_DEBUG_ORIENTATION / WM_DEBUG_APP_TRANSITIONS</span></pre>
+  </div>
+
+  <h3>🧠 自测：5 个问题</h3>
+
+  <details><summary>1. 一个 App 窗口的 frame 最终 = 屏幕减去状态栏和导航栏，这个“减”发生在哪一步？</summary>
+  <div class="ans">不是 <code>computeFrame()</code> 里现减的。真正的减法发生在<strong>算出 <code>displayInfo.appRect</code> 的那一刻</strong>（由 DisplayContent / DisplayInfo 计算），<code>computeFrame()</code> 只是全屏窗口直接取用 <code>appRect</code> 当容身框（<code>WindowState.java:1338</code> 附近那个分支：<code>layoutContainingFrame = layoutDisplayFrame = displayInfo.appRect</code>）。而 <code>appRect</code> 本身是 <code>DisplayPolicy.layoutWindowLw()</code> 里算出的 systemDecorBounds / nonDecorBounds 的结果——所以“谁扣掉系统栏”的答案是 <strong>policy 层</strong>，不是 WindowState。</div></details>
+
+  <details><summary>2. 为什么布局要自顶向下，而 Z 序遍历要自底向上？</summary>
+  <div class="ans">因为两者的依赖方向相反。<strong>布局</strong>要先把父容器的范围定下来，子窗口才能相对它算位置（<code>mLayoutAttached</code> 的子窗 frame 甚至是相对父窗口坐标系算的）——所以必须自顶向下。<strong>Z 序</strong>要保证“下面的先分配、上面的后分配”才能得到正确的层叠次序——所以自底向上。（同一个 <code>forAllWindows</code>，靠传入不同遍历方向服务两种目的。）</div></details>
+
+  <details><summary>3. 状态栏隐藏后 App 内容没跟着长高，可能卡在哪三个环节？</summary>
+  <div class="ans">按数据流顺序排查：① <strong>输入没变</strong>：<code>InsetsStateController.onPostLayout()</code> 里 <code>changed</code> 为 false，没调 <code>notifyInsetsChanged()</code>；② <strong>没触发重布局</strong>：Insets 变了但没 <code>requestTraversal()</code>，于是 <code>performLayoutNoTrace</code> 开头 <code>if (!isLayoutNeeded()) return</code> 直接返回；③ <strong>窗口被跳过</strong>：窗口在 <code>mPerformLayout</code> 里被判 <code>isGoneForLayout()</code> 真而跳过，frame 保持旧值。三者对应 dump 里不同的字段组合。</div></details>
+
+  <details><summary>4. 旋转时为什么要“冻结显示 + 截屏”，而不是直接让窗口重画？</summary>
+  <div class="ans">因为旋转要重算所有窗口的 frame 并全部重绘，这个过程必然持续几十毫秒。如果期间让旧窗口继续渲染，用户会看到<strong>新旧方向混杂的中间态</strong>（部分窗口已转、部分没转，或画面被拉伸）。冻结 + 截屏的做法是：<strong>用一张静态截图盖住整个屏幕，等新方向的首帧准备好再一次性切换</strong>。代价是那一瞬间画面是死的（用户感觉“卡了一下”）。<code>ScreenRotationAnimation</code> 就是管这张截屏的。</div></details>
+
+  <details><summary>5. 声明了 <code>configChanges="orientation|screenSize"</code> 的 Activity，旋转时经历了什么不同？</summary>
+  <div class="ans">它走的是<strong>不重建</strong>分支：<code>ensureActivityConfiguration()</code> 比对 manifest 后认为 App 能自己处理这些变化，于是只回调 <code>onConfigurationChanged()</code>（<code>ActivityRecord.java:7697</code>），<strong>Activity 实例不销毁、不重新 onCreate、状态不丢</strong>——快，但要求代码自己重排布局。<br>反之未声明时会走 relaunch：Activity 销毁重建、全量重新布局，慢且会闪，但系统兜底保证最终布局正确。这就是「同一次旋转，有的 App 闪、有的不闪」的根本原因。</div></details>
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📝 <strong>临时稿</strong>：draft-2026-10-18-layout-insets-rotation.html（_draft 目录）</p>
+  <p>基于 AOSP 12 · WSL 路径 <code>/home/book/aosp12/</code> · 行号 2026-10-18 现地核实</p>
+  <p style="margin-top:10px;">
+    <a href="android-window-roadmap.html">🗺️ 学习路线图</a>
+  </p>
+  <p style="margin-top:8px;">正式落盘后续编号、并入系列并更新 index.html 与上下篇链接。</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>窗口刷新：布局、Z 序与事务提交（WMS 学习 03）</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:30px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; color:var(--text2); }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { background:var(--code-bg); border-radius:3px; padding:1px 6px; font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.88em; color:var(--text); }
+
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; color:var(--text); }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+
+    .step-box { background:var(--step-bg); border:1px solid var(--step-border); border-radius:8px; padding:14px 22px; margin:16px 0; color:var(--text); }
+    .step-num { display:inline-block; background:var(--accent); color:#fff; width:28px; height:28px; border-radius:50%; text-align:center; line-height:28px; font-weight:bold; font-size:.85rem; margin-right:8px; }
+
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.83rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; }
+    .fn { color:var(--fn); font-weight:600; }
+    .cm { color:var(--cm); font-style:italic; }
+    .num { color:#b48a3a; }
+
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; }
+    th { background:var(--table-hdr); font-weight:600; color:var(--text); }
+    tr:hover td { background:var(--hover-bg); }
+
+    .flow { display:flex; flex-wrap:wrap; align-items:center; gap:4px 4px; margin:16px 0; font-family:"SF Mono","Fira Code",monospace; font-size:.8rem; }
+    .flow-box { background:var(--code-bg); border:1px solid var(--border); border-radius:6px; padding:5px 10px; white-space:nowrap; }
+    .flow-box.star { border-color:var(--accent); background:var(--tag-bg); }
+    .flow-arrow { color:var(--text2); font-size:1.1rem; }
+
+    .tree { font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; }
+    .tree .nl { color:var(--accent3); font-weight:600; }
+    .tree .nl2 { color:var(--accent2); }
+    .tree .dim { color:var(--text2); }
+    .tree .hl { background:var(--tag-bg); border-radius:3px; padding:0 3px; }
+    .tree .ord { color:var(--accent); font-weight:700; }
+
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🖥️ 窗口刷新：布局、Z 序与事务提交</h1>
+<p class="subtitle">脏标记 · 一次遍历 · 一把事务 · AOSP 12 源码深度拆解</p>
+<p class="series">📚 Android 窗口层级专题 03 ｜ 基于 <code>android-12.0.0_r32</code> ｜ 上篇：<a href="02-窗口树的构建算法.html">← 02 窗口树是怎样建起来的</a> ｜ 下篇：<a href="04-像素怎样上屏.html">04 像素怎样上屏 →</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p1">一、全景：从"窗口变了"到"屏幕变了"</a>
+  <a href="#p2">二、总调度：WindowSurfacePlacer — 一次布局循环</a>
+  <a href="#p3">三、遍历引擎：forAllWindows — DFS 与 Z 序</a>
+  <a href="#p4">四、第一遍遍历：布局（performLayout）</a>
+  <a href="#p5">五、布局之后：后置策略收敛、遮挡检测与逐窗口状态应用</a>
+  <a href="#p6">六、Z 序分配：assignChildLayers 两遍算法</a>
+  <a href="#p7">七、提交：一把事务落地到 SurfaceFlinger</a>
+  <a href="#p8">八、完整链路一览</a>
+  <a href="#p9">九、源码速查</a>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p1">一、全景：从"窗口变了"到"屏幕变了"</h2>
+
+<div class="card">
+  <p>上一篇我们讲完了树是怎么建起来的、窗口是怎么挂上去的。这一篇回答下一个问题：<strong>树上的一个变化（窗口新增、移除、resize、显示/隐藏），是怎么最终变成屏幕上像素变化的？</strong></p>
+
+  <p>先建立一个最重要的直觉：<strong>任何变化都不会立刻画屏。</strong>系统采用"脏标记 + 批量处理"策略——变化只负责做标记，然后统一安排一次遍历，最后用一笔事务提交：</p>
+
+  <div class="flow">
+    <span class="flow-box">窗口状态变化<br>addWindow / removeWindow / relayoutWindow / 动画</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box star">标记脏<br>setLayoutNeeded / mWindowsChanged</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box star">requestTraversal()<br>WindowSurfacePlacer 排程</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box star">performSurfacePlacement()<br>最多循环 6 次</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box">RootWindowContainer<br>.performSurfacePlacement()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box star">applySurfaceChangesTransaction()<br>逐显示器：布局 + 应用状态</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box">mergeToGlobalTransaction()<br>合并为一笔全局事务</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box">SurfaceFlinger<br>下一个 VSYNC 消费事务 → 上屏</span>
+  </div>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 两个贯穿全文的核心思想 ✦ ✦ ✦</span><br>
+    <strong>① 延迟合并（Defer）</strong>：短时间内的一连串变化（比如分屏动画改了几十个窗口），先攒着，最后只做<strong>一次</strong>布局遍历，避免重复劳动。<br>
+    <strong>② 统一提交（Single Transaction）</strong>：所有窗口的新位置、新 Z 序、显示/隐藏，打包成<strong>一笔</strong> SurfaceControl 事务原子提交，观众永远看不到"改到一半"的中间状态（避免闪烁）。
+  </div>
+
+  <p>读完整篇你会发现，整个流程其实就三件事：<strong>遍历树（forAllWindows）→ 算位置（performLayout）→ 分层次（assignChildLayers）</strong>，最后包起来提交。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p2">二、总调度：WindowSurfacePlacer — 一次布局循环</h2>
+
+<div class="card">
+
+  <p>遍历的总入口不在 WMS 里，而是一个专职小类 <code>WindowSurfacePlacer</code>（AOSP 12 名字；它的前身是 WMS 里的 <code>performLayoutAndPlaceSurfacesLocked</code>）。它的职责写在类注释里：</p>
+
+  <div class="annotation">
+    <em>"Positions windows and their surfaces. It sets positions of windows by calculating their frames and then applies this by positioning surfaces according to these frames."</em><br>
+    —— 计算每个窗口的 frame（位置+大小），然后据此摆放对应的 Surface。
+  </div>
+
+  <h3>2.1 排程：requestTraversal()</h3>
+
+  <div class="code-block">
+    <div class="filename">WindowSurfacePlacer.java — 请求一次遍历</div>
+    <pre>
+<span class="kw">void</span> <span class="fn">requestTraversal</span>() {
+    <span class="kw">if</span> (mTraversalScheduled) {          <span class="cm">// ★ 幂等：已经排了就不用再排</span>
+        <span class="kw">return</span>;
+    }
+    mTraversalScheduled = <span class="kw">true</span>;
+    <span class="kw">if</span> (mDeferDepth &gt; 0) {               <span class="cm">// ★ 正在 defer：只计数，不执行</span>
+        mDeferredRequests++;
+        <span class="kw">return</span>;
+    }
+    mService.mAnimationHandler.post(mPerformSurfacePlacement);   <span class="cm">// ★ 投递到动画线程的消息队列</span>
+}
+      </pre>
+    </div>
+
+  <p>注意两个细节：</p>
+  <ul>
+    <li><strong>幂等</strong>：一帧内无论多少个窗口请求，最终只跑一次遍历（mTraversalScheduled 标志）。</li>
+    <li><strong>投递到 mAnimationHandler</strong>：遍历发生在动画消息队列上，天然和动画节奏对齐；同一队列里后到的遍历请求会被合并。</li>
+  </ul>
+
+  <h3>2.2 defer：把多次变更攒成一次</h3>
+
+  <div class="code-block">
+    <div class="filename">WindowSurfacePlacer.java — defer 机制</div>
+    <pre>
+<span class="cm">/** Starts deferring layout passes. Useful when doing multiple changes but
+ *  to optimize performance, only one layout pass should be done. */</span>
+<span class="kw">void</span> <span class="fn">deferLayout</span>() { mDeferDepth++; }     <span class="cm">// 进入延迟区（可嵌套计数）</span>
+
+<span class="kw">void</span> <span class="fn">continueLayout</span>() {
+    mDeferDepth--;
+    <span class="kw">if</span> (mDeferDepth == <span class="num">0</span> &amp;&amp; mDeferredRequests &gt; <span class="num">0</span>) {
+        mDeferredRequests = <span class="num">0</span>;
+        <span class="fn">performSurfacePlacement</span>();        <span class="cm">// ★ 退出延迟区：一次性结算</span>
+    }
+}
+      </pre>
+    </div>
+
+  <p>典型场景：分屏拖拽、批量改窗口属性时，WMS 会 <code>deferLayout()</code> 包住整段操作，改完再 <code>continueLayout()</code>——期间所有 requestTraversal 都被计数积压，最后只遍历一次。</p>
+
+  <h3>2.3 执行：performSurfacePlacement() — 为什么最多 6 次</h3>
+
+  <div class="code-block">
+    <div class="filename">WindowSurfacePlacer.java — 布局循环</div>
+    <pre>
+<span class="kw">final void</span> <span class="fn">performSurfacePlacement</span>(<span class="kw">boolean</span> force) {
+    <span class="kw">if</span> (mDeferDepth &gt; <span class="num">0</span> &amp;&amp; !force) {        <span class="cm">// 延迟中：只记一笔账</span>
+        mDeferredRequests++;
+        <span class="kw">return</span>;
+    }
+    <span class="kw">int</span> loopCount = <span class="num">6</span>;                      <span class="cm">// ★ 与 LAYOUT_REPEAT_THRESHOLD 一致</span>
+    <span class="kw">do</span> {
+        mTraversalScheduled = <span class="kw">false</span>;
+        <span class="fn">performSurfacePlacementLoop</span>();
+        mService.mAnimationHandler.removeCallbacks(mPerformSurfacePlacement);
+        loopCount--;
+    } <span class="kw">while</span> (mTraversalScheduled &amp;&amp; loopCount &gt; <span class="num">0</span>);   <span class="cm">// ★ 遍历过程中又有新请求 → 再跑一轮</span>
+    mService.mRoot.mWallpaperActionPending = <span class="kw">false</span>;
+}
+      </pre>
+    </div>
+
+  <p><strong>为什么是循环而不是一次？</strong>因为一次遍历的结果可能引发新的布局需求（比如壁纸发现要重调、旋转后要重算）。循环允许"再跑一轮"，但上限 6 次——防止两个窗口互相触发、震荡成死循环。超过 6 次就放弃并打日志。</p>
+
+  <p>核心的 <code>performSurfacePlacementLoop()</code> 做了三件事：</p>
+
+  <div class="code-block">
+    <div class="filename">WindowSurfacePlacer.java — performSurfacePlacementLoop（节选）</div>
+    <pre>
+<span class="kw">if</span> (mInLayout) { ... <span class="kw">return</span>; }                       <span class="cm">// ★ 防重入：遍历中禁止再入</span>
+<span class="kw">if</span> (defaultDisplay.mWaitingForConfig) <span class="kw">return</span>;       <span class="cm">// 旋转中：配置没就绪先不布局</span>
+<span class="kw">if</span> (!mService.mDisplayReady) <span class="kw">return</span>;                 <span class="cm">// 系统没初始化完：不动</span>
+
+mInLayout = <span class="kw">true</span>;
+<span class="kw">try</span> {
+    mService.mRoot.<span class="fn">performSurfacePlacement</span>();      <span class="cm">// ★ 真正的遍历入口：从根节点开始</span>
+
+    mInLayout = <span class="kw">false</span>;
+    <span class="kw">if</span> (mService.mRoot.isLayoutNeeded()) {         <span class="cm">// 一轮没摆平？</span>
+        <span class="kw">if</span> (++mLayoutRepeatCount &lt; <span class="num">6</span>) {
+            <span class="fn">requestTraversal</span>();                 <span class="cm">// ★ 再请求一轮（呼应外面的 do-while）</span>
+        } <span class="kw">else</span> {
+            Slog.e(TAG, <span class="cm">"Performed 6 layouts in a row. Skipping"</span>);
+            mLayoutRepeatCount = <span class="num">0</span>;
+        }
+    }
+}
+      </pre>
+    </div>
+
+  <table>
+    <tr><th>关键字段</th><th>作用</th></tr>
+    <tr><td><code>mTraversalScheduled</code></td><td>是否已有遍历在排队（幂等 + 循环条件）</td></tr>
+    <tr><td><code>mDeferDepth</code></td><td>延迟深度（可嵌套），&gt;0 时不真正执行</td></tr>
+    <tr><td><code>mInLayout</code></td><td>防重入标志</td></tr>
+    <tr><td><code>mLayoutRepeatCount</code></td><td>连续布局轮数，≥6 放弃</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p3">三、遍历引擎：forAllWindows — DFS 与 Z 序</h2>
+
+<div class="card">
+
+  <p>回顾 01 的结论：<strong>mChildren 列表本身就是 Z 序，最顶层节点在列表尾部</strong>。源码注释原文：</p>
+
+  <div class="code-block">
+    <div class="filename">WindowContainer.java — mChildren 字段注释</div>
+    <pre>
+<span class="cm">// List of children for this window container. List is in z-order as the children appear on
+// screen with the top-most window container at the tail of the list.</span>
+<span class="kw">protected final</span> WindowList&lt;E&gt; mChildren = <span class="kw">new</span> WindowList&lt;E&gt;();
+      </pre>
+    </div>
+
+  <p>有了这个不变量，深度优先遍历（DFS）就有了方向：</p>
+
+  <div class="code-block">
+    <div class="filename">WindowContainer.java — 递归遍历器</div>
+    <pre>
+<span class="kw">boolean</span> <span class="fn">forAllWindows</span>(ToBooleanFunction&lt;WindowState&gt; callback, <span class="kw">boolean</span> traverseTopToBottom) {
+    <span class="kw">if</span> (traverseTopToBottom) {
+        <span class="cm">// ★ 从尾部（最顶层）开始，向下遍历</span>
+        <span class="kw">for</span> (<span class="kw">int</span> i = mChildren.size() - <span class="num">1</span>; i &gt;= <span class="num">0</span>; --i) {
+            <span class="kw">if</span> (mChildren.get(i).forAllWindows(callback, traverseTopToBottom)) {
+                <span class="kw">return true</span>;          <span class="cm">// ★ 回调返回 true = 短路，提前结束搜索</span>
+            }
+        }
+    } <span class="kw">else</span> {
+        <span class="cm">// ★ 从头部（最底层）开始，向上遍历</span>
+        <span class="kw">final int</span> count = mChildren.size();
+        <span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">0</span>; i &lt; count; i++) {
+            <span class="kw">if</span> (mChildren.get(i).forAllWindows(callback, traverseTopToBottom)) {
+                <span class="kw">return true</span>;
+            }
+        }
+    }
+    <span class="kw">return false</span>;
+}
+      </pre>
+    </div>
+
+  <p>用一棵简化树感受一下访问顺序（数字 = 访问次序，<code>traverseTopToBottom = true</code>）：</p>
+
+  <pre class="tree">
+<span class="nl">RootWindowContainer</span>
+ └── <span class="nl">DisplayContent</span> (id=0)
+      ├── <span class="nl2">DisplayArea.Tokens</span> "Leaf:0:1"        <span class="ord">④</span>   <span class="dim">← 壁纸（最底层，最后访问）</span>
+      │    └── WindowToken → WindowState        <span class="ord">⑤</span>
+      ├── <span class="nl2">TaskDisplayArea</span>                   <span class="ord">③</span>
+      │    └── Task → ActivityRecord → WindowState  <span class="ord">③</span>
+      ├── <span class="nl2">DisplayArea.Tokens</span> "Leaf:8:14"     <span class="ord">②</span>   <span class="dim">← Toast 等</span>
+      └── <span class="nl2">DisplayArea.Tokens</span> "Leaf:17:23"   <span class="ord">①</span>   <span class="dim">← 状态栏（最顶层，最先访问）</span>
+  </pre>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 为什么"遍历顺序"如此重要 ✦ ✦ ✦</span><br>
+    全系统的多个子系统共用这<strong>同一个遍历器</strong>：布局用它、遮挡检测用它、输入事件分发（InputDispatcher 构建窗口命中列表）也用它。<br>
+    只要大家都按"树的顺序"走，就能保证 <strong>眼睛看到的顺序（Z 序）== 手指点到的顺序（命中顺序）</strong>。这就是 01 里说的"DFS 遍历天然决定 Z-Order"的威力。
+  </div>
+
+  <p>另外注意 <code>ToBooleanFunction</code> 的短路语义：回调返回 true 就停止整棵树的遍历。这被用于"找到第一个可见窗口"之类的搜索（如查找焦点目标）。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p4">四、第一遍遍历：布局（performLayout）</h2>
+
+<div class="card">
+
+  <p>树遍历进来后，第一件事是<strong>布局（layout）</strong>。注意概念区分：</p>
+
+  <div class="annotation">
+    <strong>布局（layout）= 计算 frame</strong>：决定每个窗口在屏幕上<strong>应该在哪个位置、多大</strong>（纯数学计算，只改内存里的矩形）。<br>
+    <strong>摆放（place）= 移动 Surface</strong>：把上一步算出的 frame 写进 SurfaceControl.Transaction，真正挪动画面。这是后面第六、七节的事。
+  </div>
+
+  <h3>4.1 两遍遍历：先根窗口，后附着窗口</h3>
+
+  <div class="code-block">
+    <div class="filename">DisplayContent.java — performLayoutNoTrace</div>
+    <pre>
+<span class="kw">private void</span> <span class="fn">performLayoutNoTrace</span>(<span class="kw">boolean</span> initial, <span class="kw">boolean</span> updateInputWindows) {
+    <span class="kw">if</span> (!isLayoutNeeded()) <span class="kw">return</span>;      <span class="cm">// ★ 没有脏标记就跳过（不浪费遍历）</span>
+    clearLayoutNeeded();
+
+    <span class="kw">int</span> seq = mLayoutSeq + <span class="num">1</span>;         <span class="cm">// 布局序号：区分"这是第几轮布局"</span>
+    mLayoutSeq = seq;
+
+    <span class="cm">// ★ 第一遍：布局所有"根窗口"（不依附于其他窗口的）</span>
+    forAllWindows(mPerformLayout, <span class="kw">true</span> <span class="cm">/* traverseTopToBottom */</span>);
+
+    <span class="cm">// ★ 第二遍：布局"附着窗口"（子窗口依赖父窗口的位置，必须等父先算完）</span>
+    forAllWindows(mPerformLayoutAttached, <span class="kw">true</span> <span class="cm">/* traverseTopToBottom */</span>);
+
+    <span class="cm">// 窗口 frame 可能变了 → 通知输入分发器重建命中区域</span>
+    mInputMonitor.setUpdateInputWindowsNeededLw();
+    <span class="kw">if</span> (updateInputWindows) {
+        mInputMonitor.updateInputWindowsLw(<span class="kw">false</span>);
+    }
+}
+      </pre>
+    </div>
+
+  <p>为什么必须两遍？因为<strong>子窗口的 frame 是相对父窗口算的</strong>——PopupWindow、Dialog 这类附着窗口，要先知道父窗口定在哪，才能定自己。所以：第一遍所有根窗口（各自独立定位），第二遍所有附着窗口（跟着父窗口走）。</p>
+
+  <h3>4.2 单个窗口怎么算：mPerformLayout</h3>
+
+  <div class="code-block">
+    <div class="filename">DisplayContent.java — mPerformLayout 回调</div>
+    <pre>
+<span class="kw">private final</span> Consumer&lt;WindowState&gt; mPerformLayout = w -&gt; {
+    <span class="kw">final boolean</span> gone = w.isGoneForLayout();   <span class="cm">// 即将消失的窗口：跳过，省时省力</span>
+
+    <span class="kw">if</span> ((!gone || !w.mHaveFrame || w.mLayoutNeeded) &amp;&amp; !w.mLayoutAttached) {
+        w.mSurfacePlacementNeeded = <span class="kw">true</span>;
+        w.mLayoutNeeded = <span class="kw">false</span>;
+        w.<span class="fn">prelayout</span>();                              <span class="cm">// ★ 布局前钩子（如隐藏窗口置空 frame）</span>
+        getDisplayPolicy().<span class="fn">layoutWindowLw</span>(w, <span class="kw">null</span>, mDisplayFrames);
+                                                   <span class="cm">// ★ 核心：计算窗口 frame
+                                                   //   → 最终调用 win.computeFrames()，
+                                                   //   按窗口类型/Insets/父窗口算出最终矩形</span>
+        w.mLayoutSeq = mLayoutSeq;                  <span class="cm">// 记录本窗口被第几轮布局过</span>
+        ...
+    }
+};
+      </pre>
+    </div>
+
+  <p>两个值得记住的字段，之后读源码会反复遇到：</p>
+
+  <table>
+    <tr><th>字段</th><th>含义</th><th>类比</th></tr>
+    <tr><td><code>mLayoutNeeded</code></td><td>这个窗口"需要重新布局"</td><td>待办便签</td></tr>
+    <tr><td><code>mHaveFrame</code></td><td>这个窗口"已经有一个算好的 frame"</td><td>已有地址</td></tr>
+    <tr><td><code>mLayoutSeq</code></td><td>最后一次布局的轮次号</td><td>盖章日期（判断结果是否过期）</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p5">五、布局之后：后置策略收敛、遮挡检测与逐窗口状态应用</h2>
+
+<div class="card">
+
+  <p>布局只是算了位置。算完之后，系统还要回答一堆"副作用"问题：壁纸要不要跟着重排？屏幕方向要不要改？哪个窗口挡住了谁（遮挡检测）？——这些由 <code>DisplayContent.applySurfaceChangesTransaction()</code> 用一个 <strong>do-while 循环</strong>来收敛：</p>
+
+  <div class="code-block">
+    <div class="filename">DisplayContent.java — applySurfaceChangesTransaction（节选）</div>
+    <pre>
+<span class="kw">int</span> repeats = <span class="num">0</span>;
+<span class="kw">do</span> {
+    repeats++;
+    <span class="kw">if</span> (repeats &gt; <span class="num">6</span>) { ... <span class="kw">break</span>; }              <span class="cm">// ★ 又是 6 次上限：防止震荡</span>
+
+    <span class="kw">if</span> ((pendingLayoutChanges &amp; FINISH_LAYOUT_REDO_WALLPAPER) != <span class="num">0</span>) {
+        mWallpaperController.adjustWallpaperWindows();   <span class="cm">// 壁纸目标变了 → 重调壁纸窗口</span>
+    }
+    <span class="kw">if</span> ((pendingLayoutChanges &amp; FINISH_LAYOUT_REDO_CONFIG) != <span class="num">0</span>) {
+        <span class="kw">if</span> (updateOrientation()) { ... }             <span class="cm">// 方向变了 → 旋转 + 通知配置变化</span>
+    }
+    <span class="kw">if</span> ((pendingLayoutChanges &amp; FINISH_LAYOUT_REDO_LAYOUT) != <span class="num">0</span>) {
+        setLayoutNeeded();                              <span class="cm">// 要求再来一轮布局</span>
+    }
+
+    <span class="fn">performLayout</span>(repeats == <span class="num">1</span>, <span class="kw">false</span>);              <span class="cm">// ★ 第一遍遍历（上一节）</span>
+
+    pendingLayoutChanges = <span class="num">0</span>;                         <span class="cm">// 清零，然后由策略层重新投票</span>
+
+    <span class="cm">// ★ 策略层（PhoneWindowManager）遍历所有窗口，投票决定还需不需要再布局</span>
+    mDisplayPolicy.beginPostLayoutPolicyLw();
+    forAllWindows(mApplyPostLayoutPolicy, <span class="kw">true</span> <span class="cm">/* traverseTopToBottom */</span>);
+    pendingLayoutChanges |= mDisplayPolicy.finishPostLayoutPolicyLw();
+} <span class="kw">while</span> (pendingLayoutChanges != <span class="num">0</span>);   <span class="cm">// ★ 还有票 → 再跑一轮，直到稳定</span>
+      </pre>
+    </div>
+
+  <p>这个循环体现了经典的<strong>"布局 → 检查 → 再布局"收敛模型</strong>：布局结果可能改变策略判断（如状态栏隐藏导致应用要拉伸、壁纸要跟随），策略判断又要求重布局，反复直到稳定（或 6 次上限）。</p>
+
+  <h3>5.1 逐窗口应用：遮挡检测</h3>
+
+  <p>循环收敛后，再用一遍 <code>forAllWindows</code> 从上到下给每个窗口"结算"显示状态，其中最核心的是<strong>遮挡检测</strong>——决定后面的窗口是否需要调暗（Dim）：</p>
+
+  <div class="code-block">
+    <div class="filename">DisplayContent.java — mApplySurfaceChangesTransaction 回调（节选）</div>
+    <pre>
+<span class="kw">private final</span> Consumer&lt;WindowState&gt; mApplySurfaceChangesTransaction = w -&gt; {
+    <span class="kw">final boolean</span> obscuredChanged = w.mObscured !=
+            mTmpApplySurfaceChangesTransactionState.obscured;
+    w.mObscured = mTmpApplySurfaceChangesTransactionState.obscured;
+                              <span class="cm">// ★ 遍历从上到下：更上层窗口先结算，
+                              //   后面的窗口若被完全盖住，标记为 obscured</span>
+
+    <span class="kw">if</span> (!mTmpApplySurfaceChangesTransactionState.obscured) {
+        <span class="kw">final boolean</span> isDisplayed = w.isDisplayed();
+
+        <span class="kw">if</span> (isDisplayed &amp;&amp; w.isObscuringDisplay()) {
+            <span class="cm">// ★ 这个窗口不透明且铺满全屏 → 它后面的窗口全被遮挡，
+            //   不必再画（性能优化：SurfaceFlinger 直接跳过）</span>
+            root.mObscuringWindow = w;
+            mTmpApplySurfaceChangesTransactionState.obscured = <span class="kw">true</span>;
+        }
+        <span class="kw">final boolean</span> displayHasContent =
+                root.handleNotObscuredLocked(w, ...);   <span class="cm">// 屏幕是否有内容 → 控制熄屏/保活</span>
+        ...
+    }
+};
+      </pre>
+    </div>
+
+  <p>注意遍历方向的妙用：<strong>从顶层往底层走</strong>，一旦遇到全屏不透明窗口，后面（更底层）的所有窗口就全被挡住——这正是"最顶层在列表尾部、从尾部开始遍历"这一设计带来的顺理成章的效率。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p6">六、Z 序分配：assignChildLayers 两遍算法</h2>
+
+<div class="card">
+
+  <p>这是本篇的第二个核心。布局定了 <strong>(X, Y)</strong>，Z 序分配定 <strong>Z</strong>。回顾 02 的内容：树的形状由 base layer 决定（窗口类型 → 挂在哪个 DisplayArea.Tokens 下），但<strong>真正的 Z 值</strong>是遍历时按顺序现分的整数。</p>
+
+  <h3>6.1 入口：谁触发重新分 Z</h3>
+
+  <div class="code-block">
+    <div class="filename">DisplayContent.java — assignWindowLayers</div>
+    <pre>
+<span class="cm">/** Updates the layer assignment of windows on this display. */</span>
+<span class="kw">void</span> <span class="fn">assignWindowLayers</span>(<span class="kw">boolean</span> setLayoutNeeded) {
+    <span class="fn">assignChildLayers</span>(getSyncTransaction());   <span class="cm">// ★ 整棵子树重新分配 Z 值</span>
+    <span class="kw">if</span> (setLayoutNeeded) setLayoutNeeded();
+    <span class="fn">scheduleAnimation</span>();   <span class="cm">// Z 序变化延迟到动画阶段随事务一起应用（避免闪跳）</span>
+}
+      </pre>
+    </div>
+
+  <h3>6.2 两遍算法：普通孩子先分，Z-Boost 孩子殿后</h3>
+
+  <div class="code-block">
+    <div class="filename">WindowContainer.java — assignChildLayers</div>
+    <pre>
+<span class="kw">void</span> <span class="fn">assignChildLayers</span>(Transaction t) {
+    <span class="kw">int</span> layer = <span class="num">0</span>;                        <span class="cm">// ★ 从 0 开始，自底向上递增</span>
+
+    <span class="cm">// 两遍遍历：第二遍把需要 Z-boost 的孩子排到末尾（= 更高 Z）</span>
+    <span class="kw">for</span> (<span class="kw">int</span> j = <span class="num">0</span>; j &lt; mChildren.size(); ++j) {
+        <span class="kw">final</span> WindowContainer wc = mChildren.get(j);
+        wc.assignChildLayers(t);                 <span class="cm">// ★ 先递归分内部</span>
+        <span class="kw">if</span> (!wc.needsZBoost()) {
+            wc.assignLayer(t, layer++);          <span class="cm">// 第一遍：普通孩子按顺序拿号</span>
+        }
+    }
+    <span class="kw">for</span> (<span class="kw">int</span> j = <span class="num">0</span>; j &lt; mChildren.size(); ++j) {
+        <span class="kw">final</span> WindowContainer wc = mChildren.get(j);
+        <span class="kw">if</span> (wc.needsZBoost()) {
+            wc.assignLayer(t, layer++);          <span class="cm">// 第二遍：Z-boost 孩子拿更大的号</span>
+        }
+    }
+}
+      </pre>
+    </div>
+
+  <p><strong>needsZBoost()</strong> 问的是："这个节点（或它的子孙）是否要求临时'破格'压到兄弟节点之上？"（典型的如某些系统弹窗需要压过应用窗口）。两遍遍历保证：需要破格的节点，Z 值一定比所有普通兄弟大，但又不会搅乱普通兄弟之间的相对顺序。</p>
+
+  <h3>6.3 叶子节点的特殊处理：WindowState.assignLayer</h3>
+
+  <div class="code-block">
+    <div class="filename">WindowState.java — assignLayer 覆写</div>
+    <pre>
+<span class="kw">@Override</span>
+<span class="kw">void</span> <span class="fn">assignLayer</span>(Transaction t, <span class="kw">int</span> layer) {
+    <span class="cm">// 输入法的目标窗口：不能只按序号排，要"相对 IME"排</span>
+    <span class="kw">if</span> (needsRelativeLayeringToIme()) {
+        getDisplayContent().assignRelativeLayerForImeTargetChild(t, <span class="kw">this</span>);
+        <span class="kw">return</span>;
+    }
+    <span class="kw">super</span>.assignLayer(t, layer);
+}
+      </pre>
+    </div>
+
+  <p>IME（输入法）是 Z 序里最"不安分"的角色：它必须紧跟目标窗口——目标窗口的兄弟（比如它弹出来的子窗口）要能盖过 IME，但别的窗口不行。所以 IME 相关节点不走普通编号，而走 <code>assignRelativeLayerForIme</code> 的"相对定位"。这解释了为什么 DisplayContent 覆写的 <code>assignChildLayers</code> 开头要先调用 <code>assignRelativeLayerForIme(t, false)</code>。</p>
+
+  <p>基类 <code>WindowContainer.assignLayer(t, layer)</code> 也很务实：</p>
+
+  <div class="code-block">
+    <div class="filename">WindowContainer.java — assignLayer 基实现</div>
+    <pre>
+<span class="kw">void</span> <span class="fn">assignLayer</span>(Transaction t, <span class="kw">int</span> layer) {
+    <span class="cm">// 过渡动画播放期间不抢 Z：避免和动画的 Z 打架（z-order fighting）</span>
+    <span class="kw">if</span> (mWmService.mAtmService.getTransitionController().isPlaying()) <span class="kw">return</span>;
+    <span class="kw">final boolean</span> changed = layer != mLastLayer || mLastRelativeToLayer != <span class="kw">null</span>;
+    <span class="kw">if</span> (mSurfaceControl != <span class="kw">null</span> &amp;&amp; changed) {
+        setLayer(t, layer);          <span class="cm">// ★ 把新 Z 写进事务，等最后统一提交</span>
+        mLastLayer = layer;
+        mLastRelativeToLayer = <span class="kw">null</span>;
+    }
+}
+      </pre>
+    </div>
+
+  <h3>6.4 base layer：窗口类型的"初始分班"</h3>
+
+  <p>别忘了树是怎么长成这个形状的：每个窗口类型先被映射成一个 <strong>base layer 数字</strong>，这个数字决定它挂在哪个 DisplayArea.Tokens 下（02 的 <code>typeOfLayer</code> + <code>areaForLayer</code> 查表）。AOSP 12 的真实映射：</p>
+
+  <table>
+    <tr><th>窗口类型</th><th>base layer</th><th>窗口类型</th><th>base layer</th></tr>
+    <tr><td>TYPE_WALLPAPER（壁纸）</td><td>1</td><td>TYPE_SYSTEM_ALERT（内部）</td><td>13</td></tr>
+    <tr><td><strong>应用窗口（APPLICATION_LAYER）</strong></td><td><strong>2</strong></td><td>TYPE_INPUT_METHOD（输入法）</td><td>15</td></tr>
+    <tr><td>TYPE_PHONE / DOCK_DIVIDER</td><td>3</td><td>TYPE_STATUS_BAR（状态栏）</td><td>17</td></tr>
+    <tr><td>TYPE_SYSTEM_DIALOG</td><td>7</td><td>TYPE_NOTIFICATION_SHADE（通知栏）</td><td>19</td></tr>
+    <tr><td>TYPE_TOAST</td><td>8</td><td>TYPE_NAVIGATION_BAR（导航栏）</td><td>24</td></tr>
+    <tr><td>TYPE_APPLICATION_OVERLAY</td><td>12</td><td>TYPE_SYSTEM_ERROR（内部）</td><td>27</td></tr>
+  </table>
+
+  <div class="annotation">
+    ⚠️ <strong>版本注意</strong>：旧版本 Android（如 8.x）里 TOAST=26、STATUS_BAR=15、WALLPAPER=2。AOSP 12 重新编号过。看旧资料时要对得上版本，否则会懵。<br><br>
+    💡 <strong>双重理解</strong>：base layer 决定<strong>树的形状</strong>（挂哪个 Tokens）；遍历时按顺序发的<strong>连续整数</strong>才是真正的 Z 值。前者相对静态，后者每次遍历都可能变。
+  </div>
+
+  <h3>6.5 数字示例：一棵树的 Z 值长什么样</h3>
+
+  <p>假设 DisplayContent 下经过 02 的构建算法后得到（示意值，默认 Feature 简化）：</p>
+
+  <pre class="tree">
+<span class="nl">DisplayContent</span>  ── assignChildLayers 从这里开始，layer 从 0 发号
+ ├── <span class="nl2">DA.Tokens</span> "Leaf:0:1"          <span class="hl">Z=0</span>   <span class="dim">← 壁纸</span>
+ │     └── WallpaperWindowState        Z=0
+ ├── <span class="nl2">TaskDisplayArea</span>               <span class="hl">Z=1</span>
+ │     └── Task#1 → ActivityRecord
+ │           └── WindowState(微信)     Z=1
+ ├── <span class="nl2">DA.Tokens</span> "Leaf:8:14"        <span class="hl">Z=2</span>   <span class="dim">← Toast 等</span>
+ │     └── ToastWindowState           Z=2
+ ├── <span class="nl2">ImeContainer</span>                  <span class="hl">Z=3</span>   <span class="dim">← 输入法（相对层级，示例值）</span>
+ ├── <span class="nl2">DA.Tokens</span> "Leaf:17:23"      <span class="hl">Z=4</span>   <span class="dim">← 状态栏 / 通知栏</span>
+ └── <span class="nl2">DA.Tokens</span> "Leaf:24:31"      <span class="hl">Z=5</span>   <span class="dim">← 导航栏</span>
+  </pre>
+
+  <p>看到了吗：<strong>Z 值就是"在这棵树的这条路上排第几"</strong>。树的形状不变，Z 的绝对数字变了也没关系（比如中间插入一层），因为大家只关心相对关系。这就是层级树设计的优雅之处——<strong>结构即顺序</strong>。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p7">七、提交：一把事务落地到 SurfaceFlinger</h2>
+
+<div class="card">
+
+  <p>所有遍历做完，新的 frame、新的 Z 值、显示/隐藏状态都写进了<strong>事务对象</strong>（Transaction）。最后一步是把它合并成一笔全局事务，原子地提交给 SurfaceFlinger：</p>
+
+  <div class="code-block">
+    <div class="filename">RootWindowContainer.java — performSurfacePlacementNoTrace（节选）</div>
+    <pre>
+<span class="kw">if</span> (mWmService.mFocusMayChange) {
+    mWmService.mFocusMayChange = <span class="kw">false</span>;
+    mWmService.updateFocusedWindowLocked(
+            UPDATE_FOCUS_WILL_PLACE_SURFACES, <span class="kw">false</span>);   <span class="cm">// ★ 摆放前先解决焦点</span>
+}
+
+mWmService.mTransactionSequence++;                       <span class="cm">// 事务序号 +1</span>
+
+mWmService.<span class="fn">openSurfaceTransaction</span>();                 <span class="cm">// ★ 打开全局事务（合并所有子事务）</span>
+<span class="kw">try</span> {
+    <span class="fn">applySurfaceChangesTransaction</span>();            <span class="cm">// ★ 逐显示器：布局 + Z 序 + 状态（第五、六节）</span>
+} <span class="kw">finally</span> {
+    mWmService.<span class="fn">closeSurfaceTransaction</span>(<span class="cm">"performLayoutAndPlaceSurfaces"</span>);
+                                   <span class="cm">// ★ 关闭 → SurfaceControl.closeTransaction() → 事务上送</span>
+}
+      </pre>
+    </div>
+
+  <div class="code-block">
+    <div class="filename">RootWindowContainer.java — applySurfaceChangesTransaction（节选）</div>
+    <pre>
+<span class="kw">for</span> (<span class="kw">int</span> j = <span class="num">0</span>; j &lt; count; ++j) {
+    <span class="kw">final</span> DisplayContent dc = mChildren.get(j);
+    dc.applySurfaceChangesTransaction();     <span class="cm">// 每个显示器各自结算</span>
+}
+<span class="cm">// 给 DisplayManager 一次机会调整旋转等属性</span>
+mWmService.mDisplayManagerInternal.performTraversal(mDisplayTransaction);
+<span class="cm">// ★ 把本进程攒下的事务合并进"全局事务"，等待统一提交</span>
+SurfaceControl.mergeToGlobalTransaction(mDisplayTransaction);
+      </pre>
+    </div>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 为什么必须"一把事务" ✦ ✦ ✦</span><br>
+    想象没有原子提交：100 个窗口的位置、Z 序、可见性一个个单独上送，SurfaceFlinger 每收到一个就可能触发一次合成 → 用户看到画面"跳着变"，闪烁（flicker）。<br>
+    一笔事务 = 一个版本号：SurfaceFlinger 在下一个 VSYNC 一次性消费全部变更，<strong>中间状态永远不上屏</strong>。这就是 <code>mergeToGlobalTransaction</code> 的意义。
+  </div>
+
+  <p>另外注意 <code>getSyncTransaction()</code>（第六节用到）：当窗口与客户端通过 BLAST 同步 Buffer 时，Z 序变化必须和客户端提交新 Buffer 的节奏锁在一起，否则会出现"新窗口用旧 Z 序"的错位。同步事务保证了这一点。</p>
+
+  <p>事务提交后，SystemServer 的活儿就干完了：SurfaceFlinger 拿着每层的 SurfaceControl（位置、Z、可见性）+ 每层的 Buffer（应用画的像素），在 VSYNC 到来时逐层合成——这部分是 SurfaceFlinger 的世界，留作下一篇。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p8">八、完整链路一览</h2>
+<div class="card">
+
+  <h3>从一个应用窗口的 relayout（比如应用请求改变大小）到屏幕更新</h3>
+
+  <pre class="tree">
+<span class="dim">━━ 应用进程 ━━</span>
+ViewRootImpl.relayoutWindow()          <span class="dim">← 视图树测量/布局后，请求同步窗口</span>
+        ↓ Binder 调用
+<span class="dim">━━ system_server 进程 ━━</span>
+WMS.<span class="fn">relayoutWindow</span>(session, client, attrs, ...)      <span class="dim">← Binder 入口（本进程内直接调）</span>
+  → windowForClientLocked()             <span class="dim">查找 WindowState</span>
+  → win.setRequestedSize(w, h)          <span class="dim">记录应用想要的新尺寸</span>
+  → adjustWindowParamsLw(attrs)         <span class="dim">策略层校正参数（类型/尺寸限制）</span>
+  → <span class="fn">createSurfaceControl</span>(...)           <span class="dim">★ 首次：创建 SurfaceControl（真画布）</span>
+  → mWindowPlacerLocked.performSurfacePlacement(<span class="kw">true</span>)
+        ↓
+WindowSurfacePlacer.performSurfacePlacement(force=true)
+  → performSurfacePlacementLoop()       <span class="dim">（最多 6 轮）</span>
+  → mRoot.<span class="fn">performSurfacePlacement</span>()
+       → updateFocusedWindowLocked()    <span class="dim">焦点先定</span>
+       → openSurfaceTransaction()
+       → <span class="fn">applySurfaceChangesTransaction</span>()
+            → 每个 DisplayContent：
+                 ├─ <span class="fn">performLayout</span>()            <span class="dim">★ 第一遍遍历：算 frame（两遍 forAllWindows）</span>
+                 ├─ postLayoutPolicy 循环   <span class="dim">策略投票，最多 6 轮收敛</span>
+                 ├─ <span class="fn">assignChildLayers</span>()       <span class="dim">★ Z 序：两遍算法（普通 + Z-boost）</span>
+                 ├─ forAllWindows(mApply...) <span class="dim">遮挡检测 / 调光 / 显示状态</span>
+                 └─ prepareSurfaces()        <span class="dim">动画阶段准备（leash 提交等）</span>
+       → closeSurfaceTransaction()      <span class="dim">关闭全局事务</span>
+       → mergeToGlobalTransaction()     <span class="dim">合并</span>
+        ↓ VSYNC
+<span class="dim">━━ SurfaceFlinger 进程 ━━</span>
+消费事务：更新每层 Surface 的位置/Z/可见性
+→ 逐层合成（Composition） → 屏幕显示新画面
+  </pre>
+
+  <div class="annotation">
+    <strong>三句话复述全文：</strong><br>
+    ① 变化先<strong>标记</strong>，由 WindowSurfacePlacer <strong>合并排程</strong>（defer + 幂等 + 最多 6 轮）。<br>
+    ② 从根节点 <strong>DFS 遍历</strong>（forAllWindows，mChildren 尾部=顶层）：第一遍算 frame（layout），第二遍算状态（遮挡/调光），中间穿插 Z 序分配（assignChildLayers 两遍算法）。<br>
+    ③ 全部写进<strong>一笔事务</strong>，原子提交 SurfaceFlinger，下一个 VSYNC 上屏。
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p9">九、源码速查</h2>
+<div class="card">
+
+  <div class="code-block">
+    <div class="filename">WSL AOSP 12 关键代码定位</div>
+    <pre>
+<span class="cm"># 总调度：布局循环 / defer / requestTraversal</span>
+cat /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/WindowSurfacePlacer.java
+
+<span class="cm"># 遍历引擎：forAllWindows 的 DFS 实现 + mChildren Z 序注释</span>
+grep -n "forAllWindows\|mChildren = " /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/WindowContainer.java
+
+<span class="cm"># Z 序分配：两遍算法 + Z-boost</span>
+grep -n "assignChildLayers\|needsZBoost" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/WindowContainer.java
+
+<span class="cm"># 布局：两遍 forAllWindows（根窗口 / 附着窗口）</span>
+grep -n "performLayoutNoTrace\|mPerformLayout =" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/DisplayContent.java
+
+<span class="cm"># 逐显示器结算：do-while 收敛 + 遮挡检测</span>
+grep -n "applySurfaceChangesTransaction\|mApplySurfaceChangesTransaction =" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/DisplayContent.java
+
+<span class="cm"># IME 相对层级（Z 序里的特殊角色）</span>
+grep -n "assignRelativeLayerForIme" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/DisplayContent.java
+
+<span class="cm"># 提交：全局事务开关 + 合并</span>
+grep -n "openSurfaceTransaction\|closeSurfaceTransaction" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/WindowManagerService.java
+grep -n "mergeToGlobalTransaction" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/RootWindowContainer.java
+
+<span class="cm"># base layer 映射表（窗口类型 → 数字）</span>
+grep -n "getWindowLayerFromTypeLw" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/policy/WindowManagerPolicy.java
+
+<span class="cm"># 客户端入口：应用侧 relayout 的源头</span>
+grep -rn "relayoutWindow" /home/book/aosp12/frameworks/base/core/java/android/view/ViewRootImpl.java | head -3
+    </pre>
+  </div>
+
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android 窗口层级专题 | <strong>03 — 窗口刷新：布局、Z 序与事务提交</strong></p>
+  <p>基于 AOSP 12（android-12.0.0_r32）· WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实</p>
+  <p style="margin-top:10px;"><a href="02-窗口树的构建算法.html">← 02 窗口树是怎样建起来的</a> &nbsp;|&nbsp; <strong>03 窗口刷新 ← 你在这</strong> &nbsp;|&nbsp; <a href="04-像素怎样上屏.html">04 像素怎样上屏 →</a></p>
+  <p style="margin-top:8px;"><a href="index.html">🏠 系列导航</a> &nbsp;|&nbsp; <a href="WMS学习路线图.html">🗺️ 学习路线图</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📌 下篇预告：04 像素怎样上屏 — SurfaceControl、BLASTBufferQueue 与 SurfaceFlinger 合成</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

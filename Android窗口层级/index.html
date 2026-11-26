@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>学 WMS · Android 窗口层级系列 — 学习导航（AOSP 12）</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --tag-bg: #f0e6d3; --tag-text: #a0522d; --link: #2a5f8f; --h2-border: #ddd8cc;
+      --hover-bg: #e8e4db; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --tag-bg: #3d3020; --tag-text: #d4a05a; --link: #6ab0e0; --h2-border: #333338;
+      --hover-bg: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:900px; margin:0 auto; }
+    h1 { font-size:1.7rem; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; margin-bottom:8px; }
+    .subtitle { color:var(--text2); font-size:.9rem; margin-bottom:32px; }
+    h2 { font-size:1.25rem; margin:30px 0 14px; padding-bottom:6px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    p, li { color:var(--text2); margin-bottom:8px; }
+    ul, ol { padding-left:24px; }
+    code { background:var(--code-bg); border-radius:3px; padding:1px 6px; font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.88em; color:var(--text); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px 24px; margin-bottom:16px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:border .3s; display:block; text-decoration:none; color:var(--text); }
+    .card:hover { border-color:var(--accent); }
+    .card .num { color:var(--accent); font-weight:bold; font-size:1.1rem; }
+    .card .title { font-size:1.08rem; font-weight:600; color:var(--accent3); }
+    .card .desc { color:var(--text2); font-size:.9rem; margin-top:4px; }
+    .tag { display:inline-block; background:var(--tag-bg); color:var(--tag-text); border-radius:3px; padding:0 7px; font-size:.8rem; font-weight:600; margin-left:6px; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; }
+    #theme-btn:hover { transform:scale(1.1); }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>🌳 学 WMS：Android 窗口层级系列（AOSP 12）</h1>
+  <p class="subtitle">基于 AOSP 12（android-12.0.0_r32）· 源码位置 <code>/home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/</code></p>
+  <button id="theme-btn" title="切换主题">🌓</button>
+
+  <h2>📚 已完成的篇章</h2>
+
+  <a class="card" href="00-窗口为什么是一棵树.html">
+    <span class="num">00</span> <span class="title">窗口为什么是一棵树：DisplayArea 层级入门</span><span class="tag">零基础</span>
+    <div class="desc">从日常屏幕覆盖关系切入，建立"窗口是一棵树"的直觉：layer 与 Feature 两个前置概念、树如何长出来、新窗口如何挂树，以及概念到源码的对照。</div>
+  </a>
+
+  <a class="card" href="01-窗口树全景.html">
+    <span class="num">01</span> <span class="title">窗口树全景：WindowContainer 家族、Z 序与 Token</span><span class="tag">核心概念</span>
+    <div class="desc">窗口是什么、WindowContainer 家族（RootWindowContainer → DisplayContent → DisplayArea → Task → ActivityRecord → WindowState）、窗口树的两层含义、DFS 与 Z 序的关系。</div>
+  </a>
+
+  <a class="card" href="02-窗口树的构建算法.html">
+    <span class="num">02</span> <span class="title">窗口树是怎样建起来的：DisplayAreaPolicyBuilder 构建算法</span><span class="tag">核心算法</span>
+    <div class="desc">三阶段构建（搭骨架 → 开门禁 → 挂叶子）、DisplayAreaPolicyBuilder 的 Feature / PendingArea / 三层遍历算法、窗口如何挂树。</div>
+  </a>
+
+  <a class="card" href="03-窗口刷新与事务提交.html">
+    <span class="num">03</span> <span class="title">窗口刷新：布局、Z 序与事务提交</span><span class="tag">核心流程</span>
+    <div class="desc">WindowSurfacePlacer 总调度（defer / 最多 6 轮）、forAllWindows DFS 遍历、布局与遮挡检测、assignChildLayers 两遍 Z 序算法、一笔事务提交 SurfaceFlinger。</div>
+  </a>
+
+  <a class="card" href="04-像素怎样上屏.html">
+    <span class="num">04</span> <span class="title">像素怎样上屏：SurfaceControl、BLAST 与 SurfaceFlinger 合成</span><span class="tag">图形链路</span>
+    <div class="desc">挂树只挂逻辑身份，画布在哪里？relayout 触发 SF 建 BufferStateLayer、SurfaceControl 跨进程过河、App 经 BLASTBufferQueue 把 View 树画进 GraphicBuffer，SF 在 VSYNC 里 commit/composite/present，HWC 与 GPU 合成后交面板扫描发光。</div>
+  </a>
+
+  <a class="card" href="05-输入分发与窗口命中.html">
+    <span class="num">05</span> <span class="title">输入事件的分发与窗口命中：InputDispatcher 全链路</span><span class="tag">核心流程</span>
+    <div class="desc">手指点下去，事件怎么沿同一棵窗口树找到目标窗口：InputChannel 电话线、InputMonitor 把可输入窗口表交底给 InputDispatcher、touchable region 命中测试与遮挡判断、焦点、socketpair 分发到 ViewRootImpl，以及两种输入 ANR（窗口无响应 / 无焦点窗口）。</div>
+  </a>
+
+  <a class="card" href="06-窗口的诞生.html">
+    <span class="num">06</span> <span class="title">窗口的诞生：从 addView 到窗口上树</span><span class="tag">生命周期</span>
+    <div class="desc">App 侧 WindowManagerGlobal#addView → 一次 binder → system_server 准入审查 → WindowState 挂进 WindowContainer 树；含 BadTokenException 完整因果链与 6 道自测。</div>
+  </a>
+
+  <a class="card" href="07-窗口的来路与归途.html">
+    <span class="num">07</span> <span class="title">窗口的来路与归途：Activity 启动链与窗口生命周期</span><span class="tag">生命周期</span>
+    <div class="desc">补上 06 篇的悬念：ActivityRecord 从哪来、到哪去。startActivity → ActivityStarter 决策 → ActivityRecord（= WindowToken）→ 启动窗口（splash/快照）→ isDrawn 翻转 → 删除三条路径（多任务移除 / 后台 kill / 正常 finish）对比。</div>
+  </a>
+
+  <a class="card" href="08-窗口的尺寸与身体.html">
+    <span class="num">08</span> <span class="title">窗口的尺寸与身体：布局、Insets 与旋转</span><span class="tag">布局</span>
+    <div class="desc">03 篇的下半场：每一遍遍历到底算了什么。performLayoutNoTrace 与 mPerformLayout、computeFrame 与 DisplayPolicy、Insets 三件套与控制权、旋转冻结/解冻六条件、配置变更谁重建。</div>
+  </a>
+
+  <a class="card" href="09-窗口动画与过渡.html">
+    <span class="num">09</span> <span class="title">窗口动画与过渡：AppTransition 与 leash 缰绳</span><span class="tag">动画</span>
+    <div class="desc">窗口树的第三种改造方式——临时插入 leash 中间层。AppTransition 状态机与 336ms、SurfaceAnimator.startAnimation、createAnimationLeash 的 reparent、WindowAnimator 每帧推进、Shell 接管与远程动画；含完整九步链路。</div>
+  </a>
+
+  <a class="card" href="10-显示子系统的节拍.html" style="border-color:var(--accent);">
+    <span class="num">10</span> <span class="title">显示子系统的节拍：vsync 与 Choreographer</span><span class="tag">图形地基</span>
+    <div class="desc">读 03/04/09 篇时处处撞见的两个词，其实都不在窗口树里。按依赖顺序补齐六层：vsync 是什么（中断采样 + 软件预测模型）、为什么有 app/sf 两条相位、EventThread 如何按连接分发、三层「按需」如何让静止画面零唤醒、Choreographer 的 doFrame 五段式、WMS 如何在 android.anim 线程用 getSfInstance 接进来；附 dumpsys 与 Perfetto 排障抓手。</div>
+  </a>
+
+  <a class="card" href="13-画中画.html" style="border-color:var(--accent);">
+    <span class="num">13</span> <span class="title">画中画 PiP：一次跨 ATMS / WMCore / WM Shell 的窗口模式迁移</span><span class="tag">窗口模式</span>
+    <div class="desc">专题补篇。从 <code>Activity.enterPictureInPictureMode()</code> 走到 <code>onPictureInPictureModeChanged()</code> 的完整七跳：ACC 硬校验、ATMS 状态门禁与锁屏分叉、RootWindowContainer 搬 Task（单/多 Activity 两条分支）、PipTransition 的 leash 动画与 finish WCT、配置下发后的回调。含归属分层表与小窗三块归属（task 画面 / Shell 逻辑 / overlay 菜单）、退出路径、AOSP 12 与 13 差异、四类现场故障定位。</div>
+  </a>
+
+  <a class="card" href="14-图层是什么.html" style="border-color:var(--accent);">
+    <span class="num">14</span> <span class="title">Winscope 里的图层是什么：Layer、名字、id 与树→图层</span><span class="tag">工具 + 源码</span>
+    <div class="desc">把 SurfaceFlinger trace 的 <code>LayerProto</code> 和 AOSP 12 源码逐条对上：<code>Layer::sequence</code> 怎么发号、SurfaceControl 名字怎么变成 <code>LayerProto.name</code>、<code>assignChildLayers</code> 两遍怎么排 Z，以及 WMS 树如何在 SF 里投影成 Layer 树；附可交互的「层级树 → 图层」编译器。</div>
+  </a>
+
+  <a class="card" href="WMS原创实践项目.html" style="border-color:var(--accent3);">
+    <span class="num">🧪</span> <span class="title">WMS 原创实践项目：六个自造实验</span><span class="tag">自造</span>
+    <div class="desc">用「自己实现 + 实测校验」验证理解：L1 Z 序预言机（重写层级算法预测 mLayer）、L2 Dump 考古器（字段→源码）、L3 What-if 破坏实验室（先预测后改代码）、L4 窗口泄漏猎犬、L5 时序图自动生成器、L6 输入命中预言机；附六个 1–2 小时微项目与全部已核实锚点。</div>
+  </a>
+
+  <a class="card" href="WMS实践项目清单.html" style="border-color:var(--accent2);">
+    <span class="num">🛠️</span> <span class="title">WMS 实践项目清单：六个动手项目</span><span class="tag">动手</span>
+    <div class="desc">配套 00–06 篇的练习清单：P0 窗口树可视化器 → P1 窗口消亡三路径（马老师原作业）→ P2 Bug 猎手 → P3 现场抓取器 → P4 Freeform/隐藏系统窗口 → P5 Display 多屏与旋转。每个项目都带可验收的交付物与八周排期。</div>
+  </a>
+
+  <a class="card" href="WMS学习路线图.html" style="border-color:var(--accent);">
+    <span class="num">🗺️</span> <span class="title">WMS 系统学习路线图（接续 00–09 篇）</span><span class="tag">导航</span>
+    <div class="desc">六阶段路线（输入 → 生命周期 → 布局/Insets/旋转 → 动画 → IME/壁纸 → 多屏多窗），每站附已核实行号锚点、实战问题、动手实验，另有线程锁贯穿线、节奏表与 grep 速查。</div>
+  </a>
+
+  <h2>🗺️ 建议学习路线</h2>
+  <ol>
+    <li><strong>00 → 01</strong>：先建立"树"的直觉（00 DisplayArea 层级入门），再看窗口树全景与核心机制（01 WindowContainer 家族、Z 序与 Token）。</li>
+    <li><strong>02</strong>：树是怎么长出来的——DisplayAreaPolicyBuilder 构建算法，窗口如何挂树。</li>
+    <li><strong>03</strong>：树建好后，理解"刷新"如何在运行时驱动一切（布局、Z 序与事务提交）。</li>
+    <li><strong>04</strong>：补上"画布从哪来、像素怎么上屏"——SurfaceControl / BLAST / SurfaceFlinger 合成全链路。</li>
+    <li><strong>05</strong>：事件沿同一棵树怎么找到目标窗口——InputDispatcher 命中测试、InputChannel 分发与两类输入 ANR。</li>
+    <li><strong>06 → 07+</strong>：窗口的诞生（addView → binder → 上树，路线图阶段 2 生命周期开篇），之后按 🗺️ <a href="WMS学习路线图.html">WMS 系统学习路线图</a> 依次进 07 Activity/Task 启动链 → 08 布局/Insets/旋转 → 09 动画 → 10 vsync 与 Choreographer → 11 IME/壁纸 → 12 多屏多窗。</li>
+  </ol>
+
+  <h2>🔧 常用验证命令（WSL）</h2>
+  <div class="card">
+    <p style="font-family:Consolas,monospace; font-size:.85rem; white-space:pre-wrap;">
+<span style="color:var(--accent2)"># 查看关键文件行数，定位核心方法</span>
+wc -l /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/*.java | sort -n | tail
+<span style="color:var(--accent2)"># 真机/模拟器：看窗口树</span>
+adb shell dumpsys window windows
+<span style="color:var(--accent2)"># 看 DisplayArea 层级</span>
+adb shell dumpsys activity displays
+    </p>
+  </div>
+
+  <p style="margin-top:30px; padding-top:16px; border-top:1px solid var(--border); text-align:center; font-size:.82rem; color:var(--text2);">
+    持续更新中 · 07/08/09 已上线（生命周期 / 布局与旋转 / 动画与过渡）；10《vsync 与 Choreographer》；13《画中画 PiP》；14《Winscope 图层与层级树》已上线。</p>
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+</body>
+</html>

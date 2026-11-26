@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SystemUI 学习路线图 — 从启动链到定制（AOSP 12）</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:30px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .step-box { background:var(--step-bg); border:1px solid var(--step-border); border-radius:8px; padding:18px 22px; margin:16px 0; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .cm { color:var(--cm); font-style:italic; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .flow { display:flex; flex-wrap:wrap; align-items:center; gap:6px 4px; margin:16px 0; font-family:"SF Mono","Fira Code",monospace; font-size:.78rem; }
+    .flow-box { background:var(--code-bg); border:1px solid var(--border); border-radius:6px; padding:5px 10px; white-space:nowrap; }
+    .flow-box.star { border-color:var(--accent); background:var(--tag-bg); }
+    .flow-arrow { color:var(--text2); font-size:1.1rem; }
+    .stage-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; margin:18px 0; }
+    .stage-cell { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
+    .stage-cell .n { display:inline-block; background:var(--accent3); color:#fff; border-radius:6px; font-size:.78rem; padding:1px 9px; margin-bottom:8px; }
+    .stage-cell.done .n { background:var(--accent2); }
+    .stage-cell.next .n { background:var(--accent); }
+    .stage-cell h4 { margin:2px 0 6px; }
+    .stage-cell .meta { color:var(--text2); font-size:.8rem; }
+    .chain { counter-reset:step; margin:14px 0; padding-left:4px; }
+    .chain .row { position:relative; padding:8px 12px 8px 44px; margin-bottom:6px; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; font-size:.88rem; }
+    .chain .row::before { counter-increment:step; content:counter(step); position:absolute; left:10px; top:9px; width:22px; height:22px; line-height:22px; text-align:center; background:var(--accent3); color:#fff; border-radius:50%; font-size:.75rem; font-weight:bold; }
+    .chain .row b { color:var(--accent2); }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .lab { border-left:4px solid var(--accent2); padding:10px 16px; margin:12px 0; background:var(--code-bg); border-radius:6px; font-size:.92rem; }
+    .lab .tag { color:var(--accent2); }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } .stage-grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🗺️ SystemUI 系统学习路线图</h1>
+<p class="subtitle">从启动链到定制 · 8 个阶段 · 每站都有真实文件行号、实战问题与验收标准</p>
+<p class="series">📚 Android Framework 学习站 · SystemUI 专题 | 基于 <code>android-12.0.0_r32</code>（WSL <code>/home/book/aosp12</code>） | 锚点 2026-11-06 grep 核实</p>
+<p class="series">🔗 相关：<a href="../Android-Framework学习路线图.html">Framework 总纲</a> · <a href="../Android窗口层级/WMS学习路线图.html">WMS 路线图（建议前置）</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p0">〇、全景：180 小时怎么走</a>
+  <a href="#pver">一、先立住：五个版本事实</a>
+  <a href="#p-start">二、阶段 0：启动链与工具箱</a>
+  <a href="#p1">三、阶段 1：状态栏与图标</a>
+  <a href="#p2">四、阶段 2：通知管线</a>
+  <a href="#p3">五、阶段 3：Shade 与 QS</a>
+  <a href="#p4">六、阶段 4：Keyguard 与解锁</a>
+  <a href="#p5">七、阶段 5：导航栏、手势、Recents</a>
+  <a href="#p6">八、阶段 6：系统级 UI 服务</a>
+  <a href="#p7">九、阶段 7：与 WMS / WMShell 的交界</a>
+  <a href="#p8">十、阶段 8：定制、稳定性与面试</a>
+  <a href="#pproj">十一、四个实战项目</a>
+  <a href="#pplan">十二、节奏表与速查</a>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p0">〇、全景：180 小时怎么走</h2>
+
+<div class="card">
+  <p><strong>先定关系</strong>：SystemUI 与 WMS 是<strong>平级模块</strong>，不是它的子集。WMS 决定「窗口放哪、多大、谁在上面」，SystemUI 决定「这些系统窗口里画什么、怎么交互」。学过 WMS 再来，窗口树、Insets、输入分发、转场的地基可以直接复用。</p>
+
+  <div class="stage-grid">
+    <div class="stage-cell"><span class="n">阶段 0 · 6h</span><h4>启动链与工具箱</h4><div class="meta">SystemServer → SystemUIService → 组件；窗口类型；dump 工具</div></div>
+    <div class="stage-cell"><span class="n">阶段 1 · 20h</span><h4>状态栏与图标</h4><div class="meta">StatusBar 装配工 · StatusBarIconController · appearance</div></div>
+    <div class="stage-cell"><span class="n">阶段 2 · 30h</span><h4>通知管线</h4><div class="meta">NotifPipeline · NotifCollection · HeadsUp · RowBinder</div></div>
+    <div class="stage-cell"><span class="n">阶段 3 · 24h</span><h4>Shade 与 QS</h4><div class="meta">NotificationPanelViewController · ShadeController · QSTileHost</div></div>
+    <div class="stage-cell"><span class="n">阶段 4 · 20h</span><h4>Keyguard 与解锁</h4><div class="meta">KeyguardViewMediator · UpdateMonitor · Bouncer</div></div>
+    <div class="stage-cell"><span class="n">阶段 5 · 20h</span><h4>导航栏、手势、Recents</h4><div class="meta">NavigationBarController · EdgeBackGestureHandler · OverviewProxy</div></div>
+    <div class="stage-cell"><span class="n">阶段 6 · 14h</span><h4>系统级 UI 服务</h4><div class="meta">音量 · 关机 · 截图 · 圆角 · Doze</div></div>
+    <div class="stage-cell next"><span class="n">阶段 7 · 24h</span><h4>与 WMS / Shell 的交界</h4><div class="meta">窗口类型 · Insets · 转场 · 冻屏</div></div>
+    <div class="stage-cell"><span class="n">阶段 8 · 22h</span><h4>定制与面试</h4><div class="meta">RRO · 主题 · 车机 · 稳定性 · 12 题</div></div>
+  </div>
+
+  <table>
+    <tr><th>档位</th><th>标准</th><th>累计学时</th><th>日历（12h/周）</th></tr>
+    <tr><td><strong>能改</strong></td><td>给需求能改出来，不引入明显回归</td><td>约 100 h</td><td>2 个月</td></tr>
+    <tr><td><strong>能修</strong></td><td>给现象能用 dump + 日志 + 断点定位到类（面试/入职门槛）</td><td>约 180 h</td><td>3.5 个月</td></tr>
+    <tr><td><strong>能扛</strong></td><td>复杂交互与稳定性兜底（锁屏×转场×多用户×车机）</td><td>再 6–12 个月实战</td><td>—</td></tr>
+  </table>
+  <p class="meta" style="color:var(--text2);font-size:.85rem;">每天 2 h、每周 6 天：有 WMS 基础约 3 个月；只有 App 经验、没碰过 AOSP 则 5–6 个月。</p>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="pver">一、先立住：五个版本事实</h2>
+
+<div class="annotation star3">
+  <p><span class="tag">版本陷阱 ⚠</span> 网上讲 SystemUI 的文章大量基于 11/13/14，类名和职责差别很大。以下五点是本树（android-12.0.0_r32）实测，先记住能少走很多弯路。</p>
+</div>
+
+<div class="card">
+  <ol>
+    <li><strong>没有 <code>SystemBars.java</code>，也没有 <code>CentralSurfaces</code></strong>。状态栏就是 <code>StatusBar</code>，而且是<strong>启动组件</strong>之一（<code>sysui/res/values/config.xml:319</code>），不是被谁 new 出来的。讲 <code>SystemBars</code> 的基本是 Android 13+。</li>
+    <li><strong>通知管线是新的</strong>：<code>NotifPipeline</code>（<code>NotifPipeline.java:75</code>）+ <code>NotifCollection</code>（<code>NotifCollection.java:128</code>）。本树<strong>没有 <code>NotificationEntryManager</code></strong>，老文章那条链在 12 已被拆掉。</li>
+    <li><strong>WMShell 跑在 SystemUI 进程里</strong>：<code>WMShell</code> 本身就是 SystemUI 组件（<code>sysui/wmshell/WMShell.java:93</code>），Shell 的 <code>Transitions</code>/<code>ShellTransitions</code> 同进程加载。SystemUI 崩了，分屏/PIP/转场一起没。</li>
+    <li><strong>两个方向的 binder 别搞反</strong>：<code>IStatusBarService</code>（system_server 的 <code>StatusBarManagerService.java:95</code>）是 <strong>SystemUI 调 system_server</strong>；<code>IStatusBar</code>（SystemUI 的 <code>CommandQueue.java:81</code>）是 <strong>system_server 调 SystemUI</strong>。</li>
+    <li><strong>Shell Transitions 有代码但不是默认主线</strong>：<code>Transitions.java</code>/<code>ShellTransitions.java</code> 都在，本树转场仍以 WMS 的 <code>AppTransition</code> + leash 为主（与 WMS 路线图一致）。排障先看 AppTransition，再确认有没有走 Shell。</li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p-start">二、阶段 0：启动链与工具箱（6 h）</h2>
+
+<div class="card">
+  <h3>启动链（已核实）</h3>
+  <div class="chain">
+    <div class="row"><b>SystemServer.startSystemUi()</b> — <code>SystemServer.java:2931</code>（定义 <code>:3024</code>），startServiceAsUser(SystemUIService)</div>
+    <div class="row"><b>SystemUIService.onCreate()</b> — <code>SystemUIService.java:66</code></div>
+    <div class="row"><b>SystemUIApplication.startServicesIfNeeded()</b> — <code>SystemUIService.java:70</code> → <code>SystemUIApplication.java:161</code></div>
+    <div class="row"><b>读组件清单</b> — <code>config_systemUIServiceComponents</code>（<code>config.xml:314</code>）</div>
+    <div class="row"><b>反射实例化 + start()</b> — <code>SystemUIApplication.java:214</code>，逐个 <code>start()</code> / <code>onBootCompleted()</code></div>
+  </div>
+
+  <p>要点：</p>
+  <ul>
+    <li><code>SystemUIApplication</code>（:49）不是「一个 UI」，是<strong>组件容器</strong>；每个组件继承 <code>SystemUI</code>。</li>
+    <li><code>config_systemUIServiceComponentsPerUser</code>（<code>config.xml:348</code>）只有 <code>NotificationChannels</code> 一项：<strong>换用户只重启这一部分</strong>，其余组件跟进程走。</li>
+    <li><code>SystemUIFactory</code>（<code>SystemUIFactory.java:42</code>）+ Dagger：读 <code>config_systemUIFactoryComponent</code>（<code>config.xml:311</code>）决定实现类。定制 ROM 常在这里换工厂，而不是改 <code>StatusBar</code>。</li>
+    <li>SystemUI 能加 <code>TYPE_STATUS_BAR</code>/<code>TYPE_NOTIFICATION_SHADE</code>，是因为它持有 <code>INTERNAL_SYSTEM_WINDOW</code> 权限；普通 App 会被 WMS 直接拒。</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h3>工具箱</h3>
+  <table>
+    <tr><th>工具</th><th>用法</th><th>用途</th></tr>
+    <tr><td><code>cmd statusbar</code></td><td><code>adb shell cmd statusbar help</code>（<code>StatusBarShellCommand.java:34</code>）</td><td>展开/收起面板、改 disable 标志、模拟系统栏状态</td></tr>
+    <tr><td>SystemUI dump</td><td><code>adb shell dumpsys activity service com.android.systemui/.SystemUIService</code></td><td><code>SystemUIService.dump</code>（:112）分发给各 <code>Dumpable</code> 组件</td></tr>
+    <tr><td><code>dumpsys window</code></td><td>看 StatusBar/NotificationShade/NavigationBar 的 frame 与 visibility</td><td>判断「没画」还是「画错位置」</td></tr>
+    <tr><td><code>dumpsys notification</code></td><td><code>--noredact</code> 看完整内容</td><td>通知记录、ranking、channel</td></tr>
+    <tr><td><code>cmd overlay list</code></td><td>RRO 列表与启用状态</td><td>定制/主题问题</td></tr>
+    <tr><td>Winscope</td><td>抓 transition + window trace</td><td>转场、冻屏、层级异常</td></tr>
+    <tr><td>杀进程</td><td><code>adb shell killall com.android.systemui</code>（userdebug）</td><td>验证「重启后是否自愈」，区分状态残留 vs 逻辑错误</td></tr>
+  </table>
+</div>
+
+<div class="pitfall">
+  <span class="tag">坑</span>
+  ① 把 SystemUI 当成「一个 Activity/一个 View」：它是常驻系统进程 + 多组件，很多「界面不刷新」是组件没收到回调，不是 View 画错。<br>
+  ② 在 <code>StatusBar</code> 里找不到功能就放弃：大量逻辑已下沉到面板、Shade、通知、QS 等类，<code>StatusBar</code> 更像装配工。<br>
+  ③ 改了 <code>config.xml</code> 不生效：先 <code>cmd overlay list</code> 看有没有 RRO 覆盖。
+</div>
+
+<div class="lab">
+  <span class="tag">验收</span>
+  能脱稿画出「SystemServer → SystemUIService → 组件 → 各窗口」的启动图，并说出 <code>StatusBar</code>、<code>WMShell</code>、<code>KeyguardViewMediator</code> 三个组件的职责边界。
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p1">三、阶段 1：状态栏与图标（20 h）</h2>
+
+<div class="card">
+  <h3>主线</h3>
+  <div class="flow">
+    <span class="flow-box">电池 / 网络 / 时钟</span><span class="flow-arrow">→</span>
+    <span class="flow-box">BatteryControllerImpl(:55)</span><span class="flow-arrow">→</span>
+    <span class="flow-box">StatusBarIconControllerImpl(:59)</span><span class="flow-arrow">→</span>
+    <span class="flow-box star">icon slot（left/right）</span>
+  </div>
+  <ul>
+    <li><code>StatusBar</code>（<code>StatusBar.java:268</code>）是装配工：把窗口、面板、锁屏、图标、回调接在一起，本体近 5000 行，<strong>按功能跳读，不要从头读到尾</strong>。</li>
+    <li>图标槽位：<code>StatusBarIconControllerImpl</code> 继承 <code>StatusBarIconList</code>，按 slot 管理；<code>setIcon(slot, icon)</code> / <code>removeIcon(slot)</code> 是入口。</li>
+    <li>深浅色：system_server 通过 <code>DisplayPolicy.java:2561 statusBar.onSystemBarAttributesChanged(...)</code> 把 <code>appearance</code> 推给 SystemUI，<code>CommandQueue</code> 再分发，最终切 dark icon。<strong>图标看不清先查这条链，不要先改颜色。</strong></li>
+    <li><code>StatusBarManager</code>（<code>core/java/android/app/StatusBarManager.java:48</code>）是给 App 的公开 API（<code>disable()</code> :239、<code>expandNotificationsPanel()</code> :317），最终落到 <code>StatusBarManagerService</code>（:657 / :881）。</li>
+  </ul>
+</div>
+
+<div class="pitfall">
+  <span class="tag">坑</span>
+  图标重复/不消失 = slot 名冲突或 remove 没配对；深色页面图标不变白 = appearance 没传到，或被全屏窗口的 flag 覆盖；状态栏高度改了但内容没动 = 高度在 WMS 的 DisplayPolicy/Insets 侧，SystemUI 只负责画。
+</div>
+
+<div class="lab">
+  <span class="tag">实验与验收</span>
+  用 <code>cmd statusbar</code> 切 disable 标志观察图标区；动态加一个 system icon 再移除确认无残留。验收：能解释「图标为什么是黑/白」，并指出链路上任一环出错的现象。
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p2">四、阶段 2：通知管线（30 h，最值钱的一块）</h2>
+
+<div class="card">
+  <h3>主线（12 的新管线）</h3>
+  <div class="chain">
+    <div class="row">App <code>postNotification</code> → NotificationManagerService（system_server）</div>
+    <div class="row"><b>NotificationListener(:47)</b> 收到 onNotificationPosted</div>
+    <div class="row"><b>NotifPipeline(:75)</b> 收集</div>
+    <div class="row"><b>NotifCollection(:128)</b> 去重/更新/取消</div>
+    <div class="row"><b>NotifCoordinators(:41)</b>：RankingCoordinator(:43) / HeadsUpCoordinator(:59) / Media…</div>
+    <div class="row"><b>HeadsUpManager(:51)</b> 决定弹不弹 → <b>NotificationRowBinderImpl(:51)</b> 绑 View</div>
+    <div class="row">Shade / StatusBar 展示</div>
+  </div>
+  <ul>
+    <li><strong><code>NotifPipeline</code> 是编排者，<code>NotifCollection</code> 是数据源</strong>。所有「通知为什么没出现」先确认它有没有进 <code>NotifCollection</code>。</li>
+    <li><strong>分组/折叠</strong>由 <code>NotifCollection</code> 的 group 逻辑与各 coordinator 共同决定（12 树里没有 <code>GroupCoordinator.java</code>，别照老文章找）；<strong>heads-up</strong> 由 <code>HeadsUpManager</code> + <code>HeadsUpCoordinator</code> 决策；<strong>排序</strong>在 <code>RankingCoordinator</code>。</li>
+    <li>12 的 heads-up 实现是 <code>HeadsUpManagerPhone</code>（<code>statusbar/phone/</code>），抽象基类在 <code>statusbar/policy/HeadsUpManager.java:51</code>。</li>
+    <li>View 绑定是异步的（<code>NotificationRowBinderImpl</code>），「数据到了但界面晚一拍」是正常现象。</li>
+  </ul>
+</div>
+
+<div class="pitfall">
+  <span class="tag">坑</span>
+  不显示：channel 关了 / importance 太低 / 被压进折叠组 / App 被禁通知。重复：同 key 更新没走 update 路径，或两条不同 key。不弹 heads-up：灭屏、免打扰、前台服务、全屏窗口抑制，逐项排除。
+</div>
+
+<div class="lab">
+  <span class="tag">实验与验收</span>
+  用不同 importance 的 channel 各发一条，记录「是否 heads-up / 是否折叠 / 排序」；抓一次 <code>dumpsys notification --noredact</code> 讲清一条通知的字段变化。验收：给定「通知不显示」，10 分钟内用三层（NMS / NotifCollection / Shade）缩小范围。
+</div>
+
+<h2 id="p3">五、阶段 3：Shade 与 QS（24 h）</h2>
+
+<div class="card">
+  <ul>
+    <li><strong>面板本体</strong>：<code>NotificationPanelViewController</code>（<code>NotificationPanelViewController.java:181</code>）负责手势、展开高度、折叠、与锁屏联动。</li>
+    <li><strong>面板状态机</strong>：<code>ShadeControllerImpl</code>（<code>ShadeControllerImpl.java:41</code>）负责「现在该不该展开/收起」，以及和 Keyguard、转场的协调。</li>
+    <li><strong>承载窗口</strong>：<code>NotificationShadeWindowControllerImpl</code>（:77）创建 <code>TYPE_NOTIFICATION_SHADE</code> 窗口（:211），<code>mWindowManager.addView(mNotificationShadeView, mLp)</code>（:232）——SystemUI 与 WMS 最直接的接触点之一。</li>
+    <li><strong>背景遮罩</strong>：<code>ScrimController</code>（<code>ScrimController.java:75</code>）管 scrim 透明度与前后层。</li>
+    <li><strong>QS</strong>：<code>QSTileHost</code>（<code>QSTileHost.java:78</code>）管 tile 创建/排序/监听；<code>QuickQSPanelController</code>（<code>QuickQSPanelController.java:42</code>）管快捷面板那 6 个。</li>
+  </ul>
+</div>
+
+<div class="pitfall">
+  <span class="tag">坑</span>
+  拉不下来：锁屏状态、disable 标志、手势被上层窗口吃掉。收不回去：ShadeController 状态与 Keyguard/转场不同步，常见于解锁瞬间。tile 不显示：没在 QSTileHost 注册或 defaultTileList 没加。背景透明/黑块：ScrimController 的 alpha 被动画打断。
+</div>
+
+<div class="lab">
+  <span class="tag">实验与验收</span>
+  加一个自定义 QS tile（带长按跳转），重启后仍在；用 <code>cmd statusbar expand-notifications</code> / <code>collapse</code> 驱动面板观察状态变化。验收：能画出「手指下拉 → 展开 → 松手吸附/回弹」的状态机，并指出每个状态由谁维护。
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p4">六、阶段 4：Keyguard 与解锁（20 h）</h2>
+
+<div class="card">
+  <div class="chain">
+    <div class="row">灭屏/亮屏 → <b>KeyguardViewMediator(:173)</b> 决定 show/hide</div>
+    <div class="row"><b>KeyguardUpdateMonitor(:141)</b> 收集凭据 / 生物识别 / SIM 状态</div>
+    <div class="row"><b>KeyguardBouncer(:57)</b> 弹出密码 / PIN 界面</div>
+    <div class="row">解锁成功 → hide → 通知 Shade / StatusBar / 转场</div>
+  </div>
+  <ul>
+    <li><code>KeyguardViewMediator</code> 是总调度，<code>KeyguardUpdateMonitor</code> 是状态源，<code>KeyguardBouncer</code> 是「要输密码时的那层」。</li>
+    <li>与 WMS：锁屏是特殊窗口 + 一组可见性规则；<code>showWhenLocked</code> 的 Activity 能盖在锁屏上，但转场仍受 Keyguard 控制。</li>
+    <li>与 Shade：锁屏上下拉是「锁屏面板」，解锁后才是「通知面板」，两者共用 <code>NotificationPanelViewController</code> 的不同配置。</li>
+    <li>注意：<code>KeyguardViewMediator</code>、<code>KeyguardUpdateMonitor</code> 在 <code>com/android/keyguard/</code> 包，不在 <code>com/android/systemui/</code>，<code>find</code> 时别漏。</li>
+  </ul>
+</div>
+
+<div class="pitfall">
+  <span class="tag">坑</span>
+  解锁后黑屏：Keyguard 已 hide 但下面窗口还没 drawn，是转场时序，不是锁屏 bug。锁屏不显示通知：<code>visibility</code>/<code>isSensitive</code> 策略，属正常。指纹解锁后仍停在锁屏：生物识别回调没触发 dismiss。多用户/工作资料异常：per-user 只重启 NotificationChannels，其他组件状态要自己处理。
+</div>
+
+<div class="lab">
+  <span class="tag">实验与验收</span>
+  <code>adb shell input keyevent 26/82</code> 走灭屏→亮屏→解锁，logcat 打时间戳；做一个 <code>showWhenLocked</code> 的 Activity 看层级。验收：能解释「解锁后黑屏」和「锁屏不显示通知」是两条完全不同的链路。
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p5">七、阶段 5：导航栏、手势、Recents（20 h）</h2>
+
+<div class="card">
+  <ul>
+    <li><strong>导航栏</strong>：<code>NavigationBarController</code>（<code>NavigationBarController.java:85</code>）按 display 创建/销毁 <code>NavigationBarView</code>（:101），支持三键/两键/手势三种模式。</li>
+    <li><strong>手势返回</strong>：SystemUI 侧 <code>EdgeBackGestureHandler</code>（<code>EdgeBackGestureHandler.java:94</code>）；WMS 侧 <code>SystemGesturesPointerEventListener</code>（<code>SystemGesturesPointerEventListener.java:40</code>）把系统手势事件送过来。<strong>边缘返回失效，两边都要查。</strong></li>
+    <li><strong>Recents</strong>：<code>Recents</code>（<code>Recents.java:33</code>）只是壳，真正实现由 Launcher/QuickStep 提供（<code>RecentsImplementation</code>，<code>RecentsImplementation.java:26</code>）；跨进程入口是 <code>OverviewProxyService</code>（<code>OverviewProxyService.java:122</code>）。</li>
+    <li><strong>与 WMS 的边界</strong>：导航栏高度决定 Insets；手势区域属于 WMS 的 system gesture exclusion；Recents 动画走 Shell。</li>
+  </ul>
+</div>
+
+<div class="pitfall">
+  <span class="tag">坑</span>
+  隐藏导航栏后手势失效：只改可见性，没同步 gesture inset / exclusion 区域。三键切手势后返回键位置错：NavigationBarView 没重建或 overlay 没生效。Recents 拉不起来：Launcher 死了或 OverviewProxy 没连上，不是 SystemUI 本身。
+</div>
+
+<div class="lab">
+  <span class="tag">实验与验收</span>
+  用 <code>cmd overlay</code> 切换手势/三键导航，观察 NavigationBarView 重建；复现一次「隐藏导航栏导致手势返回失效」，定位是 inset 还是 exclusion。验收：能说清一次边缘返回从触摸到 <code>onBackPressed</code> 的完整链路，以及 SystemUI 在哪一环。
+</div>
+
+<h2 id="p6">八、阶段 6：系统级 UI 服务（14 h）</h2>
+
+<div class="card">
+  <p>这些组件单个不大，但线上问题不少，按需读：</p>
+  <table>
+    <tr><th>组件</th><th>锚点</th><th>要点</th></tr>
+    <tr><td>音量</td><td><code>VolumeUI(:35)</code> → <code>VolumeDialogImpl(:136)</code></td><td>音量键拦截在 <code>PhoneWindowManager</code>，面板在 SystemUI</td></tr>
+    <tr><td>关机/重启</td><td><code>GlobalActionsComponent(:39)</code></td><td>长按电源键菜单；与 Keyguard 的交互</td></tr>
+    <tr><td>截图</td><td><code>TakeScreenshotService(:60)</code></td><td>system_server 起服务，<code>takeScreenshotFullscreen/Partial</code></td></tr>
+    <tr><td>圆角/刘海</td><td><code>ScreenDecorations(:107)</code></td><td>用 overlay 窗口画圆角/挖孔，多屏要分别处理</td></tr>
+    <tr><td>放大镜</td><td><code>WindowMagnification</code></td><td>无障碍放大，窗口层级特殊</td></tr>
+    <tr><td>勿扰/AOD</td><td><code>DozeService(:36)</code></td><td>DreamService 体系，和灭屏时序强相关</td></tr>
+    <tr><td>Toast/存储/电源</td><td><code>ToastUI</code> / <code>StorageNotification</code> / <code>PowerUI</code></td><td>都是 SystemUI 组件，按 config 启动</td></tr>
+  </table>
+</div>
+
+<div class="lab">
+  <span class="tag">验收</span>
+  任选两个，能说出「它加了什么类型的窗口、什么时候显示、和 WMS 的哪条规则交互」。
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p7">九、阶段 7：与 WMS / WMShell 的交界（24 h，决定能不能排疑难）</h2>
+
+<div class="card">
+  <p>这一阶段是把 WMS 知识变现的地方。四条交界线：</p>
+  <ol>
+    <li><strong>窗口类型与权限</strong>：<code>TYPE_STATUS_BAR</code>、<code>TYPE_NOTIFICATION_SHADE</code>、<code>TYPE_NAVIGATION_BAR</code> 由 SystemUI 添加；层级、焦点、触摸区域仍由 WMS 的 <code>DisplayPolicy</code>/<code>InputMonitor</code> 决定。</li>
+    <li><strong>Insets 与 SystemBarAttributes</strong>：SystemUI 画多高，WMS 就留多少 inset；<code>DisplayPolicy.java:2561</code> 把 appearance 推下来。<strong>状态栏遮挡 App 内容、全屏手势冲突，都在这条线上。</strong></li>
+    <li><strong>转场</strong>：<code>WMShell</code>（<code>WMShell.java:93</code>）在 SystemUI 进程里加载 <code>Transitions</code>/<code>ShellTransitions</code>；SystemUI 窗口要参与转场，否则「动画跳变/闪黑」。</li>
+    <li><strong>冻屏/黑屏</strong>：SystemUI 的窗口没 draw，WMS 等 <code>isDrawn</code>，输入/转场就卡住。「隐藏 TaskBar 导致冻屏」就是典型：表面少画一帧，根因在绘制回调链。</li>
+  </ol>
+</div>
+
+<div class="step-box">
+  <strong>排障顺序（建议固化成习惯）</strong>
+  <div class="chain" style="margin-top:12px;">
+    <div class="row">现象（黑屏/冻屏/闪）</div>
+    <div class="row"><code>dumpsys window</code>：窗口在不在、visible 吗、frame 对吗、<code>mDrawState</code> 是什么</div>
+    <div class="row"><code>dumpsys input</code>：焦点窗口是谁、有没有 waitQueue</div>
+    <div class="row"><code>logcat --pid=$(pidof com.android.systemui)</code>：异常 / ANR / 掉帧</div>
+    <div class="row">Winscope：转场与层级随时间的变化</div>
+    <div class="row">最后才怀疑业务逻辑</div>
+  </div>
+</div>
+
+<div class="lab">
+  <span class="tag">验收</span>
+  拿一个真实的 SystemUI 冻屏/黑屏 case，写出「现象 → 三层 dump → 根因 → 修复/规避」的完整记录。
+</div>
+
+<div class="lab">
+  <span class="tag">工具</span>
+  用 <a href="wallpaper-blackflash-analyzer.html">Window Dump × 壁纸黑闪分析器</a> 把 dumpsys 与 logcat 对齐：它会把壁纸窗口的 <code>mDrawState</code>、转场时间窗和 Surface 重建事件列在同一张时间线上。
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p8">十、阶段 8：定制、稳定性与面试（22 h）</h2>
+
+<div class="card">
+  <h3>定制三板斧</h3>
+  <ul>
+    <li><strong>RRO/Overlay</strong>：改资源不改代码，<code>cmd overlay list</code> 验证；车机/ODM 最常用。</li>
+    <li><strong>SystemUIFactory / Dagger</strong>：换实现类，适合深度定制；先看 <code>config_systemUIFactoryComponent</code>（<code>config.xml:311</code>）。</li>
+    <li><strong>直接改组件</strong>：前两条走不通才做，改完必须回归锁屏、通知、转场三条主线。</li>
+  </ul>
+
+  <h3>稳定性</h3>
+  <ul>
+    <li>SystemUI ANR：主线程被通知绑定/数据库/锁竞争阻塞；看 <code>dumpsys activity processes</code> + traces。</li>
+    <li>内存：通知过多、图标缓存、壁纸；<code>GarbageMonitor</code> 是内置泄漏监控组件。</li>
+    <li>进程重启：<code>SysuiRestartReceiver</code> / <code>killall</code> 后能否自愈，是判断「状态残留」最快的实验。</li>
+  </ul>
+
+  <h3>面试高频 12 题</h3>
+  <ol>
+    <li>SystemUI 进程怎么启动？组件模型是什么？</li>
+    <li><code>StatusBar</code> 和 <code>SystemUIApplication</code> 是什么关系？</li>
+    <li>一条通知从 post 到展示经过哪些类？12 和 11 有什么区别？</li>
+    <li>heads-up 什么时候弹？被什么抑制？</li>
+    <li>状态栏图标怎么加？深色图标怎么切？</li>
+    <li>QS tile 的生命周期？怎么加一个？</li>
+    <li>锁屏解锁流程？Keyguard 和 WMS 怎么配合？</li>
+    <li>手势返回怎么实现？SystemUI 和 WMS 各做什么？</li>
+    <li>SystemUI 的窗口类型有哪些？为什么普通 App 加不了？</li>
+    <li>下拉面板卡住/收不回去怎么排？</li>
+    <li>SystemUI ANR/冻屏怎么定位？</li>
+    <li>怎么用 RRO 定制 SystemUI？</li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="pproj">十一、四个实战项目（必须交付东西）</h2>
+
+<div class="annotation">
+  <p>判断标准：有 patch / 有工具 / 有报告，能复现、能验证。<strong>跑两条 dumpsys 不算项目。</strong></p>
+</div>
+
+<div class="card">
+  <h3>P1 通知全链路时间戳工具（3–5 天）</h3>
+  <ul>
+    <li>做什么：监听 <code>NotifPipeline</code>/<code>NotifCollection</code>/<code>RowBinder</code> 的关键节点，输出一条通知从 post 到可见各阶段耗时。</li>
+    <li>交付物：可重复运行的脚本或 debug 版 patch + 10 条通知的耗时表。</li>
+    <li>验收：能解释「为什么这条通知比别人慢 100 ms」。</li>
+  </ul>
+
+  <h3>P2 QS Tile + 状态栏图标定制（3–5 天）</h3>
+  <ul>
+    <li>做什么：加一个自定义 tile（带长按动作）+ 一个动态 system icon。</li>
+    <li>交付物：patch + 截图 + 回归记录（重启、多用户、深浅色切换）。</li>
+    <li>验收：三种场景都不崩、不残留。</li>
+  </ul>
+
+  <h3>P3 锁屏解锁时序与故障注入（5–7 天）</h3>
+  <ul>
+    <li>做什么：抓一次完整解锁的时序图；人为注入 3 个故障（bouncer 不消失、指纹回调丢失、解锁后黑屏）。</li>
+    <li>交付物：时序图 + 3 份「现象→根因→修复」记录。</li>
+    <li>验收：每个故障都能在 15 分钟内定位到类。</li>
+  </ul>
+
+  <h3>P4 SystemUI × WMS 冻屏复现（5–7 天）</h3>
+  <ul>
+    <li>做什么：复现「隐藏 TaskBar 导致冻屏」类问题，从 SystemUI 侧确认谁没 draw，再从 WMS 侧确认在等什么。</li>
+    <li>交付物：完整 case 报告 + 两种修法对比。</li>
+    <li>验收：能讲清「为什么少画一帧会冻住整个输入/转场」。</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="pplan">十二、节奏表与速查</h2>
+
+<div class="card">
+  <h3>节奏表（12 h/周）</h3>
+  <table>
+    <tr><th>周</th><th>内容</th><th>产出</th></tr>
+    <tr><td>1</td><td>阶段 0 + 阶段 1 前半</td><td>启动链笔记 + 图标实验</td></tr>
+    <tr><td>2</td><td>阶段 1 后半</td><td>状态栏 appearance 链路图</td></tr>
+    <tr><td>3–4</td><td>阶段 2</td><td>通知管线图 + P1 开工</td></tr>
+    <tr><td>5</td><td>阶段 2 收尾 + P1</td><td>P1 交付</td></tr>
+    <tr><td>6–7</td><td>阶段 3</td><td>P2 交付</td></tr>
+    <tr><td>8–9</td><td>阶段 4</td><td>P3 交付</td></tr>
+    <tr><td>10–11</td><td>阶段 5</td><td>手势/Recents 链路笔记</td></tr>
+    <tr><td>12</td><td>阶段 6</td><td>两个小系统笔记</td></tr>
+    <tr><td>13–14</td><td>阶段 7</td><td>P4 交付</td></tr>
+    <tr><td>15</td><td>阶段 8 + 面试</td><td>12 题自测 + 项目复盘</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>命令速查</h3>
+  <div class="code-block">
+    <div class="filename">adb / shell</div>
+    <pre><span class="cm"># 进程与组件</span>
+adb shell dumpsys activity service com.android.systemui/.SystemUIService
+adb shell ps -A | grep systemui
+
+<span class="cm"># 窗口</span>
+adb shell dumpsys window | grep -E "StatusBar|NotificationShade|NavigationBar"
+adb shell dumpsys window windows
+
+<span class="cm"># 通知</span>
+adb shell dumpsys notification --noredact
+
+<span class="cm"># 系统栏控制</span>
+adb shell cmd statusbar help
+adb shell cmd statusbar expand-notifications
+adb shell cmd statusbar collapse
+
+<span class="cm"># 定制</span>
+adb shell cmd overlay list
+adb shell cmd overlay enable &lt;package&gt;
+
+<span class="cm"># 重启验证</span>
+adb shell killall com.android.systemui</pre>
+  </div>
+
+  <h3>关键路径速记</h3>
+  <div class="code-block">
+    <div class="filename">frameworks/base/packages/SystemUI/src/com/android/systemui/</div>
+    <pre>SystemUIApplication.java            组件容器
+SystemUIService.java                入口 Service
+statusbar/phone/StatusBar.java      装配工
+statusbar/CommandQueue.java         system_server → SystemUI 回调入口
+statusbar/phone/NotificationShadeWindowControllerImpl.java  Shade 窗口
+statusbar/phone/NotificationPanelViewController.java        面板手势/展开
+statusbar/notification/collection/NotifPipeline.java        通知编排
+statusbar/notification/collection/NotifCollection.java      通知数据
+keyguard/KeyguardViewMediator.java  锁屏总调度
+wmshell/WMShell.java                Shell 接入点</pre>
+  </div>
+
+  <p style="color:var(--text2);font-size:.88rem;">注：<code>KeyguardViewMediator</code>、<code>KeyguardUpdateMonitor</code> 在 <code>com/android/keyguard/</code> 包（不在 <code>com/android/systemui/</code>），AOSP 12 里两个包并存，<code>find</code> 时别漏。</p>
+</div>
+
+<p style="margin-top:36px; padding-top:16px; border-top:1px solid var(--border); text-align:center; font-size:.82rem; color:var(--text2);">
+  Android Framework 学习站 · SystemUI 专题 · 基线 android-12.0.0_r32 · 锚点 2026-11-06 核实
+</p>
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'systemui_roadmap_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+</body>
+</html>

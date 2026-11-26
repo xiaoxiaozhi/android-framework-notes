@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>窗口为什么是一棵树：DisplayArea 层级入门（WMS 学习 00）</title>
+<style>
+:root {
+  --bg: #faf8f5; --card: #ffffff; --text: #2c2c2c; --text2: #5a5a5a;
+  --border: #e0ddd5; --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e;
+  --code-bg: #f4f1eb; --analogy-bg: #fdf6e3; --analogy-border: #e6cf8a;
+  --hint-bg: #eef4f0; --hint-border: #8fc5a5;
+  --think-bg: #f0f0f8; --think-border: #a5a5d0;
+  --step-num-bg: #c44536; --why-bg: #f6efe9; --tbl-head: #efeae1;
+  --theme-btn-bg: rgba(0,0,0,.08); --theme-btn-text: #333;
+}
+[data-theme="dark"] {
+  --bg: #1a1a1e; --card: #222226; --text: #e0ddd5; --text2: #a8a49a;
+  --border: #333338; --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9;
+  --code-bg: #28282c; --analogy-bg: #322d1e; --analogy-border: #8a7a3f;
+  --hint-bg: #20302a; --hint-border: #3f7a5c;
+  --think-bg: #262634; --think-border: #555585;
+  --step-num-bg: #c05540; --why-bg: #2c2823; --tbl-head: #2c2c31;
+  --theme-btn-bg: rgba(255,255,255,.12); --theme-btn-text: #ddd;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+  background:var(--bg); color:var(--text); line-height:1.9;
+  padding:40px 20px; transition:background .3s,color .3s;
+}
+.container { max-width:820px; margin:0 auto; }
+h1 { font-size:1.65rem; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; margin-bottom:6px; }
+.subtitle { color:var(--text2); font-size:.88rem; margin-bottom:36px; }
+h2 { font-size:1.3rem; margin:42px 0 16px; padding-bottom:6px; border-bottom:2px solid var(--border); color:var(--accent2); }
+h2 .secno { color:var(--accent); font-size:.92em; margin-right:8px; }
+p { margin-bottom:14px; }
+code {
+  background:var(--code-bg); border-radius:3px; padding:1px 6px;
+  font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.88em; color:var(--text);
+}
+strong { color:var(--accent); }
+.analogy {
+  background:var(--analogy-bg); border-left:4px solid var(--analogy-border);
+  padding:14px 18px; margin:18px 0; border-radius:0 8px 8px 0;
+}
+.analogy .tag { font-weight:700; font-size:.85rem; color:var(--accent2); }
+.hint {
+  background:var(--hint-bg); border-left:4px solid var(--hint-border);
+  padding:12px 18px; margin:16px 0; border-radius:0 8px 8px 0; font-size:.95rem;
+}
+.hint .tag { font-weight:700; font-size:.85rem; color:var(--accent2); }
+.think {
+  background:var(--think-bg); border-left:4px solid var(--think-border);
+  padding:14px 18px; margin:18px 0; border-radius:0 8px 8px 0;
+}
+.think .q { font-weight:700; color:var(--accent3); }
+.think .a { margin-top:8px; color:var(--text2); font-size:.95rem; }
+.step { display:flex; margin:14px 0; }
+.step .num {
+  flex:0 0 34px; height:34px; border-radius:50%; background:var(--step-num-bg); color:#fff;
+  display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1rem; margin-right:12px;
+}
+.step .body { flex:1; padding-top:4px; }
+.step .why { margin-top:8px; background:var(--why-bg); border-radius:8px; padding:10px 14px; font-size:.9rem; color:var(--text2); }
+.step .why .wtag { font-weight:700; color:var(--accent2); }
+.tbl { width:100%; border-collapse:collapse; margin:18px 0; font-size:.92rem; }
+.tbl th { background:var(--tbl-head); font-weight:700; text-align:left; padding:10px 12px; border:1px solid var(--border); }
+.tbl td { padding:9px 12px; border:1px solid var(--border); vertical-align:top; }
+.tbl code { font-size:.85em; }
+.diagram {
+  background:var(--code-bg); border:1px solid var(--border); border-radius:8px;
+  padding:16px 18px; margin:18px 0; overflow-x:auto;
+}
+.diagram pre { font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.82rem; line-height:1.65; color:var(--text); }
+details { margin:12px 0; border:1px solid var(--border); border-radius:8px; background:var(--card); overflow:hidden; }
+summary { cursor:pointer; padding:12px 16px; font-weight:600; color:var(--accent3); user-select:none; }
+details .inner { padding:4px 16px 16px; }
+.qa { border-left:3px solid var(--hint-border); background:var(--hint-bg); padding:10px 14px; margin:10px 0; border-radius:0 6px 6px 0; font-size:.92rem; }
+.qa .tag { font-weight:700; font-size:.8rem; color:var(--accent2); display:block; margin-bottom:4px; }
+#theme-btn {
+  position:fixed; bottom:30px; right:30px; min-width:48px; height:48px; padding:0 14px; border-radius:24px;
+  border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:.85rem; font-weight:600;
+  cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,.15); z-index:999; transition:all .3s; font-family:inherit;
+}
+#theme-btn:hover { transform:scale(1.06); }
+@media (max-width:640px) {
+  body { padding:24px 14px; }
+  h1 { font-size:1.35rem; }
+  h2 { font-size:1.15rem; }
+  .tbl { font-size:.84rem; }
+  .tbl th, .tbl td { padding:7px 8px; }
+  .diagram { font-size:.75rem; }
+  #theme-btn { bottom:18px; right:18px; height:42px; }
+}
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+<h1>🌳 窗口为什么是一棵树：DisplayArea 层级入门</h1>
+<p class="subtitle">WMS 学习路径 00 · 零基础入门，先建立直觉、不碰源码 · 基于 AOSP 12（android-12.0.0_r32）· 源码位置 <code>frameworks/base/services/core/java/com/android/server/wm/</code></p>
+<p class="series">📚 Android 窗口层级专题 00 ｜ 基于 <code>android-12.0.0_r32</code> ｜ 起点篇（你从这开始） ｜ 下篇：<a href="01-窗口树全景.html">01 窗口树全景 →</a></p>
+<button id="theme-btn" title="切换主题">自动</button>
+
+<h2>一、从一个日常场景说起</h2>
+<p>点亮手机屏幕，你看到的不是一个画面，而是许多层"叠"出来的：最底下是壁纸，壁纸上盖着正在看的 App，App 之上可能浮着输入法键盘，键盘之上横着状态栏，忽然来电，来电界面又盖过一切。这些窗口来自不同的进程、不同的 App，甚至系统与三方混在一起，但无论你怎样切换、拖动、分屏，<strong>覆盖关系从来不乱</strong>——键盘永远不会把状态栏盖住，来电界面永远压住所有 App。</p>
+<p>系统靠什么记住"谁盖谁"？如果只是给每个窗口发一个编号，大的在上小的在下，那一维的编号就够了。但真实需求远不止于此：系统要能<strong>一次性移动一整层</strong>（比如进入单手模式，把除导航栏以外的所有窗口整体下沉、缩小），要能<strong>把整片区域调暗或放大</strong>（无障碍的放大镜要罩住几乎所有窗口）。这时"编号"就不够用了——你需要一棵树。</p>
+<div class="hint"><span class="tag">本节核心</span><br>覆盖关系不是靠单个数值硬排的，而是靠一棵窗口树的结构来决定的。数值只是树内部的"细分规则"。</div>
+
+<h2>二、核心模型：DisplayArea 是一棵树</h2>
+<p>Android 12 把屏幕上所有的窗口容器组织成一棵以 <code>DisplayContent</code> 为根的树。树的中间节点叫 <code>DisplayArea</code>（显示区域），叶子节点是装着真实窗口的槽位——<code>DisplayArea.Tokens</code> 或 <code>TaskDisplayArea</code>。每个窗口最终都挂在某个叶子里，而"谁盖谁"就由<strong>树的先后顺序</strong>决定：同一父节点下，后加入的兄弟节点（在屏幕上）盖住先加入的。</p>
+<div class="diagram"><pre>
+DisplayContent（根，代表一块屏幕）
+├── Dimmable "WindowedMagnification" ────────── 无障碍放大镜的"罩子"（Feature 区）
+│   ├── Tokens "Leaf:0:1" ───────────────────── 壁纸
+│   ├── Tokens "Leaf:2:2"
+│   │   └── TaskDisplayArea "DefaultTaskDisplayArea" ── 所有 App 窗口的家
+│   ├── Tokens "Leaf:3:14" ──────────────────── 弹窗、覆盖层等
+│   ├── Tokens "Leaf:15:16" ─────────────────── 输入法
+│   ├── Tokens "Leaf:17:22" ─────────────────── 状态栏一族
+│   └── Tokens "Leaf:23:31" ─────────────────── 导航栏、截屏等
+└── Tokens "Leaf:32:36" ─────────────────────── 无障碍覆盖、鼠标指针
+</pre></div>
+<p>读这棵树的规则只有三条：</p>
+<ol>
+<li><strong>纵向是包含</strong>：父节点是子节点的"辖区"，子节点永远画在父节点的范围里；父移动，整棵子树跟着移动。</li>
+<li><strong>横向是先后</strong>：同一父节点下，兄弟从左到右 = 从下到上叠放；谁排在后，谁盖在前面。</li>
+<li><strong>名字里的数字是窗口层号</strong>：<code>Leaf:17:22</code> 表示这个叶子负责 layer 17 到 22 的窗口——数字只是"辖区编号"，真正的盖住关系由树结构决定。</li>
+</ol>
+<div class="think">
+<div class="q">想一下：为什么不用一维的 z 值数组，非要用树？</div>
+<div class="a">因为一维数组只能回答"谁在谁上面"，无法表达"这一大群窗口属于同一个整体"。树能表达分组：把放大镜要罩住的几十层窗口放进一个子树，整个子树平移、缩放、调暗，只需要操作一个节点。这就是 <code>Feature</code> 存在的意义（第 5 节展开）。</div>
+</div>
+
+<h2>三、认识树上的节点</h2>
+<p>树上的所有节点都继承自统一的基类 <code>WindowContainer</code>，它提供了挂孩子、遍历子树、移动子树等公共能力。往下各层分工如下：</p>
+<table class="tbl">
+<tr><th>类名</th><th>在树上的角色</th><th>一句话职责</th></tr>
+<tr><td><code>WindowContainer&lt;T&gt;</code></td><td>所有节点的基类</td><td>提供树的通用操作：增删子节点、遍历、整体移动。</td></tr>
+<tr><td><code>DisplayArea&lt;T&gt;</code></td><td>中间容器</td><td>屏幕上的一块"区域"，把窗口按区域分组，本身不装具体窗口。</td></tr>
+<tr><td><code>DisplayContent</code></td><td>树的根</td><td>代表一块逻辑屏幕，整个窗口树由此长出。</td></tr>
+<tr><td><code>RootDisplayArea</code></td><td>根的基类</td><td>DisplayContent 的父类，缓存了建树时的层号查找表。</td></tr>
+<tr><td><code>DisplayArea.Dimmable</code></td><td>可调暗的中间容器</td><td>能被调暗的 DisplayArea，用于放大镜等需要"罩暗其他窗口"的 Feature。</td></tr>
+<tr><td><code>DisplayArea.Tokens</code></td><td>叶子（槽位）</td><td>直接收纳 <code>WindowToken</code>（窗口容器），大部分窗口的最终落脚点。</td></tr>
+<tr><td><code>TaskDisplayArea</code></td><td>叶子（分区）</td><td>App 窗口的专属区域，分屏时左右各一个，下面挂 Task、ActivityRecord。</td></tr>
+</table>
+<p>注意两个易混点：<code>TaskDisplayArea</code> 只出现在应用层（layer 2），而 <code>DisplayArea.Tokens</code> 负责其余所有层；"Task 树"（Task → ActivityRecord → WindowState）挂在 <code>TaskDisplayArea</code> 下面，与系统窗口的树是两条分支。</p>
+
+<h2>四、谁盖谁：先定大类，再定同类</h2>
+<p>一个窗口最终画在哪里，分两步决定。</p>
+<div class="step">
+<div class="num">1</div>
+<div class="body"><strong>第一步：按窗口类型查出层号（layer）</strong>，类型与层号的对应表由 <code>WindowManagerPolicy.getWindowLayerFromTypeLw</code> 定义：壁纸=1，应用=2，输入法=15，状态栏=17，导航栏=24，鼠标指针=35……共 36 层（0~35）。这个层号只是"大类编号"，不是最终顺序。
+<div class="why"><span class="wtag">为什么：</span>层号是系统与三方 App 共同遵守的"宪法"——三方 App 只能拿到 2（应用）和 12（悬浮窗）等少量层，永远摸不到状态栏的 17。先查层号，等于先把窗口归入正确的辖区。</div>
+</div>
+</div>
+<div class="step">
+<div class="num">2</div>
+<div class="body"><strong>第二步：用层号在树里找到叶子槽位，挂进去</strong>。同一层号的所有窗口进同一个叶子，它们之间再用"同类规则"排先后——应用层里由 <code>Task</code> 顺序决定，Token 里由加入顺序决定。树的先后已经把不同大类的关系定死，同类内部再用数值微调。
+<div class="why"><span class="wtag">为什么：</span>如果让 36 个层号直接做全局 z 值，系统窗口之间就无法表达"整体移动"。分成两步后，大类关系固化在树结构里，同类窗口内部的排序保持灵活，两头都兼顾。</div>
+</div>
+</div>
+<div class="think">
+<div class="q">想一下：应用层里同时有两个 App 窗口（分屏），它们在树上的位置是同一个叶子里的两个 Task。它们的层号都是 2，靠什么分先后？</div>
+<div class="a">靠 <code>Task</code> 在 <code>TaskDisplayArea</code> 里的顺序（最近交互的 Task 靠后、盖在上方）。层号只负责把它俩送进同一片区域，区域内的排序是 Task 管理器的职责。</div>
+</div>
+
+<h2>五、两个前置概念：layer 与 Feature</h2>
+<p><strong>layer（窗口层号）</strong>是每个窗口类型出生就带的一个整数，定义在 <code>WindowManagerPolicy.getWindowLayerFromTypeLw</code>。它是"窗口属于哪一大类"的身份证，决定了窗口在树中落脚的辖区：</p>
+<table class="tbl">
+<tr><th>层号</th><th>窗口类型</th><th>典型场景</th></tr>
+<tr><td>0</td><td>（未使用）</td><td>保留</td></tr>
+<tr><td>1</td><td><code>TYPE_WALLPAPER</code></td><td>壁纸</td></tr>
+<tr><td>2</td><td><code>APPLICATION_LAYER</code></td><td>所有 App 窗口</td></tr>
+<tr><td>3~9</td><td><code>TYPE_PHONE</code>、<code>TYPE_TOAST</code> 等</td><td>来电、搜索栏、Toast</td></tr>
+<tr><td>10~12</td><td><code>TYPE_SYSTEM_ALERT</code>、<code>TYPE_APPLICATION_OVERLAY</code></td><td>ANR 弹窗、悬浮窗</td></tr>
+<tr><td>15~16</td><td><code>TYPE_INPUT_METHOD</code> / <code>_DIALOG</code></td><td>输入法键盘</td></tr>
+<tr><td>17~22</td><td><code>TYPE_STATUS_BAR</code>、<code>TYPE_NOTIFICATION_SHADE</code> 等</td><td>状态栏、通知面板</td></tr>
+<tr><td>24~25</td><td><code>TYPE_NAVIGATION_BAR</code> / <code>_PANEL</code></td><td>导航栏</td></tr>
+<tr><td>26~35</td><td><code>TYPE_SCREENSHOT</code>、<code>TYPE_POINTER</code> 等</td><td>截屏、系统错误、鼠标指针</td></tr>
+<tr><td>36</td><td>最大值（<code>getMaxWindowLayer()</code>）</td><td>圆角遮罩专用</td></tr>
+</table>
+<p><strong>Feature（特性）</strong>则是系统功能的"代号"。一个 Feature 声明它<strong>作用于哪些层</strong>——注意是"层"，不是窗口——建树时系统会为每个 Feature 造出一批 <code>DisplayArea</code>，把这些层罩在里面。默认策略下注册的 Feature 有：</p>
+<table class="tbl">
+<tr><th>Feature 名</th><th>作用范围（对层）</th><th>用途</th></tr>
+<tr><td><code>WindowedMagnification</code></td><td>0~31 全部（除 32）</td><td>窗口放大镜：整个子树整体放大</td></tr>
+<tr><td><code>HideDisplayCutout</code></td><td>全部，除导航栏/状态栏一族</td><td>隐藏挖孔屏的黑边</td></tr>
+<tr><td><code>OneHanded</code></td><td>全部，除导航栏一族</td><td>单手模式：整体下沉缩小</td></tr>
+<tr><td><code>FullscreenMagnification</code></td><td>大部分层，除放大镜/输入法/导航栏</td><td>全屏放大镜</td></tr>
+<tr><td><code>ImePlaceholder</code></td><td>仅 15~16</td><td>输入法占位：系统后续可把键盘移进来</td></tr>
+<tr><td><code>OneHandedBackgroundPanel</code></td><td>仅 1（壁纸）</td><td>单手模式的背景暗化层</td></tr>
+</table>
+<div class="analogy"><span class="tag">类比</span><br>把屏幕想成一栋 36 层的大楼，每层住一类窗口（layer = 楼层号）。Feature 则像"物业划分的片区"：物业说"1 到 31 层归 A 片区统一管理"，于是这些楼层的外墙上多了一道共同的闸门。住户（窗口）还是住在各自的楼层里，但片区闸门一动，整片楼层一起动。DisplayArea 树同时记录了楼层（layer）和片区（Feature）两种结构。</div>
+
+<h2>六、树是怎么"长"出来的</h2>
+<p>开机后，每个 <code>DisplayContent</code> 会调用 <code>DisplayAreaPolicyBuilder</code> 来建树，核心是 <code>HierarchyBuilder.build()</code>。它并不直接创建最终的 DisplayArea，而是先用一种"草稿节点" <code>PendingArea</code> 搭出骨架，再统一落成真节点。算法要保证三条性质：每个 Feature 对应一组 DisplayArea；窗口加入后，其所属每个 Feature 的区都是它的祖先；兄弟之间下层的最顶层不高于上层的最底层（Z 序严格）。</p>
+<div class="step">
+<div class="num">1</div>
+<div class="body"><strong>准备两个数组</strong>：<code>PendingArea[] areaForLayer</code>（每层一个"当前槽位指针"，初始全部指向根）和 <code>DisplayArea.Tokens[] displayAreaForLayer</code>（最终落成后每层对应的叶子）。
+<div class="why"><span class="wtag">为什么：</span>areaForLayer 是算法的核心工作区——它记录"每一层现在挂在哪个待定节点下"，新节点据此决定挂在谁下面、能否复用。</div>
+</div>
+</div>
+<div class="step">
+<div class="num">2</div>
+<div class="body"><strong>第一遍扫描：为每个 Feature 造区</strong>。按 Feature 定义顺序（先定义的在上）逐个处理；对每个 Feature，从 layer 0 扫到 36：如果该 Feature 覆盖这一层，就看看能否复用上一层的区——只有"上一层也属于这个 Feature 且槽位指针没变"才能复用，否则新建一个 <code>PendingArea</code> 挂在当前槽位指针下，并把指针移到它身上；不覆盖则清空指针。
+<div class="why"><span class="wtag">为什么：</span>一个 Feature 覆盖的层可能被其他 Feature"打断"（比如 15~16 被 ImePlaceholder 占据），于是同一 Feature 会裂成多个区——先定义的 Feature 更靠上，保证 Z 序性质。</div>
+</div>
+</div>
+<div class="step">
+<div class="num">3</div>
+<div class="body"><strong>第二遍扫描：为每层造叶子</strong>。再从 layer 0 扫到 36：若本层类型与上一层相同且槽位指针没变，就复用上一个叶子；否则新建叶子。三类叶子：应用层挂 <code>TaskDisplayArea</code>（从 setTaskDisplayAreas 传入），15~16 挂输入法容器，其余建 <code>DisplayArea.Tokens</code>。叶子创建时把它的 <code>mMaxLayer</code> 一路刷到当前层。
+<div class="why"><span class="wtag">为什么：</span>相邻的同类层共用一个叶子，能大幅减少节点数量——36 层最终只浓缩成十来个叶子。</div>
+</div>
+</div>
+<div class="step">
+<div class="num">4</div>
+<div class="body"><strong>落成</strong>：对 <code>PendingArea</code> 树做深度优先遍历（<code>instantiateChildren</code>），同一父节点下按最小层号排序后逐个创建真实 DisplayArea，叶子把管辖的每层都写进 <code>displayAreaForLayer</code> 查找表；最后调用 <code>RootDisplayArea.onHierarchyBuilt</code> 把 Feature 列表和查找表缓存在根上。
+<div class="why"><span class="wtag">为什么：</span>先搭草稿再落成，是为了让"挂到哪里"的决策与"创建哪个类的节点"分离，排序也只需在落成时做一次。</div>
+</div>
+</div>
+
+<h2>七、新窗口如何挂进树里</h2>
+<p>树建好后就是一棵常青树：每来一个新窗口，系统按固定流程把它挂到对应的叶子下。</p>
+<div class="step">
+<div class="num">1</div>
+<div class="body"><strong>App 请求加窗口</strong>，<code>WindowManagerService</code> 校验后交给所在屏幕的 <code>DisplayContent</code>。
+<div class="why"><span class="wtag">为什么：</span>窗口归属哪块屏幕就挂哪棵树的根，多屏互不干扰。</div>
+</div>
+</div>
+<div class="step">
+<div class="num">2</div>
+<div class="body"><strong>查层号</strong>：调用 <code>WindowManagerPolicy.getWindowLayerFromTypeLw(type)</code>，由窗口类型查出 layer（如输入法 → 15）。
+<div class="why"><span class="wtag">为什么：</span>层号是树内寻址的钥匙，下一步直接用它在查找表里定位。</div>
+</div>
+</div>
+<div class="step">
+<div class="num">3</div>
+<div class="body"><strong>查表定位叶子</strong>：<code>RootDisplayArea.findAreaForTokenInLayer(token)</code> 用 layer 作下标读 <code>displayAreaForLayer[layer]</code>，直接拿到目标 <code>DisplayArea.Tokens</code>。
+<div class="why"><span class="wtag">为什么：</span>建树时把每层对应的叶子全部预填进数组，运行时寻址就是 O(1) 的数组读——不用每次遍历整棵树。</div>
+</div>
+</div>
+<div class="step">
+<div class="num">4</div>
+<div class="body"><strong>挂入叶子</strong>：把窗口的 <code>WindowToken</code> 加到该叶子的子节点列表末尾。
+<div class="why"><span class="wtag">为什么：</span>同一叶子里"加在后面 = 盖在上面"，后来者居上，符合直觉。</div>
+</div>
+</div>
+<div class="analogy"><span class="tag">特例：子窗口不走树</span><br>对话框、下拉面板这类子窗口（<code>TYPE_APPLICATION_PANEL</code> 等）不会单独查层挂树，而是直接挂到父窗口的 <code>WindowState</code> 下面，父子共进退——父窗口被收起，子面板跟着消失。它们的先后由 <code>getSubWindowLayerFromTypeLw</code> 给出的相对层号（正数在上、负数在下）在父窗口内部排序。</div>
+
+<h2>八、概念 → 源码对照与阅读顺序</h2>
+<table class="tbl">
+<tr><th>本文概念</th><th>源码类 / 方法</th></tr>
+<tr><td>窗口容器基类</td><td><code>WindowContainer.java</code></td></tr>
+<tr><td>区域容器 / 叶子槽位</td><td><code>DisplayArea.java</code>（含内部类 <code>Tokens</code>、<code>Dimmable</code>）</td></tr>
+<tr><td>树的根 / 查找表缓存</td><td><code>RootDisplayArea.java</code>（<code>findAreaForTokenInLayer</code>、<code>onHierarchyBuilt</code>）</td></tr>
+<tr><td>屏幕根节点</td><td><code>DisplayContent.java</code></td></tr>
+<tr><td>应用分区</td><td><code>TaskDisplayArea.java</code></td></tr>
+<tr><td>建树算法（草稿节点、两遍扫描）</td><td><code>DisplayAreaPolicyBuilder.java</code> 的 <code>HierarchyBuilder.build()</code>、<code>PendingArea</code>、<code>Feature</code></td></tr>
+<tr><td>默认 Feature 配置</td><td><code>DisplayAreaPolicy.java</code> 的 <code>DefaultProvider</code></td></tr>
+<tr><td>层号常量表</td><td><code>WindowManagerPolicy.java</code> 的 <code>getWindowLayerFromTypeLw</code>；<code>WindowManagerPolicyConstants.java</code> 的 <code>APPLICATION_LAYER</code></td></tr>
+<tr><td>Feature 编号注册</td><td><code>android.window.DisplayAreaOrganizer.java</code>（<code>FEATURE_WINDOWED_MAGNIFICATION</code> 等）</td></tr>
+</table>
+<p>建议阅读顺序：</p>
+<ol>
+<li><strong>先看常量</strong>：<code>WindowManagerPolicy.getWindowLayerFromTypeLw</code>，把类型→层号这张表印在脑子里。</li>
+<li><strong>再看建树</strong>：<code>DisplayAreaPolicyBuilder.HierarchyBuilder.build()</code>，对照第 6 节的两遍扫描。</li>
+<li><strong>回看落成</strong>：<code>PendingArea.instantiateChildren</code>，理解草稿如何变成真节点、查找表如何填充。</li>
+<li><strong>最后看挂载</strong>：<code>Result.addWindow</code> → <code>findAreaForTokenInLayer</code>，验证运行时 O(1) 寻址。</li>
+</ol>
+<div class="hint"><span class="tag">本节核心</span><br>概念与源码一一对应：树 = WindowContainer 家族；建树 = HierarchyBuilder；层号 = WindowManagerPolicy；Feature = DisplayAreaPolicyBuilder.Feature + DisplayAreaOrganizer。</div>
+
+<h2>九、自测：7 个问题</h2>
+
+<details>
+<summary>Q1：为什么不用一维 z 值数组管理窗口？</summary>
+<div class="inner">
+<div class="qa"><span class="tag">提示</span>想想"单手模式要把几十层窗口整体移动"这件事，用数组怎么做？</div>
+<div class="qa"><span class="tag">答案</span>一维数组只能表达顺序，无法表达"群体"。树的一个子树 = 一个可整体操作的单位（移动、调暗、放大都只动一个节点）。这是 Feature 分组机制存在的根本原因。</div>
+</div>
+</details>
+
+<details>
+<summary>Q2：layer（层号）与 DisplayArea 树是什么关系？</summary>
+<div class="inner">
+<div class="qa"><span class="tag">提示</span>层号是"身份证"，树是"住址结构"。</div>
+<div class="qa"><span class="tag">答案</span>层号由窗口类型决定，是静态的大类编号（0~36）；树才是运行时决定谁盖谁的结构。层号在建树时用于划分辖区（哪个叶子管哪些层），在挂窗口时用于 O(1) 查表定位叶子。</div>
+</div>
+</details>
+
+<details>
+<summary>Q3：一个 Feature 为什么可能对应多个 DisplayArea？</summary>
+<div class="inner">
+<div class="qa"><span class="tag">提示</span>Feature 声明的层范围可能被别的 Feature"打断"。</div>
+<div class="qa"><span class="tag">答案</span>例如 FullscreenMagnification 覆盖大部分层但排除了 15~16（输入法）和 24~25（导航栏），它的覆盖范围被切成两段，每段各成一个 DisplayArea。建树算法扫描到"不覆盖"的层时会清空复用指针，逼出新的区。</div>
+</div>
+</details>
+
+<details>
+<summary>Q4：APPLICATION_LAYER 是多少？为什么 App 窗口不落在 DisplayArea.Tokens 里？</summary>
+<div class="inner">
+<div class="qa"><span class="tag">提示</span>App 下面还有 Task、ActivityRecord 一层层结构。</div>
+<div class="qa"><span class="tag">答案</span>APPLICATION_LAYER = 2（定义在 WindowManagerPolicyConstants）。App 窗口需要 Task 组织（最近任务、分屏、多任务切换），所以应用层的叶子是 TaskDisplayArea，下面再挂 Task 树；Tokens 只收纳不需要 Task 概念的系统窗口。</div>
+</div>
+</details>
+
+<details>
+<summary>Q5：建树时 areaForLayer 数组是干什么的？</summary>
+<div class="inner">
+<div class="qa"><span class="tag">提示</span>它叫"槽位指针"。</div>
+<div class="qa"><span class="tag">答案</span>areaForLayer 记录"当前这一层挂在哪个待定节点下"。新建 Feature 区或叶子时，从它读出父节点并挂上去；判断能否复用上一层节点时，也要比较"指针是否还指向同一个父"。它是两遍扫描算法的工作区。</div>
+</div>
+</details>
+
+<details>
+<summary>Q6：对话框这类子窗口如何挂树？</summary>
+<div class="inner">
+<div class="qa"><span class="tag">提示</span>它们没有独立查层号。</div>
+<div class="qa"><span class="tag">答案</span>子窗口（TYPE_APPLICATION_PANEL 等）挂在父窗口的 WindowState 之下，不经过 DisplayArea 树的寻址；相对先后由 getSubWindowLayerFromTypeLw 的相对层号在父窗口内部排序。父窗口移动或消失，子窗口跟随。</div>
+</div>
+</details>
+
+<details>
+<summary>Q7：为什么运行时给窗口找叶子是 O(1) 的？</summary>
+<div class="inner">
+<div class="qa"><span class="tag">提示</span>建树时多做了什么？</div>
+<div class="qa"><span class="tag">答案</span>落成阶段，每个叶子把它管辖的所有层都写进 displayAreaForLayer 数组（第 i 层 → 第 i 项）。运行时拿着层号直接数组下标访问，无需遍历树。</div>
+</div>
+</details>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android 窗口层级专题 | <strong>00 — 窗口为什么是一棵树：DisplayArea 层级入门</strong></p>
+  <p>基于 AOSP 12（android-12.0.0_r32）· WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实</p>
+  <p style="margin-top:10px;"><strong>00 窗口为什么是一棵树 ← 你在这</strong> &nbsp;|&nbsp; <a href="01-窗口树全景.html">01 窗口树全景 →</a></p>
+  <p style="margin-top:8px;"><a href="index.html">🏠 系列导航</a> &nbsp;|&nbsp; <a href="WMS学习路线图.html">🗺️ 学习路线图</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📌 下篇预告：01 窗口树全景 — 把整棵树讲全：WindowContainer 家族的每个节点各管什么</p>
+</div>
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '自动' : mode === 'light' ? '浅色' : '深色';
+    btn.title = '当前: ' + btn.textContent + '（点击切换）';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+</body>
+</html>

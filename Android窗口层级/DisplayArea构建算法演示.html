@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AOSP12 DisplayAreaPolicyBuilder 算法可视化（Pass 1 + Pass 2）</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --border: #334155;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto; font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); padding: 24px; max-width: 1240px;
+  }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 16px; margin: 22px 0 8px; color: #bae6fd; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; line-height: 1.75; }
+  .sub b { color: #e2e8f0; }
+  code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; background: #0b1220; padding: 1px 5px; border-radius: 4px; color: #7dd3fc; }
+  .controls {
+    position: sticky; top: 0; background: var(--bg); z-index: 10;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    padding: 12px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px;
+  }
+  .controls button {
+    background: #2563eb; color: white; border: 0; border-radius: 8px;
+    padding: 8px 14px; font-size: 13px; cursor: pointer;
+  }
+  .controls button:disabled { background: #475569; cursor: default; }
+  .controls button:hover:not(:disabled) { background: #1d4ed8; }
+  .badge {
+    background: #0ea5e9; color: white; padding: 4px 10px; border-radius: 999px;
+    font-size: 12px; font-family: ui-monospace, monospace;
+  }
+  .badge#stageLabel { background: #7c3aed; }
+  .log {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; font-size: 13px; margin: 8px 0 16px; line-height: 1.75; min-height: 56px;
+  }
+  .log b { color: #fbbf24; }
+  .log .new { color: #34d399; font-weight: 600; }
+  .log .reuse { color: #60a5fa; font-weight: 600; }
+  .log .null { color: #f87171; font-weight: 600; }
+  .log .warn { color: #fbbf24; font-weight: 600; }
+  .log .par { color: #94a3b8; }
+
+  .layerStrip { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; margin: 10px 0 8px; }
+  .layerCell {
+    min-width: 30px; height: 40px; border-radius: 6px; font-size: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    font-family: ui-monospace, monospace; color: white;
+    border: 1px solid #0f172a; position: relative; padding: 2px 4px;
+  }
+  .layerCell .num { font-size: 11px; font-weight: 700; }
+  .layerCell .owner { font-size: 8px; opacity: .95; max-width: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .layerCell.current { outline: 3px solid #facc15; z-index: 2; }
+  .layerCell.placeholder { border: 1px dashed #94a3b8; }
+
+  .heatmap { overflow-x: auto; margin: 10px 0 8px; }
+  .heatmap table { border-collapse: collapse; }
+  .heatmap td, .heatmap th {
+    border: 1px solid var(--border); width: 28px; height: 20px; text-align: center;
+    font-size: 9px; color: var(--muted);
+  }
+  .heatmap th { color: #bae6fd; position: sticky; left: 0; background: #0f172a; }
+  .heatmap th.rowhead { min-width: 210px; text-align: left; padding-left: 8px; white-space: nowrap; }
+  .heatmap th.rowhead .abbr { color: #64748b; margin-left: 6px; font-size: 10px; }
+  .heatmap td.on { color: white; }
+  .heatmap td.curCol { outline: 2px solid #facc15; }
+  /* 白框：Feature 行里属于同一个 featureArea(PendingArea) 的连续 layer 圈成一块 */
+  .heatmap td.segS, .heatmap td.segL, .heatmap td.segM, .heatmap td.segR {
+    color: #fff; font-weight: 700; font-size: 12px;
+  }
+  .heatmap td.segS { border: 2px solid rgba(255,255,255,.78); }
+  .heatmap td.segL {
+    border: 2px solid rgba(255,255,255,.78);
+    border-right: 1px solid rgba(0,0,0,.38);
+  }
+  .heatmap td.segR {
+    border: 2px solid rgba(255,255,255,.78);
+    border-left: 1px solid rgba(0,0,0,.38);
+  }
+  .heatmap td.segM {
+    border: 1px solid rgba(0,0,0,.38);
+    border-top: 2px solid rgba(255,255,255,.78);
+    border-bottom: 2px solid rgba(255,255,255,.78);
+  }
+  /* 黄框：Pass 2 里属于同一个 Tokens leaf(PendingArea) 的连续 layer 圈成一块 */
+  .heatmap td.lbS { border: 2px solid #facc15; }
+  .heatmap td.lbL {
+    border: 2px solid #facc15; border-right: 1px solid rgba(0,0,0,.45);
+  }
+  .heatmap td.lbR {
+    border: 2px solid #facc15; border-left: 1px solid rgba(0,0,0,.45);
+  }
+  .heatmap td.lbM {
+    border: 1px solid rgba(0,0,0,.45);
+    border-top: 2px solid #facc15; border-bottom: 2px solid #facc15;
+  }
+  /* 分段相邻（中间无空列）时，用 3px 深色分隔线把两个边框“割开”，避免粘成一个框 */
+  .heatmap td.adjL { border-left: 3px solid #0b1220; }
+  .heatmap td.adjR { border-right: 3px solid #0b1220; }
+  /* type 行小号圈号（与 feature 行圈号同一套编号语义） */
+  .heatmap td .lid { display: block; font-size: 8px; line-height: 8px; color: #fde68a; font-weight: 700; }
+  .heatmap tr.typeRow td { font-weight: 700; color: #cbd5e1; font-size: 8px; }
+  .heatmap td.tTASK { background: #a16207; color: #fff; }
+  .heatmap td.tIME  { background: #0369a1; color: #fff; }
+  .heatmap td.tTOKENS { background: #334155; }
+  .typeLegend { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.7; }
+  .typeLegend b { color: #cbd5e1; }
+  .typeLegend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 12px; vertical-align: -1px; }
+
+  .stats { font-size: 12px; color: var(--muted); line-height: 1.7; font-family: ui-monospace, Consolas, monospace; }
+  .stats b { color: #fbbf24; }
+
+  .viewToggle { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0 8px; }
+  .viewToggle button {
+    background: #334155; color: #e2e8f0; border: 0; border-radius: 8px;
+    padding: 6px 12px; font-size: 12px; cursor: pointer;
+  }
+  .viewToggle button.on { background: #2563eb; color: #fff; }
+  .viewToggle .hint { font-size: 12px; color: #64748b; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+  .legend span { display: inline-flex; align-items: center; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+
+  .tree {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 10px 8px; overflow: auto; font-size: 13px;
+  }
+  .treeSvgInner { min-width: 100%; display:flex; justify-content:center; }
+  #treeSvg { display:block; }
+  #treeSvg rect.nd { stroke-width: 1.25; }
+  #treeSvg rect.nd-feature { fill: #0f172a; }
+  #treeSvg rect.nd-root    { fill: #334155; stroke: #94a3b8; }
+  #treeSvg rect.nd-leaf    { fill: #1e293b; stroke: #475569; }
+  #treeSvg rect.nd-tda     { fill: #422f06; stroke: #a16207; }
+  #treeSvg rect.nd-ime     { fill: #082f49; stroke: #0284c7; }
+  #treeSvg rect.nd-ph      { fill: #111827; stroke: #64748b; stroke-dasharray: 4 3; }
+  #treeSvg text.nm  { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; font-weight: 700; fill: #e2e8f0; }
+  #treeSvg text.rg  { font-family: ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 700; fill: #fde68a; }
+  #treeSvg text.tx2 { fill: #94a3b8; }
+  #treeSvg path.edge { fill: none; stroke: #64748b; stroke-width: 1.5; opacity: .9; }
+  #treeSvg path.edge-new { stroke: #34d399; }
+  #treeSvg rect.flashRing { fill: none; stroke: #facc15; stroke-width: 2.5; animation: svgPulse 1s ease-in-out infinite; }
+  @keyframes svgPulse {
+    0%, 100% { stroke-opacity: 1;   stroke-width: 3; }
+    50%      { stroke-opacity: .25; stroke-width: 1.4; }
+  }
+  #btnExportSvg {
+    background: #0f766e; color: #fff; border: 0; border-radius: 8px;
+    padding: 6px 12px; font-size: 12px; cursor: pointer;
+  }
+  #btnExportSvg:hover { background: #115e59; }
+  .treeNote { font-size: 12px; color: #94a3b8; margin: 10px 2px 0; line-height: 1.7; }
+
+  .node-parent { color: #94a3b8; }
+  .node-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 26px; box-sizing: border-box;
+    border: 1px solid var(--border); border-radius: 8px; padding: 0 10px;
+    background: #0f172a; color: #e2e8f0; font-weight: 600; white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,.35);
+  }
+  .node-chip .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; }
+  .node-chip .nm { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 12.5px; }
+  .node-chip .rg {
+    font-family: ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 700;
+    background: rgba(255,255,255,.12); border-radius: 5px; padding: 1px 6px; color: #fde68a;
+  }
+  .node-chip.root .nm { color: #cbd5e1; }
+  .node-chip.leaf { background: #1e293b; }
+  .node-chip.tda  { background: #422f06; }
+  .node-chip.ime  { background: #082f49; }
+  .node-chip.ph   { background: #111827; color: #94a3b8; border-style: dashed; }
+  .node-chip.ph .nm { color: #94a3b8; }
+</style>
+</head>
+
+<body>
+<h1>AOSP12 DisplayAreaPolicyBuilder 算法可视化</h1>
+<div class="sub">
+  忠实模拟 <code>DisplayAreaPolicyBuilder.build()</code> 的 <b>Pass 1</b>（Feature 遍历）与 <b>Pass 2</b>（叶子 / TaskDisplayArea / ImeContainer 填充），
+  以及收尾的 <code>maxLayer</code> 回算与 <code>instantiateChildren</code> 排序视图。<br>
+  代码位置：<code>frameworks/base/services/core/java/com/android/server/wm/DisplayAreaPolicyBuilder.java</code><br>
+  <b>Pass 1</b>：外层按 Feature 定义顺序，内层 layer 0 → 36；<code>featureArea</code> 仅当「上一段连续 + 父节点上下文一致」时复用，否则新建；断层则置空。<br>
+  <b>Pass 2</b>：layer 0 → 36，按 <code>getTypeOfLayer()</code> 得到 TASK / IME / TOKENS；leaf 的父节点或 type 一变就新建 leaf；
+  TASK 层额外建一个 <code>DefaultTaskDisplayArea</code> 兄弟节点、并把占位 leaf 标记为「不实例化」；IME 段的 leaf 直接把 <code>mExisting</code> 指到 <code>ImeContainer</code>。
+</div>
+
+<div class="controls">
+  <button id="btnPrev">上一步</button>
+  <button id="btnNext">下一步</button>
+  <button id="btnAuto">自动播放</button>
+  <button id="btnJump">跳到末尾</button>
+  <button id="btnReset">重置</button>
+  <span class="badge" id="stageLabel">准备就绪</span>
+  <span class="badge" id="stepLabel">0 / 259</span>
+</div>
+
+<div class="log" id="log">点击「下一步」开始。左表定位当前 Feature / layer，下方实时显示 <code>areaForLayer</code> 与 PendingArea 树。</div>
+
+<h2>定位表：Feature 圈定的 layer，以及每层的类型</h2>
+<div class="heatmap" id="heatmap"></div>
+<div class="typeLegend" id="typeLegend"></div>
+<div class="legend" id="legend"></div>
+
+<h2>areaForLayer：每层当前归谁管</h2>
+<div class="layerStrip" id="layerStrip"></div>
+
+<h2>PendingArea 树</h2>
+<div class="viewToggle">
+  <button id="btnViewBuild" class="on">构建期树（创建顺序）</button>
+  <button id="btnViewInst">实例化树（按 minLayer 排序）</button>
+  <button id="btnExportSvg" title="把当前树导出成独立 .svg 文件">导出 SVG</button>
+  <span class="hint" id="viewHint"></span>
+</div>
+<div class="tree" id="tree"></div>
+
+<h2>运行统计</h2>
+<div class="stats" id="stats"></div>
+
+<script>
+/* ============================================================
+   1. 常量：与 AOSP12 (r32) DisplayAreaPolicyBuilder 的 Feature 定义一致
+   ============================================================ */
+const MAXL = 36;                  // getMaxWindowLayer()
+const APPLICATION_LAYER = 2;      // getWindowLayerFromTypeLw(TYPE_APPLICATION) 的简化：layer 2
+const TASK = 1, IME = 2, TOKENS = 0;
+
+const rng  = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+const diff = (arr, rm) => { const s = new Set(rm); return arr.filter(x => !s.has(x)); };
+
+const WM   = rng(0, 31);                              // WindowedMagnification
+const HDC  = diff(rng(0, MAXL), [17, 19, 24, 25, 36]); // HideDisplayCutout（挖掉若干断层）
+const OHBP = [0, 1];                                  // OneHandedBackgroundPanel
+const OH   = diff(rng(0, MAXL), [24, 25, 36]);         // OneHanded
+const FM   = diff(rng(0, MAXL), [15, 16, 24, 25, 28, 32, 36]); // FullscreenMagnification
+const IMEF = [15, 16];                                // ImePlaceholder
+
+const FEATURES = [
+  { name: 'WindowedMagnification',    short: 'WM',   layers: new Set(WM),   color: '#f97316' },
+  { name: 'HideDisplayCutout',        short: 'HDC',  layers: new Set(HDC),  color: '#3b82f6' },
+  { name: 'OneHandedBackgroundPanel', short: 'OHBP', layers: new Set(OHBP), color: '#22c55e' },
+  { name: 'OneHanded',                short: 'OH',   layers: new Set(OH),   color: '#a855f7' },
+  { name: 'FullscreenMagnification',  short: 'FM',   layers: new Set(FM),   color: '#f43f5e' },
+  { name: 'ImePlaceholder',           short: 'IME',  layers: new Set(IMEF), color: '#14b8a6' }
+];
+
+const C_ROOT = '#475569', C_LEAF = '#64748b', C_TDA = '#eab308', C_IME = '#0ea5e9';
+
+/* ============================================================
+   2. PendingArea 节点
+   feature 非空        → Pass 1 产生的 featureArea
+   existing 非空       → 直接复用既有容器（DefaultTaskDisplayArea / ImeContainer）
+   skipTokens = true   → 占位节点，instantiateChildren 时跳过
+   ============================================================ */
+class Node {
+  constructor(feature, minL, parent, opts) {
+    opts = opts || {};
+    this.feature = feature;
+    this.minL = minL;
+    this.maxL = minL;
+    this.parent = parent;
+    this.children = [];
+    this.existing = opts.existing || null;
+    this.skipTokens = !!opts.skipTokens;
+    this.tag = opts.tag || '';
+  }
+  get isPlaceholder() { return this.skipTokens && !this.existing; }
+  name() {
+    if (this.isPlaceholder) return 'TASK 占位';
+    if (this.existing) return this.existing;
+    if (this.feature) return this.feature.short;
+    return 'Tokens';
+  }
+  range() {
+    if (!this.feature && !this.existing && this.parent === null) return '';
+    if (this.isPlaceholder) return 'L' + this.minL;
+    return this.minL + '~' + this.maxL;
+  }
+  color() {
+    if (this.feature) return this.feature.color;
+    if (this.existing === 'DefaultTaskDisplayArea') return C_TDA;
+    if (this.existing === 'ImeContainer') return C_IME;
+    if (this.isPlaceholder) return C_ROOT;
+    return C_LEAF;
+  }
+  className() {
+    if (this.isPlaceholder) return ' ph';
+    if (this.existing === 'DefaultTaskDisplayArea') return ' tda';
+    if (this.existing === 'ImeContainer') return ' ime';
+    if (!this.feature) return ' leaf';
+    return '';
+  }
+  title() {
+    if (this.existing) return this.existing + '（layer ' + this.minL + '~' + this.maxL + '）';
+    if (this.feature) return this.feature.name + '（layer ' + this.minL + '~' + this.maxL + '）';
+    if (this.isPlaceholder) return 'TASK 占位 leaf，实例化时跳过（layer ' + this.minL + '）';
+    return 'Tokens leaf（layer ' + this.minL + '~' + this.maxL + '）';
+  }
+  label() {
+    const r = this.range();
+    return r ? this.name() + '(' + r + ')' : this.name();
+  }
+}
+
+/* ============================================================
+   3. 步骤表：Pass 1 共 6×37 = 222 步，Pass 2 共 37 步
+   ============================================================ */
+const steps = [];
+FEATURES.forEach((f, fi) => { for (let L = 0; L <= MAXL; L++) steps.push({ stage: 1, fi: fi, layer: L }); });
+for (let L = 0; L <= MAXL; L++) steps.push({ stage: 2, layer: L });
+const TOTAL = steps.length;
+const PASS1_END = FEATURES.length * (MAXL + 1);
+
+/* ============================================================
+   4. 运行状态
+   ============================================================ */
+let root, area, fa, curStage, curFi, curLayer, leaf, leafType, stepIndex, lastNode, lastAction, done;
+
+function resetState() {
+  root = new Node(null, 0, null);
+  root.maxL = 0;
+  area = Array.from({ length: MAXL + 1 }, () => root);
+  fa = null;
+  curStage = 0; curFi = -1; curLayer = 0;
+  leaf = null; leafType = -1;
+  stepIndex = 0; lastNode = null; lastAction = 'init'; done = false;
+}
+
+/* ============================================================
+   5. 算法本体
+   ============================================================ */
+function typeOfLayer(L) {
+  if (L === APPLICATION_LAYER) return TASK;
+  if (L === 15 || L === 16) return IME;
+  return TOKENS;
+}
+
+const TYPE_LABEL = { 0: 'TO', 1: 'TK', 2: 'IM' };
+const TYPE_CLASS = { 0: 'tTOKENS', 1: 'tTASK', 2: 'tIME' };
+const TYPE_FULL  = {
+  0: 'TOKENS（新建 Tokens 叶子容器）',
+  1: 'TASK（TYPE_APPLICATION，生成 DefaultTaskDisplayArea）',
+  2: 'IME（输入法层，复用 ImeContainer）'
+};
+
+/* Pass 1：遍历每个 Feature，内层扫 layer 0→36 */
+function applyPass1(fi, L) {
+  curStage = 1;
+  if (fi !== curFi) { curFi = fi; fa = null; }
+  curLayer = L;
+  lastNode = null;
+  const f = FEATURES[fi];
+  if (f.layers.has(L)) {
+    if (fa === null || fa.parent !== area[L]) {
+      const n = new Node(f, L, area[L]);      // 新建 featureArea
+      area[L].children.push(n);
+      fa = n;
+      lastNode = n;
+      lastAction = 'create';
+    } else {
+      fa.maxL = L;                            // 复用并延伸
+      lastNode = fa;
+      lastAction = 'extend';
+    }
+    area[L] = fa;
+  } else {
+    fa = null;                                // 断层：置空
+    lastAction = 'skip';
+  }
+}
+
+/* Pass 2：遍历 layer 0→36，按 type 与父上下文决定新建还是复用 leaf */
+function applyPass2(L) {
+  curStage = 2;
+  curLayer = L;
+  curFi = -1;
+  lastNode = null;
+  const t = typeOfLayer(L);
+  if (leaf === null || leaf.parent !== area[L] || leafType !== t) {
+    leaf = new Node(null, L, area[L]);
+    leaf.parent.children.push(leaf);
+    leafType = t;
+    if (t === TASK) {
+      const tda = new Node(null, L, area[L], { existing: 'DefaultTaskDisplayArea', tag: 'TDA' });
+      area[L].children.push(tda);
+      leaf.skipTokens = true;
+      lastNode = tda;
+      lastAction = 'task';
+    } else if (t === IME) {
+      leaf.existing = 'ImeContainer';
+      leaf.skipTokens = true;
+      leaf.tag = 'IME';
+      lastNode = leaf;
+      lastAction = 'ime';
+    } else {
+      lastNode = leaf;
+      lastAction = 'leafnew';
+    }
+  } else {
+    leaf.maxL = L;
+    lastNode = leaf;
+    lastAction = 'leafext';
+  }
+  leaf.maxL = L;
+  // 注意：Pass 2 不回写 area[L]！槽位始终是 Pass 1 终态的 feature PendingArea，
+  // Tokens leaf 只是挂为其子节点（DisplayAreaPolicyBuilder.java:494-522）。
+}
+
+function applyStep(s) {
+  if (!s) { lastAction = 'done'; return; }
+  if (s.stage === 1) applyPass1(s.fi, s.layer); else applyPass2(s.layer);
+}
+
+/* 收尾：后序回算 maxLayer，让父节点覆盖到子节点范围 */
+function updateMaxLayer(n) {
+  for (const c of n.children) updateMaxLayer(c);
+  if (n.children.length) {
+    let m = n.minL;
+    for (const c of n.children) m = Math.max(m, c.maxL);
+    n.maxL = m;
+  }
+  return n.maxL;
+}
+
+function stepForward() {
+  if (stepIndex >= TOTAL) {
+    if (!done) { updateMaxLayer(root); done = true; lastAction = 'done'; }
+    return;
+  }
+  applyStep(steps[stepIndex]);
+  stepIndex++;
+  if (stepIndex >= TOTAL) { updateMaxLayer(root); done = true; }
+}
+
+function applyUpTo(target) {
+  resetState();
+  const end = Math.min(target, TOTAL);
+  for (let i = 0; i < end; i++) applyStep(steps[i]);
+  stepIndex = end;
+  lastNode = null;
+  if (stepIndex >= TOTAL) { updateMaxLayer(root); done = true; lastAction = 'done'; }
+  else lastAction = (stepIndex === 0) ? 'init' : 'replay';
+}
+
+
+/* ============================================================
+   6. 渲染
+   ============================================================ */
+let viewMode = 'build';
+
+/* 圈号（超过 20 退化为 [n]） */
+const CIRCLED = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩',
+                 '⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'];
+const circled = n => (n >= 1 && n <= 20) ? CIRCLED[n - 1] : '[' + n + ']';
+
+/* 独立重跑两趟遍历，算出每个 layer 归属于哪个 PendingArea（与 build() 同逻辑）：
+   fSegs[fi]      : Map(layer -> {id, parent})  —— Pass 1 每个 Feature 的 featureArea 分段
+   lSegs          : Map(layer -> {id, parent})  —— Pass 2 Tokens leaf 分段（全表连续编号）
+   依据：DisplayAreaPolicyBuilder.java:463-521 */
+function computeSegments() {
+  // 关键：身份用对象引用模拟，和 Arrays.fill(areaForLayer, root) 一样——
+  // 初始 37 个槽位指向【同一个】 root 对象；共享同一 PendingArea 的 layer 持同一对象。
+  const rootObj = { label: 'Root' };
+  const owner = Array.from({ length: MAXL + 1 }, () => rootObj);
+  const fSegs = [];
+  FEATURES.forEach((f, fi) => {
+    const map = new Map();
+    let cur = null;
+    let nextId = 1;
+    for (let L = 0; L <= MAXL; L++) {
+      if (f.layers.has(L)) {
+        if (cur === null || cur.parent !== owner[L]) {
+          // cur 自身即新 PendingArea 的稳定身份对象
+          cur = { id: nextId++, parent: owner[L], label: f.short + '#' + nextId };
+          cur.label = f.short + '#' + cur.id;
+        }
+        map.set(L, cur);
+        owner[L] = cur;       // 同一对象覆盖所有归入该 area 的 layer
+      } else {
+        cur = null;
+      }
+    }
+    fSegs.push(map);
+  });
+  // Pass 2：从 Pass 1 终态出发（同批对象引用），leaf 本身也是稳定身份
+  const lSegs = new Map();
+  let leaf = null, leafType = -1, leafId = 0;
+  for (let L = 0; L <= MAXL; L++) {
+    const t = typeOfLayer(L);
+    if (leaf === null || leaf.parent !== owner[L] || t !== leafType) {
+      leaf = { id: ++leafId, parent: owner[L], type: t, label: 'Tokens leaf ' + circled(leafId) };
+      leafType = t;
+    }
+    lSegs.set(L, leaf);
+    // 同样不回写 owner：leaf 只是挂为 feature PendingArea 的子节点
+  }
+  return { fSegs, lSegs };
+}
+
+/* 根据连续段的起止位置给出框选 class */
+function segClass(map, L, id) {
+  const start = (L === 0 || !map.has(L - 1) || map.get(L - 1).id !== id);
+  const end   = (L === MAXL || !map.has(L + 1) || map.get(L + 1).id !== id);
+  return start && end ? 'segS' : start ? 'segL' : end ? 'segR' : 'segM';
+}
+
+function renderHeatmap() {
+  const el = document.getElementById('heatmap');
+  const { fSegs, lSegs } = computeSegments();
+  let h = '<table><tr><th class="rowhead">Feature</th>';
+  for (let L = 0; L <= MAXL; L++) h += '<th>' + L + '</th>';
+  h += '</tr>';
+  FEATURES.forEach((f, fi) => {
+    const isCur = (curStage === 1 && fi === curFi);
+    h += '<tr' + (isCur ? ' style="background:#1e293b"' : '') + '><th class="rowhead">' + f.name
+       + '<span class="abbr">' + f.short + '</span></th>';
+    const segMap = fSegs[fi];
+    for (let L = 0; L <= MAXL; L++) {
+      const cur = (isCur && L === curLayer) ? ' curCol' : '';
+      if (segMap.has(L)) {
+        const seg = segMap.get(L);
+        const prevDiff = (L > 0 && segMap.has(L - 1) && segMap.get(L - 1).id !== seg.id);
+        const nextDiff = (L < MAXL && segMap.has(L + 1) && segMap.get(L + 1).id !== seg.id);
+        const adj = (prevDiff ? ' adjL' : '') + (nextDiff ? ' adjR' : '');
+        h += '<td class="' + segClass(segMap, L, seg.id) + adj + cur + '" style="background:' + f.color
+           + '" title="' + f.name + ' featureArea ' + circled(seg.id) + '（同一个 PendingArea）'
+           + ' · layer ' + L + ' · 父节点：' + seg.parent.label + '">' + circled(seg.id) + '</td>';
+      } else {
+        h += '<td class="' + cur + '" title="layer ' + L + '：不属于 ' + f.short + '"></td>';
+      }
+    }
+    h += '</tr>';
+  });
+  h += '<tr class="typeRow"><th class="rowhead">getTypeOfLayer()<span class="abbr">Pass 2</span></th>';
+  for (let L = 0; L <= MAXL; L++) {
+    const t = typeOfLayer(L);
+    const cur = (curStage === 2 && L === curLayer) ? ' curCol' : '';
+    const ls = lSegs.get(L);
+    const cls = segClass(lSegs, L, ls.id).replace('seg', 'lb');
+    // 两侧若直接邻接另一个分段（无空列），加深色割线
+    const prevDiff = (L > 0 && lSegs.has(L - 1) && lSegs.get(L - 1).id !== ls.id);
+    const nextDiff = (L < MAXL && lSegs.has(L + 1) && lSegs.get(L + 1).id !== ls.id);
+    const adj = (prevDiff ? ' adjL' : '') + (nextDiff ? ' adjR' : '');
+    h += '<td class="' + TYPE_CLASS[t] + ' ' + cls + adj + cur + '" title="layer ' + L + '：' + TYPE_FULL[t]
+       + ' · Tokens leaf ' + circled(ls.id) + '（同一个 PendingArea）· 父节点：' + ls.parent.label + '">' 
+       + TYPE_LABEL[t] + '<span class="lid">' + circled(ls.id) + '</span></td>';
+  }
+  h += '</tr></table>';
+  el.innerHTML = h;
+}
+
+function renderLegend() {
+  const el = document.getElementById('legend');
+  let h = '';
+  FEATURES.forEach(f => { h += '<span><i style="background:' + f.color + '"></i>' + f.short + '</span>'; });
+  h += '<span><i style="background:' + C_LEAF + '"></i>Tokens leaf</span>';
+  h += '<span><i style="background:' + C_TDA + '"></i>DefaultTaskDisplayArea</span>';
+  h += '<span><i style="background:' + C_IME + '"></i>ImeContainer</span>';
+  h += '<span><i style="background:' + C_ROOT + '"></i>TASK 占位（不实例化）</span>';
+  el.innerHTML = h;
+  const tl = document.getElementById('typeLegend');
+  if (tl) {
+    tl.innerHTML = '<b>白框 + ①②③</b>：同一 Feature 行中，框号相同的连续格 = Pass 1 新建的<b>同一个 featureArea（PendingArea）</b>；'
+      + '断层后即使父节点相同也会拿到新框号（见 FM 的 L26-27 与 L29-31）。鼠标悬停可看父节点。<br>'
+      + '<b>黄框</b>：getTypeOfLayer() 行中，同一黄框 = Pass 2 的<b>同一个 Tokens leaf（PendingArea）</b>，type 或父节点一变就拆新框。<br>'
+      + 'getTypeOfLayer() 行底色：'
+      + '<span class="sw" style="background:#334155"></span><b>TO</b> = TOKENS，新建 Tokens 叶子（layer 除 2/15/16 外全部）'
+      + '<span class="sw" style="background:#a16207"></span><b>TK</b> = TASK，TYPE_APPLICATION（仅 layer ' + APPLICATION_LAYER + '，生成 DefaultTaskDisplayArea）'
+      + '<span class="sw" style="background:#0369a1"></span><b>IM</b> = IME，输入法层（仅 layer 15~16，复用 ImeContainer）';
+  }
+}
+
+function renderLayerStrip() {
+  const el = document.getElementById('layerStrip');
+  let h = '';
+  for (let L = 0; L <= MAXL; L++) {
+    const n = area[L];
+    const cur = (L === curLayer && (curStage === 1 || curStage === 2)) ? ' current' : '';
+    const ph = n.isPlaceholder ? ' placeholder' : '';
+    h += '<div class="layerCell' + cur + ph + '" style="background:' + n.color() + '" title="layer ' + L + '：' + n.title() + '">'
+       + '<div class="num">' + L + '</div>'
+       + '<div class="owner">' + n.name() + '</div>'
+       + '</div>';
+  }
+  el.innerHTML = h;
+}
+
+function renderTree() {
+  const el = document.getElementById('tree');
+  function kidsOf(node) {
+    if (viewMode === 'inst') {
+      return node.children.slice().sort((a, b) => a.minL - b.minL).filter(c => !c.isPlaceholder);
+    }
+    return node.children;
+  }
+  /* ---------- 递归布局：叶子占一行，父节点纵向居中于孩子区间（Reingold-Tilford 最简版） ---------- */
+  const PAD_X = 24, PAD_TOP = 18, PAD_BOTTOM = 20;
+  const DEPTH_GAP = 150, ROW_H = 46, NODE_H = 30;
+
+  function kindOf(node) {
+    if (node === root) return 'root';
+    if (node.isPlaceholder) return 'ph';
+    if (node.existing === 'DefaultTaskDisplayArea') return 'tda';
+    if (node.existing === 'ImeContainer') return 'ime';
+    if (node.feature) return 'feature';
+    return 'leaf';
+  }
+  // 等宽字体字宽估算（12.5px：ASCII ≈7.4，全角/CJK ≈12.6）
+  function textW(s) {
+    let w = 0;
+    for (const ch of String(s)) w += ch.charCodeAt(0) > 0x2E7F ? 12.6 : 7.4;
+    return w;
+  }
+  function nodeW(kind, node) {
+    const label = kind === 'root' ? 'Root' : node.name();
+    const rg = node.range();
+    let w = textW(label) + (rg ? textW(rg) + 22 : 0) + 20;
+    const min = { root: 78, feature: 118, leaf: 104, tda: 128, ime: 118, ph: 86 }[kind];
+    return Math.ceil(Math.max(min, w));
+  }
+
+  let cursorY = PAD_TOP, maxDepth = 0, maxRight = 0;
+  const creating = { create: 1, leafnew: 1, task: 1, ime: 1 };
+  function measure(node, depth) {
+    const kind = kindOf(node);
+    const rec = { node, kind, depth, w: nodeW(kind, node), kids: [] };
+    maxDepth = Math.max(maxDepth, depth);
+    maxRight = Math.max(maxRight, PAD_X + depth * DEPTH_GAP + rec.w);
+    for (const k of kidsOf(node)) rec.kids.push(measure(k, depth + 1));
+    if (!rec.kids.length) {
+      rec.y = cursorY; cursorY += ROW_H;
+    } else {
+      rec.y = (rec.kids[0].y + rec.kids[rec.kids.length - 1].y) / 2;
+    }
+    rec.x = PAD_X + depth * DEPTH_GAP + rec.w / 2;
+    return rec;
+  }
+  const rootRec = measure(root, 0);
+  const svgW = maxRight + PAD_X;
+  const svgH = cursorY - ROW_H + PAD_TOP + PAD_BOTTOM;
+
+  /* ---------- 生成 SVG：path 三次贝塞尔连线 + rect 节点框 ---------- */
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const KIND_FILL = { root: '#334155', feature: '#0f172a', leaf: '#1e293b', tda: '#422f06', ime: '#082f49', ph: '#111827' };
+  const KIND_STROKE = { root: '#94a3b8', feature: '', leaf: '#475569', tda: '#a16207', ime: '#0284c7', ph: '#64748b' };
+  let edges = '', rects = '';
+  function draw(rec) {
+    const node = rec.node, kind = rec.kind, x = rec.x, y = rec.y, w = rec.w, h = NODE_H;
+    const x0 = x - w / 2, y0 = y - h / 2;
+    // 先画连向孩子的三次贝塞尔（控制点纵向切线），保证压在节点框下面
+    for (const c of rec.kids) {
+      const py = y0 + h, cy = c.y - NODE_H / 2;
+      // 带符号曲率：父在孩子下方时控制点反向，保证贝塞尔凸包不超出两端 y 区间
+      const d = cy - py;
+      const off = (d === 0 ? 1 : Math.sign(d)) * Math.max(24, Math.abs(d) / 2);
+      const isNew = c.node === lastNode && creating[lastAction];
+      edges += '<path class="edge' + (isNew ? ' edge-new' : '') + '" d="M' + x + ',' + py
+             + ' C' + x + ',' + (py + off) + ' ' + c.x + ',' + (cy - off) + ' '
+             + c.x + ',' + cy + '"/>';
+    }
+    const stroke = kind === 'feature' ? node.feature.color : KIND_STROKE[kind];
+    const dash = kind === 'ph' ? ' stroke-dasharray="4 3"' : '';
+    const label = kind === 'root' ? 'Root' : esc(node.name());
+    const rg = node.range();
+    rects += '<g><title>' + esc(node.title()) + '</title>'
+           + '<rect class="nd nd-' + kind + '" x="' + x0 + '" y="' + y0 + '" width="' + w + '" height="' + h
+           + '" rx="8" fill="' + KIND_FILL[kind] + '" stroke="' + stroke + '"' + dash + '/>';
+    if (node === lastNode) {
+      rects += '<rect class="flashRing" x="' + (x0 - 3) + '" y="' + (y0 - 3) + '" width="' + (w + 6)
+             + '" height="' + (h + 6) + '" rx="10"/>';
+    }
+    rects += '<text class="nm' + (kind === 'ph' ? ' tx2' : '') + '" x="' + (x0 + 9)
+           + '" y="' + y + '" dominant-baseline="central">' + label + '</text>';
+    if (rg) {
+      rects += '<text class="rg" x="' + (x0 + w - 8) + '" y="' + y
+             + '" text-anchor="end" dominant-baseline="central">' + esc(rg) + '</text>';
+    }
+    rects += '</g>';
+    for (const c of rec.kids) draw(c);
+  }
+  draw(rootRec);
+
+  window.__treeSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' + svgW + '" height="' + svgH
+      + '" viewBox="0 0 ' + svgW + ' ' + svgH + '" id="treeSvg" font-family="ui-monospace,Consolas,monospace">'
+      + edges + rects + '</svg>';
+  window.__treeSvgParts = { svgW: svgW, svgH: svgH, edges: edges, rects: rects };
+  let note;
+  if (viewMode === 'inst') {
+    note = '实例化视图：<code>instantiateChildren()</code> 把兄弟节点按 <b>minLayer 升序</b> 排序后创建（顺序 ≠ 创建顺序），'
+         + '并跳过 TASK 占位节点；<code>mExisting</code> 非空的节点直接复用既有容器，不再新建。';
+  } else {
+    note = '构建期视图：父子关系 = 创建时刻的 <code>areaForLayer[layer]</code>；兄弟顺序 = 创建顺序。'
+         + '与 AOSP 的差别仅在于：落成 DisplayArea 那一趟会按 minLayer 重排（切到「实例化树」看结果）。';
+  }
+  el.innerHTML = '<div class="treeSvgInner">' + window.__treeSvg + '</div><div class="treeNote">' + note + '</div>';
+}
+
+function renderStats() {
+  const c = { area: 0, leaf: 0, tda: 0, ime: 0, ph: 0, node: 0 };
+  (function walk(n) {
+    for (const k of n.children) {
+      c.node++;
+      if (k.existing === 'DefaultTaskDisplayArea') c.tda++;
+      else if (k.existing === 'ImeContainer') c.ime++;
+      else if (k.isPlaceholder) c.ph++;
+      else if (k.feature) c.area++;
+      else c.leaf++;
+      walk(k);
+    }
+  })(root);
+  document.getElementById('stats').innerHTML =
+      'featureArea 节点：<b>' + c.area + '</b> · Tokens leaf：<b>' + c.leaf + '</b> · '
+    + 'DefaultTaskDisplayArea：<b>' + c.tda + '</b> · ImeContainer：<b>' + c.ime + '</b> · '
+    + 'TASK 占位（不实例化）：<b>' + c.ph + '</b> · 节点总数：<b>' + c.node + '</b><br>'
+    + '步进进度：<b>' + stepIndex + ' / ' + TOTAL + '</b>'
+    + '（Pass 1 ' + PASS1_END + ' 步 + Pass 2 ' + (TOTAL - PASS1_END) + ' 步）'
+    + (done ? ' · <b>已完成 maxLayer 回算</b>' : '');
+}
+
+function renderLog() {
+  const el = document.getElementById('log');
+  let head;
+  if (curStage === 1) {
+    head = '第 <b>' + stepIndex + ' / ' + TOTAL + '</b> 步 · <span class="warn">Pass 1</span> · Feature '
+         + '<b>' + FEATURES[curFi].name + '</b> · layer <b>' + curLayer + '</b>';
+  } else if (curStage === 2) {
+    head = '第 <b>' + stepIndex + ' / ' + TOTAL + '</b> 步 · <span class="warn">Pass 2</span> · layer <b>' + curLayer + '</b>';
+  } else {
+    head = '起始状态 · 尚未开始';
+  }
+  let body = '';
+  const par = lastNode ? lastNode.parent : null;
+  const parHtml = par ? '<span class="par">' + par.label() + '</span>' : '';
+  switch (lastAction) {
+    case 'create':
+      body = '<span class="new">新建 featureArea</span> ' + lastNode.label() + '，挂到父节点 ' + parHtml;
+      break;
+    case 'extend':
+      body = '<span class="reuse">复用上一个 featureArea</span> 并延伸 maxLayer → ' + lastNode.label()
+           + '，父节点上下文一致 ' + parHtml;
+      break;
+    case 'skip':
+      body = '<span class="null">该 layer 不属于 ' + FEATURES[curFi].short + '，featureArea = null</span>';
+      break;
+    case 'leafnew':
+      body = '<span class="new">新建 Tokens leaf</span> ' + lastNode.label() + '，挂到父节点 ' + parHtml;
+      break;
+    case 'leafext':
+      body = '<span class="reuse">复用 leaf</span> 并延伸 maxLayer → ' + lastNode.label() + '（type 与父节点均未变）';
+      break;
+    case 'task':
+      body = '<span class="warn">TASK 层</span>：新建占位 leaf（实例化时跳过）+ 同级 <span class="new">DefaultTaskDisplayArea</span>，挂到 ' + parHtml;
+      break;
+    case 'ime':
+      body = '<span class="warn">IME 层</span>：新建 leaf 且 <code>mExisting = ImeContainer</code>（直接复用既有容器），挂到 ' + parHtml;
+      break;
+    case 'done':
+      body = '<span class="new">两趟遍历结束</span>，已做 maxLayer 后序回算。切到「实例化树」可看 <code>instantiateChildren()</code> 排序后的结果。';
+      break;
+    case 'replay':
+      body = '回放定位。';
+      break;
+    default:
+      body = '点击「下一步」开始。';
+  }
+  el.innerHTML = head + '<br>' + body;
+}
+
+function renderAll() {
+  const st = document.getElementById('stageLabel');
+  st.textContent = done ? '已完成' : (curStage === 1 ? 'Pass 1 · Feature 遍历' : (curStage === 2 ? 'Pass 2 · leaf 填充' : '准备就绪'));
+  document.getElementById('stepLabel').textContent = stepIndex + ' / ' + TOTAL;
+  renderLog();
+  renderHeatmap();
+  renderLayerStrip();
+  renderTree();
+  renderStats();
+}
+
+/* ============================================================
+   7. 交互
+   ============================================================ */
+document.getElementById('btnNext').addEventListener('click', () => { stepForward(); renderAll(); });
+document.getElementById('btnPrev').addEventListener('click', () => { applyUpTo(Math.max(0, stepIndex - 1)); renderAll(); });
+document.getElementById('btnJump').addEventListener('click', () => { stopAuto(); applyUpTo(TOTAL); renderAll(); });
+document.getElementById('btnReset').addEventListener('click', () => { stopAuto(); applyUpTo(0); renderAll(); });
+
+document.getElementById('btnViewBuild').addEventListener('click', () => {
+  viewMode = 'build';
+  document.getElementById('btnViewBuild').classList.add('on');
+  document.getElementById('btnViewInst').classList.remove('on');
+  document.getElementById('viewHint').textContent = '父子 = 创建时刻的 areaForLayer[layer]；兄弟 = 创建顺序';
+  renderTree();
+});
+document.getElementById('btnViewInst').addEventListener('click', () => {
+  viewMode = 'inst';
+  document.getElementById('btnViewInst').classList.add('on');
+  document.getElementById('btnViewBuild').classList.remove('on');
+  document.getElementById('viewHint').textContent = '兄弟按 minLayer 升序；跳过 TASK 占位，mExisting 直接复用容器';
+  renderTree();
+});
+
+let autoTimer = null;
+function stopAuto() {
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+  const b = document.getElementById('btnAuto');
+  if (b) b.textContent = '自动播放';
+}
+document.getElementById('btnExportSvg').addEventListener('click', () => {
+  const p = window.__treeSvgParts;
+  if (!p) return;
+  const style = 'rect.nd{stroke-width:1.25}text{font-family:ui-monospace,Consolas,monospace}'
+    + 'text.nm{font-size:12.5px;font-weight:700;fill:#e2e8f0}text.rg{font-size:11px;font-weight:700;fill:#fde68a}'
+    + 'text.tx2{fill:#94a3b8}path.edge{fill:none;stroke:#64748b;stroke-width:1.5;opacity:.9}'
+    + 'path.edge-new{stroke:#34d399}';
+  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    + '<svg xmlns="http://www.w3.org/2000/svg" width="' + p.svgW + '" height="' + p.svgH
+    + '" viewBox="0 0 ' + p.svgW + ' ' + p.svgH + '"><rect width="100%" height="100%" fill="#1e293b"/><style>'
+    + style + '</style>' + p.edges + p.rects + '</svg>';
+  const blob = new Blob([xml], { type: 'image/svg+xml' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'pendingarea-tree-' + viewMode + '.svg';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
+document.getElementById('btnAuto').addEventListener('click', () => {
+  const btn = document.getElementById('btnAuto');
+  if (autoTimer) { stopAuto(); return; }
+  btn.textContent = '停止';
+  autoTimer = setInterval(() => {
+    if (stepIndex >= TOTAL) { stopAuto(); renderAll(); return; }
+    stepForward();
+    renderAll();
+    if (stepIndex >= TOTAL) stopAuto();
+  }, 120);
+});
+
+/* 初始化 */
+resetState();
+area = Array.from({ length: MAXL + 1 }, () => root);
+document.getElementById('viewHint').textContent = '父子 = 创建时刻的 areaForLayer[layer]；兄弟 = 创建顺序';
+renderLegend();
+renderAll();
+</script>
+</body>
+</html>

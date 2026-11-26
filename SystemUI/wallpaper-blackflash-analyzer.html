@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Window Dump × 壁纸黑闪分析器</title>
+<style>
+  :root {
+    --bg:#faf8f5; --bg-card:#fff; --text:#2c2c2c; --text2:#555; --border:#e0ddd5;
+    --accent:#c44536; --accent2:#2a7f62; --accent3:#5b7e9e; --code-bg:#f4f1eb;
+    --tag-bg:#f0e6d3; --tag-text:#a0522d; --link:#2a5f8f; --h2-border:#ddd8cc;
+    --hover-bg:#e8e4db; --theme-btn-bg:rgba(0,0,0,.08); --theme-btn-text:#333;
+    --hi-bg:#fde2e0; --hi-text:#a32017; --md-bg:#fdf1d8; --md-text:#8a5a00;
+    --lo-bg:#e3f0e8; --lo-text:#22694a; --info-bg:#e4eef7; --info-text:#2a5f8f;
+  }
+  [data-theme="dark"] {
+    --bg:#1a1a1e; --bg-card:#222226; --text:#e0ddd5; --text2:#999; --border:#333338;
+    --accent:#e0755a; --accent2:#5dbf96; --accent3:#7fa9c9; --code-bg:#28282c;
+    --tag-bg:#3d3020; --tag-text:#d4a05a; --link:#6ab0e0; --h2-border:#333338;
+    --hover-bg:#2a2a30; --theme-btn-bg:rgba(255,255,255,.1); --theme-btn-text:#ddd;
+    --hi-bg:#4a1f1c; --hi-text:#ff9c91; --md-bg:#403414; --md-text:#e8c56a;
+    --lo-bg:#1d3a2c; --lo-text:#7ed3a8; --info-bg:#1d3040; --info-text:#8fc2e8;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.75; padding:32px 18px 80px; transition:background .3s,color .3s; }
+  .container { max-width:1300px; margin:0 auto; }
+  h1 { font-size:1.7rem; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:10px; margin-bottom:6px; }
+  .subtitle { color:var(--text2); font-size:.9rem; margin-bottom:22px; }
+  h2 { font-size:1.2rem; margin:30px 0 14px; padding-bottom:6px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+  h3 { font-size:1rem; margin:18px 0 10px; color:var(--accent3); }
+  p, li { margin-bottom:8px; }
+  ul,ol { padding-left:22px; }
+  code { font-family:"SF Mono","Consolas",monospace; font-size:.85em; background:var(--code-bg); padding:1px 5px; border-radius:4px; color:var(--accent); }
+  .panel { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px 20px; margin-bottom:16px; box-shadow:0 2px 6px rgba(0,0,0,.04); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .field label { display:flex; justify-content:space-between; align-items:center; font-size:.85rem; color:var(--text2); margin-bottom:6px; gap:8px; }
+  textarea { width:100%; height:250px; resize:vertical; background:var(--code-bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-family:"SF Mono","Consolas",monospace; font-size:.76rem; line-height:1.55; outline:none; }
+  textarea:focus { border-color:var(--accent3); }
+  input[type=file] { font-size:.78rem; color:var(--text2); max-width:100%; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  button { font-family:inherit; font-size:.86rem; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--bg-card); color:var(--text); cursor:pointer; transition:all .15s; }
+  button:hover { border-color:var(--accent3); background:var(--hover-bg); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  button.primary:hover { filter:brightness(1.08); }
+  button.ghost { background:transparent; }
+  .metric-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .metric { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+  .metric .k { font-size:.76rem; color:var(--text2); }
+  .metric .v { font-size:1.35rem; font-weight:700; color:var(--accent3); margin-top:2px; word-break:break-all; }
+  .metric .v.small { font-size:.9rem; }
+  .risk { font-size:1.05rem; font-weight:700; padding:3px 12px; border-radius:8px; display:inline-block; }
+  .risk.high { background:var(--hi-bg); color:var(--hi-text); }
+  .risk.med { background:var(--md-bg); color:var(--md-text); }
+  .risk.low { background:var(--lo-bg); color:var(--lo-text); }
+  .risk.info { background:var(--info-bg); color:var(--info-text); }
+  .finding { border-radius:10px; border:1px solid var(--border); border-left-width:5px; padding:12px 16px; margin-bottom:10px; }
+  .finding.high { border-left-color:var(--hi-text); background:var(--hi-bg); }
+  .finding.med { border-left-color:var(--md-text); background:var(--md-bg); }
+  .finding.low { border-left-color:var(--lo-text); background:var(--lo-bg); }
+  .finding.info { border-left-color:var(--info-text); background:var(--info-bg); }
+  .finding .ft { font-weight:700; font-size:.94rem; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .finding .fd { font-size:.86rem; color:var(--text2); margin-top:4px; }
+  .sev { font-size:.7rem; font-weight:700; letter-spacing:1px; padding:1px 7px; border-radius:4px; background:rgba(0,0,0,.08); }
+  .finding.high .sev { background:rgba(163,32,23,.15); color:var(--hi-text); }
+  .finding.med .sev { background:rgba(138,90,0,.15); color:var(--md-text); }
+  .finding.low .sev { background:rgba(34,105,74,.15); color:var(--lo-text); }
+  .finding.info .sev { background:rgba(42,95,143,.15); color:var(--info-text); }
+  .finding details { margin-top:6px; }
+  .finding summary { cursor:pointer; font-size:.8rem; color:var(--text2); }
+  .finding pre { margin-top:6px; background:rgba(0,0,0,.05); padding:8px 10px; border-radius:6px; overflow-x:auto; font-size:.74rem; white-space:pre-wrap; word-break:break-all; }
+  table { width:100%; border-collapse:collapse; font-size:.8rem; }
+  th,td { border:1px solid var(--border); padding:6px 9px; text-align:left; vertical-align:top; }
+  th { background:var(--code-bg); font-weight:600; position:sticky; top:0; }
+  tr:hover td { background:var(--hover-bg); }
+  .ok { color:var(--lo-text); font-weight:600; }
+  .bad { color:var(--hi-text); font-weight:600; }
+  .warn { color:var(--md-text); font-weight:600; }
+  .chip { display:inline-block; font-size:.72rem; padding:1px 7px; border-radius:10px; background:var(--tag-bg); color:var(--tag-text); margin-right:4px; }
+  .tl { max-height:520px; overflow:auto; border:1px solid var(--border); border-radius:10px; padding:10px; background:var(--bg-card); }
+  .ev { display:flex; gap:10px; font-family:"SF Mono","Consolas",monospace; font-size:.76rem; padding:4px 6px; border-radius:6px; border-bottom:1px solid var(--border); }
+  .ev:hover { background:var(--hover-bg); }
+  .ev .t { color:var(--accent3); flex:0 0 74px; text-align:right; }
+  .ev .tag { color:var(--tag-text); flex:0 0 170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ev .msg { flex:1; word-break:break-word; }
+  .ev.error .msg { color:var(--hi-text); }
+  .ev.wp { border-left:3px solid var(--accent); }
+  .ev.tr { border-left:3px solid var(--accent3); }
+  .filters { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+  .filters button { padding:4px 10px; font-size:.76rem; border-radius:20px; }
+  .filters button.active { background:var(--accent3); color:#fff; border-color:var(--accent3); }
+  .muted { color:var(--text2); font-size:.85rem; }
+  .empty { text-align:center; color:var(--text2); padding:28px 10px; font-size:.9rem; }
+  .hidden { display:none !important; }
+  .scroll { max-height:520px; overflow:auto; }
+  .scroll table { min-width:860px; }
+  #reportOut { width:100%; height:240px; }
+  #theme-btn { position:fixed; bottom:26px; right:26px; width:46px; height:46px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.3rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,.15); z-index:99; }
+  .note { border-left:4px solid var(--accent3); background:var(--code-bg); padding:10px 14px; border-radius:6px; font-size:.86rem; color:var(--text2); }
+  @media (max-width:900px) { .grid2 { grid-template-columns:1fr; } .ev .tag { flex-basis:120px; } }
+</style>
+</head>
+<body>
+<button id="theme-btn" title="切换主题">🌓</button>
+<div class="container">
+  <h1>🧪 Window Dump × 壁纸黑闪分析器</h1>
+  <p class="subtitle">粘贴 <code>dumpsys window windows</code> 与 logcat，自动解析窗口状态、定位壁纸闪黑的时间相关性与可疑环节。纯前端，不上传任何数据。</p>
+
+  <div class="panel">
+    <div class="grid2">
+      <div class="field">
+        <label>① dumpsys window windows <input type="file" id="winFile" accept=".txt,.log"></label>
+        <textarea id="winInput" spellcheck="false" placeholder="adb shell dumpsys window windows > window.txt&#10;把 window.txt 内容粘贴到这里……"></textarea>
+      </div>
+      <div class="field">
+        <label>② logcat（threadtime / time 格式） <input type="file" id="logFile" accept=".txt,.log"></label>
+        <textarea id="logInput" spellcheck="false" placeholder="adb logcat -v threadtime -s WallpaperManagerService ImageWallpaper WindowManager SurfaceFlinger Transitions ActivityTaskManager AndroidRuntime > wallpaper.log&#10;把 wallpaper.log 内容粘贴到这里……"></textarea>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="btnAnalyze">开始分析</button>
+      <button id="btnSample">载入示例</button>
+      <button class="ghost" id="btnClear">清空</button>
+      <button class="ghost" id="btnCopy">复制报告</button>
+      <span class="muted" id="status">等待输入</span>
+    </div>
+  </div>
+
+  <div id="results" class="hidden">
+    <div class="panel">
+      <div class="metric-grid" id="metrics"></div>
+    </div>
+
+    <h2>诊断结论</h2>
+    <div id="findings"></div>
+
+    <h2>壁纸相关窗口</h2>
+    <div class="panel" id="wpWindows"></div>
+
+    <h2>全部窗口（可筛选）</h2>
+    <div class="panel">
+      <div class="row" style="margin-bottom:10px">
+        <input id="winFilter" placeholder="搜索包名 / 类型 / Window 名" style="flex:1;min-width:200px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--code-bg);color:var(--text);font-size:.84rem">
+        <label class="muted"><input type="checkbox" id="onlyBad"> 只看异常</label>
+      </div>
+      <div class="scroll" id="winTable"></div>
+    </div>
+
+    <h2>日志时间线</h2>
+    <div class="panel">
+      <div class="filters" id="filters">
+        <button data-f="key" class="active">关键事件</button>
+        <button data-f="wallpaper">壁纸</button>
+        <button data-f="render">渲染</button>
+        <button data-f="transition">转场</button>
+        <button data-f="surface">合成</button>
+        <button data-f="error">错误</button>
+        <button data-f="all">全部</button>
+      </div>
+      <div class="tl" id="timeline"></div>
+      <p class="muted" id="tlNote"></p>
+    </div>
+
+    <h2>报告</h2>
+    <div class="panel">
+      <textarea id="reportOut" readonly spellcheck="false"></textarea>
+    </div>
+  </div>
+
+  <h2>切壁纸闪黑：该盯哪些日志</h2>
+  <div class="panel">
+    <table>
+      <tr><th>方向</th><th>Tag / 关键字</th><th>看什么</th></tr>
+      <tr><td>壁纸设置</td><td><code>WallpaperManagerService</code>：<code>setWallpaper which=</code>、<code>Crop done</code>、<code>bindWallpaperComponentLocked</code></td><td>设置 → 裁剪 → 重绑的耗时与顺序；这段是否和转场重叠</td></tr>
+      <tr><td>壁纸渲染</td><td><code>ImageWallpaper</code>：<code>onSurfaceCreated</code>、<code>onSurfaceChanged</code>、<code>drawFrame</code></td><td>Surface 是否在转场中被重建；重建就会有一帧没有内容</td></tr>
+      <tr><td>WMS</td><td><code>WindowManager</code>（含 <code>WallpaperController</code>）：<code>New wallpaper target</code>、<code>updateWallpaperVisibility</code></td><td>壁纸窗口的可见性、目标窗口、偏移是否在切换瞬间抖动</td></tr>
+      <tr><td>转场</td><td><code>Transitions</code> / <code>Shell</code>：<code>Start transition</code>、<code>finishTransition</code></td><td>黑闪是否落在 Start→Finish 之间；这是最重要的时间窗口</td></tr>
+      <tr><td>合成</td><td><code>SurfaceFlinger</code> / <code>BufferQueue</code> / <code>BLASTBufferQueue</code>：<code>createLayer</code>、<code>destroyLayer</code>、<code>dequeueBuffer</code>、<code>queueBuffer</code></td><td>壁纸层是否被销毁重建；是否出现空 buffer / 没有可用帧</td></tr>
+      <tr><td>稳定性</td><td><code>AndroidRuntime</code>、<code>ANR in com.android.systemui</code>、<code>Watchdog</code></td><td>SystemUI 崩溃/重启会连带 ImageWallpaper 重画，表现就是闪黑</td></tr>
+    </table>
+    <p class="muted" style="margin-top:8px">判据：<strong>转场窗口内</strong>，壁纸窗口 <code>mDrawState != HAS_DRAWN</code> 或 <code>mHasSurface=false</code>，且日志里能看到 Surface 重建 / 壁纸重绑 —— 三者同时出现，基本可以锁定。</p>
+  </div>
+
+  <h2>抓取命令</h2>
+  <div class="panel">
+    <pre style="background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:.78rem;white-space:pre-wrap">adb logcat -c
+adb logcat -v threadtime -s WallpaperManagerService ImageWallpaper WindowManager SurfaceFlinger BufferQueueProducer BufferQueueConsumer Transitions ActivityTaskManager AndroidRuntime > wallpaper_switch.log
+
+# 触发一次切壁纸（设置/相册/Launcher 长按），闪黑后立刻：
+adb shell dumpsys window windows > window.txt
+adb shell dumpsys SurfaceFlinger --list | grep -i wallpaper > sf_layers.txt
+adb shell dumpsys activity service com.android.systemui/.SystemUIService > sysui_dump.txt</pre>
+    <p class="muted">更精确的方式：用 Winscope / Perfetto 抓一次 transition + window trace，和 logcat 时间轴对齐；本工具可以先做粗定位。</p>
+  </div>
+
+  <p class="muted" style="text-align:center;margin-top:28px">解析基于 AOSP 12 的 dumpsys 字段；不同版本/OEM 可能字段略有差异，缺失字段会标记为“未知”。</p>
+</div>
+
+<script>
+"use strict";
+// ============ 基础工具 ============
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = (v, d) => { const n = parseFloat(v); return isNaN(n) ? d : n; };
+
+// ============ dumpsys window windows 解析 ============
+function parseWindowDump(text) {
+  const out = { windows: [], displayW: 0, displayH: 0, wpTarget: null, prevWpTarget: null, lastWpX: null, lastWpY: null, hasWallpaperSection: false, raw: text || '' };
+  if (!text) return out;
+
+  const dm = text.match(/\binit=(\d+)x(\d+)/) || text.match(/\bcur=(\d+)x(\d+)/);
+  if (dm) { out.displayW = parseInt(dm[1], 10); out.displayH = parseInt(dm[2], 10); }
+
+  const wt = text.match(/mWallpaperTarget=(.+)/);
+  if (wt) out.wpTarget = wt[1].trim();
+  const pt = text.match(/mPrevWallpaperTarget=(.+)/);
+  if (pt) out.prevWpTarget = pt[1].trim();
+  const lx = text.match(/mLastWallpaperX=([-\d.]+)/);
+  if (lx) out.lastWpX = lx[1];
+  const ly = text.match(/mLastWallpaperY=([-\d.]+)/);
+  if (ly) out.lastWpY = ly[1];
+  out.hasWallpaperSection = !!(wt || pt);
+
+  const starts = [];
+  const re = /^[ \t]*Window #(\d+)[ \t]+Window\{[^\n]*\}[ \t]*:[ \t]*$/gm;
+  let m;
+  while ((m = re.exec(text)) !== null) starts.push({ index: m.index, idx: parseInt(m[1], 10) });
+
+  // 容错：没有 "Window #" 的 dump（部分 OEM）
+  if (!starts.length) {
+    const re2 = /^[ \t]*Window\{[^\n]*\}[ \t]*:[ \t]*$/gm;
+    while ((m = re2.exec(text)) !== null) starts.push({ index: m.index, idx: starts.length });
+  }
+
+  for (let i = 0; i < starts.length; i++) {
+    const block = text.slice(starts[i].index, i + 1 < starts.length ? starts[i + 1].index : text.length);
+    const hm = block.match(/Window\{([0-9a-fA-F]+)[ \t]+u(\d+)[ \t]+([^}]+)\}/);
+    const token = hm ? hm[1] : null;
+    const user = hm ? hm[2] : null;
+    const name = hm ? hm[3].trim() : '';
+    const grab = (re2) => { const x = block.match(re2); return x ? x[1] : null; };
+
+    const attrs = grab(/mAttrs=\{([^\n]*)\}/);
+    const type = (attrs && attrs.match(/\bty=([A-Z_0-9]+)/)) ? attrs.match(/\bty=([A-Z_0-9]+)/)[1] : null;
+    const pkg = grab(/\bpackage=([^\s}]+)/) || (name.includes('/') ? name.split('/')[0] : name.split('.')[0]);
+    const frame = block.match(/mFrame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]/);
+
+    const w = {
+      idx: starts[i].idx,
+      token, user, name, pkg, type,
+      displayId: grab(/mDisplayId=(-?\d+)/),
+      attrsRaw: attrs || '',
+      frame: frame ? [parseInt(frame[1],10), parseInt(frame[2],10), parseInt(frame[3],10), parseInt(frame[4],10)] : null,
+      baseLayer: grab(/mBaseLayer=(-?\d+)/),
+      subLayer: grab(/mSubLayer=(-?\d+)/),
+      visible: grab(/isVisible=(true|false)/),
+      hasSurface: grab(/mHasSurface=(true|false)/),
+      surfaceShowing: grab(/surfaceShowing=(true|false)/),
+      drawState: grab(/mDrawState=([A-Z_]+)/),
+      viewVisibility: grab(/mViewVisibility=0x([0-9a-fA-F]+)/),
+      alpha: grab(/mAlpha=([0-9.]+)/),
+      animatingExit: grab(/mAnimatingExit=(true|false)/),
+      removeOnExit: grab(/mRemoveOnExit=(true|false)/),
+      destroying: grab(/mDestroying=(true|false)/),
+      activityRecord: grab(/mActivityRecord=([^\s}]+)/),
+      session: grab(/mSession=([^\s}]+)/),
+      ownerUid: grab(/mOwnerUid=(\d+)/),
+      raw: block
+    };
+    w.isWallpaper = w.type === 'WALLPAPER' || /ImageWallpaper|wallpaper/i.test(w.name);
+    w.isBad = (w.visible === 'true' && w.drawState && w.drawState !== 'HAS_DRAWN')
+      || (w.isWallpaper && (w.visible !== 'true' || w.hasSurface !== 'true' || (w.drawState && w.drawState !== 'HAS_DRAWN')));
+    out.windows.push(w);
+  }
+  return out;
+}
+
+// ============ logcat 解析 ============
+const LOG_RE = /^(?:(\d{2})-(\d{2})\s+)?(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s+(\d+)\s+(\d+)\s+([VDIWEF])\s+(.+?)\s*:\s?(.*)$/;
+const BRIEF_RE = /^(?:(\d{2})-(\d{2})\s+)?(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s+([VDIWEF])\/([^(]+)\(\s*(\d+)\):\s?(.*)$/;
+
+function parseLogcat(text) {
+  const events = [];
+  if (!text) return { events, noTime: false, spanMs: 0 };
+  let dayOffset = 0, lastTod = null, firstAbs = null;
+  const lines = text.split(/\r?\n/);
+  let noTime = true;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line || /^-{5,}/.test(line)) continue;
+    let mm, dd, hh, mi, ss, ms, pid, tid, lvl, tag, msg;
+    mm = line.match(LOG_RE);
+    if (mm) {
+      [, , , hh, mi, ss, ms, pid, tid, lvl, tag, msg] = mm;
+    } else {
+      const bm = line.match(BRIEF_RE);
+      if (bm) {
+        [, , , hh, mi, ss, ms, lvl, tag, pid, msg] = bm;
+        tid = pid;
+      } else {
+        // 无时间戳 / 不认识的格式：作为纯文本事件保留（不参与时间相关性）
+        events.push({ i, t: null, level: '', tag: '', msg: line, raw: line, cat: 'other', err: false });
+        continue;
+      }
+    }
+    noTime = false;
+    const tod = ((parseInt(hh,10)*60 + parseInt(mi,10))*60 + parseInt(ss,10))*1000 + parseInt(ms,10);
+    if (lastTod != null && tod < lastTod - 12*3600*1000) dayOffset += 24*3600*1000;
+    lastTod = tod;
+    const abs = tod + dayOffset;
+    if (firstAbs == null) firstAbs = abs;
+    const ev = { i, t: abs - firstAbs, level: lvl, tag: tag.trim(), msg: (msg || '').trim(), pid: parseInt(pid,10) || null, raw: line };
+    ev.cat = classify(ev);
+    ev.err = /[EF]/.test(lvl) || /fatal|anr|died|timeout|fail|disconnect|black|exception|crash/i.test(ev.tag + ' ' + ev.msg);
+    events.push(ev);
+  }
+  return { events, noTime, spanMs: events.length ? (events[events.length-1].t || 0) : 0 };
+}
+
+function classify(e) {
+  const s = (e.tag + ' ' + e.msg);
+  if (/WallpaperManagerService|WallpaperManager|WallpaperInfo/.test(e.tag)) return 'wallpaper';
+  if (/ImageWallpaper|WallpaperService|GLWallpaper/.test(e.tag)) return 'render';
+  if (/Transitions|AppTransition|Shell|RemoteAnimation|Transition/.test(e.tag) || /startTransition|finishTransition|transition (start|finish)/i.test(s)) return 'transition';
+  if (/SurfaceFlinger|BufferQueue|BLAST|Layer|Gralloc/.test(e.tag)) return 'surface';
+  if (/WindowManager|WindowState|WallpaperController|DisplayContent/.test(e.tag)) {
+    return /wallpaper/i.test(e.msg) ? 'wallpaper' : 'wms';
+  }
+  if (/setWallpaper|Crop done|bindWallpaper|wallpaper.*(changed|rebind|switch)|updateWallpaper/i.test(s)) return 'wallpaper';
+  if (/onSurfaceCreated|onSurfaceChanged|drawFrame|ImageWallpaper/i.test(s)) return 'render';
+  return 'other';
+}
+
+// ============ 分析 ============
+let LAST = { win: null, log: null, findings: [], risk: 'info', timelineFilter: 'key', onlyBad: false };
+
+function analyzeAll() {
+  const winText = $('winInput').value;
+  const logText = $('logInput').value;
+  const win = parseWindowDump(winText);
+  const log = parseLogcat(logText);
+  const findings = [];
+
+  const wp = win.windows.filter(w => w.isWallpaper);
+  const bad = win.windows.filter(w => w.isBad);
+
+  // --- 窗口侧结论 ---
+  if (!winText.trim()) {
+    findings.push({ sev: 'info', title: '没有提供窗口 dump', detail: '窗口侧结论已跳过。建议闪黑后立刻执行 adb shell dumpsys window windows。', evidence: [] });
+  } else {
+    if (!wp.length) {
+      findings.push({ sev: 'med', title: '没有解析到 TYPE_WALLPAPER 窗口', detail: '可能是 dump 不完整、壁纸在副屏，或该设备由厂商组件接管。先确认 dumpsys 里有 "ty=WALLPAPER"。', evidence: [] });
+    }
+    wp.forEach(w => {
+      const ev = ['Window #' + w.idx + ' ' + w.name, 'ty=' + w.type + ' visible=' + w.visible + ' surface=' + w.hasSurface + ' draw=' + w.drawState];
+      if (w.hasSurface === 'false' || w.visible === 'false' || (w.drawState && w.drawState !== 'HAS_DRAWN')) {
+        findings.push({ sev: 'high', title: '壁纸窗口在截图时刻不可见 / 没有可显示的 Surface', detail: '这是黑闪最直接的静态证据：WMS 认为壁纸没画好（hasSurface=false 或 mDrawState=' + (w.drawState || '未知') + '）。如果这份 dump 正好抓在黑闪瞬间，基本可以锁定。', evidence: ev });
+      }
+      if (w.frame && win.displayW && win.displayH) {
+        const fw = w.frame[2] - w.frame[0], fh = w.frame[3] - w.frame[1];
+        if (fw !== win.displayW || fh !== win.displayH) {
+          findings.push({ sev: 'low', title: '壁纸窗口尺寸与屏幕不一致', detail: `壁纸 frame=${fw}x${fh}，屏幕=${win.displayW}x${win.displayH}。不直接导致黑闪，但会放大裁剪/缩放类问题。`, evidence: ev });
+        }
+      }
+    });
+    if (win.prevWpTarget && win.prevWpTarget !== 'null') {
+      findings.push({ sev: 'med', title: 'WMS 正处于新旧壁纸切换状态', detail: 'mPrevWallpaperTarget 非空，说明 WallpaperController 还保留着上一张壁纸的目标，切换瞬间容易看到旧层被移除/新层未就绪。', evidence: ['mPrevWallpaperTarget=' + win.prevWpTarget] });
+    }
+    if (win.hasWallpaperSection && (!win.wpTarget || win.wpTarget === 'null') && wp.length) {
+      findings.push({ sev: 'med', title: '存在壁纸窗口，但 mWallpaperTarget 为空', detail: '壁纸没有目标窗口时可能被隐藏；常见于转场/锁屏切换的中间态。', evidence: ['mWallpaperTarget=' + win.wpTarget] });
+    }
+    if (bad.length > 1) {
+      findings.push({ sev: 'info', title: '共有 ' + bad.length + ' 个窗口处于未绘制/不可见状态', detail: '不全是壁纸问题；结合时间线看这些窗口是否都在同一次转场里。', evidence: bad.slice(0, 6).map(w => `#${w.idx} ${w.type || '?'} ${w.pkg || ''} draw=${w.drawState || '?'}`) });
+    }
+  }
+
+  // --- 日志侧结论 ---
+  const evs = log.events.filter(e => e.t != null);
+  if (!logText.trim()) {
+    findings.push({ sev: 'info', title: '没有提供 logcat', detail: '时序相关性已跳过。要判断黑闪，日志比 dump 更重要。', evidence: [] });
+  } else {
+    const crash = log.events.filter(e => /FATAL EXCEPTION|ANR in com\.android\.systemui|Process com\.android\.systemui.*(died|has died)|Force finishing|Watchdog.*systemui/i.test(e.tag + ' ' + e.msg));
+    if (crash.length) {
+      findings.push({ sev: 'high', title: 'SystemUI 崩溃 / ANR / 被杀', detail: 'SystemUI 重启会重建 ImageWallpaper，切换壁纸时表现为闪黑。先修稳定性，再谈壁纸时序。', evidence: crash.slice(0, 8).map(e => fmtEv(e)) });
+    }
+
+    const setEv = evs.filter(e => /setWallpaper which=|Crop done|bindWallpaperComponentLocked|Wallpaper component|setWallpaperComponent/i.test(e.msg));
+    const rebindEv = setEv.filter(e => /Crop done|bindWallpaperComponentLocked|Wallpaper component|setWallpaperComponent/i.test(e.msg));
+    const trEv = evs.filter(e => e.cat === 'transition' || /Start transition|finishTransition|transition.*(start|finish)/i.test(e.msg));
+
+    // 重绑/裁剪与转场重叠（按转场事件去重，避免同一窗口报多条）
+    let overlapped = 0;
+    const seenTr = new Set();
+    rebindEv.forEach(e => {
+      const near = trEv
+        .filter(t => Math.abs(t.t - e.t) <= 800)
+        .sort((a, b) => Math.abs(a.t - e.t) - Math.abs(b.t - e.t))[0];
+      if (near && !seenTr.has(near.i)) {
+        seenTr.add(near.i);
+        overlapped++;
+        findings.push({ sev: 'high', title: '壁纸重绑/裁剪发生在转场窗口内（间隔 ' + Math.round(Math.abs(near.t - e.t)) + ' ms）', detail: '转场期间 WallpaperManagerService 重新 bind/crop，ImageWallpaper 会重建 Surface，极易出现一帧黑。把“设置壁纸”和“启动转场”串行化，或在转场结束后再 bind，是常见修法。', evidence: [fmtEv(e), fmtEv(near)] });
+      }
+    });
+    if (!overlapped && setEv.length && trEv.length) {
+      findings.push({ sev: 'info', title: '壁纸设置与转场没有明显时间重叠', detail: '如果仍然闪黑，重点转向 Surface 生命周期与首帧就绪，而不是设置流程。', evidence: [] });
+    }
+
+    // Surface 重建
+    const surf = evs.filter(e => /onSurfaceCreated|onSurfaceChanged|createLayer|destroyLayer|disconnect|connect\(/i.test(e.msg) && (e.cat === 'render' || e.cat === 'surface'));
+    if (surf.length) {
+      const nearTr = surf.find(s => trEv.some(t => Math.abs(t.t - s.t) <= 1200));
+      findings.push({ sev: nearTr ? 'high' : 'med', title: '检测到 Surface/图层重建事件' + (nearTr ? '，且落在转场附近' : ''), detail: '壁纸 Surface 重建期间没有可合成的新帧，是黑闪的典型机制。优先确认是谁触发了重建（重绑、进程重启、尺寸变化）。', evidence: surf.slice(0, 8).map(e => fmtEv(e)) });
+    }
+
+    // 设置到裁剪的耗时
+    const sets = evs.filter(e => /setWallpaper which=/i.test(e.msg));
+    const crops = evs.filter(e => /Crop done/i.test(e.msg));
+    if (sets.length && crops.length) {
+      sets.forEach(s => {
+        const c = crops.find(x => x.t >= s.t);
+        if (c) {
+          const gap = c.t - s.t;
+          if (gap > 800) findings.push({ sev: 'med', title: '设置到裁剪完成耗时 ' + Math.round(gap) + ' ms', detail: '大图/慢存储会拉长这个窗口；如果用户在这段时间内滑动桌面或切应用，就会看到旧壁纸被移除后的黑底。', evidence: [fmtEv(s), fmtEv(c)] });
+        }
+      });
+    }
+
+    // 连续设置
+    for (let i = 1; i < sets.length; i++) {
+      if (sets[i].t - sets[i-1].t < 2000) {
+        findings.push({ sev: 'med', title: '2 秒内连续设置了多次壁纸', detail: '旧的 bind/crop 还没结束就发起新的，容易出现两个 Surface 交替、短暂黑帧。', evidence: [fmtEv(sets[i-1]), fmtEv(sets[i])] });
+        break;
+      }
+    }
+
+    // 时间跨度提示
+    if (log.noTime) {
+      findings.push({ sev: 'info', title: '日志没有可识别的时间戳', detail: '已按行序展示，但无法做“转场前后 N ms”的相关性判断。请用 adb logcat -v threadtime 重新抓。', evidence: [] });
+    } else if (log.spanMs > 0 && log.spanMs < 200) {
+      findings.push({ sev: 'info', title: '日志时间跨度只有 ' + Math.round(log.spanMs) + ' ms', detail: '样本太短，可能抓漏了转场开始或 Surface 重建；建议覆盖“点击设置 → 闪黑 → 恢复”完整过程。', evidence: [] });
+    }
+  }
+
+  // 风险等级
+  const rank = { high: 3, med: 2, low: 1, info: 0 };
+  const risk = findings.reduce((acc, f) => rank[f.sev] > rank[acc] ? f.sev : acc, 'info');
+
+  LAST = { win, log, findings, risk, timelineFilter: LAST.timelineFilter, onlyBad: LAST.onlyBad };
+  render(win, log, findings, risk);
+  $('results').classList.remove('hidden');
+  $('status').textContent = '分析完成：' + win.windows.length + ' 个窗口 / ' + log.events.length + ' 行日志';
+}
+
+function fmtEv(e) {
+  return (e.t != null ? '+' + Math.round(e.t) + 'ms ' : '') + (e.level ? e.level + '/' : '') + e.tag + ': ' + e.msg;
+}
+
+// ============ 渲染 ============
+function short(s, n) {
+  s = String(s == null ? '' : s);
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+function render(win, log, findings, risk) {
+  const wp = win.windows.filter(w => w.isWallpaper);
+  const keyCount = log.events.filter(e => e.cat !== 'other' || e.err).length;
+  const riskText = { high: '高', med: '中', low: '低', info: '信息不足' }[risk] || '信息不足';
+
+  $('metrics').innerHTML = [
+    `<div class="metric"><div class="k">风险等级</div><div class="v"><span class="risk ${risk}">${riskText}</span></div></div>`,
+    `<div class="metric"><div class="k">窗口总数</div><div class="v">${win.windows.length}</div></div>`,
+    `<div class="metric"><div class="k">壁纸窗口</div><div class="v">${wp.length}</div></div>`,
+    `<div class="metric"><div class="k">壁纸目标</div><div class="v small">${esc(short(win.wpTarget || '未找到', 34))}</div></div>`,
+    `<div class="metric"><div class="k">日志行数</div><div class="v">${log.events.length}</div></div>`,
+    `<div class="metric"><div class="k">关键事件</div><div class="v">${keyCount}</div></div>`,
+    `<div class="metric"><div class="k">日志跨度</div><div class="v">${log.noTime ? '无时间戳' : Math.round(log.spanMs) + ' ms'}</div></div>`
+  ].join('');
+
+  const sevName = { high: '高', med: '中', low: '低', info: '提示' };
+  const ordered = findings.slice().sort((a, b) => ({high:3,med:2,low:1,info:0}[b.sev] - {high:3,med:2,low:1,info:0}[a.sev]));
+  $('findings').innerHTML = ordered.length ? ordered.map(f => `
+    <div class="finding ${f.sev}">
+      <div class="ft"><span class="sev">${sevName[f.sev]}</span>${esc(f.title)}</div>
+      <div class="fd">${esc(f.detail)}</div>
+      ${f.evidence && f.evidence.length ? `<details><summary>证据（${f.evidence.length} 条）</summary><pre>${esc(f.evidence.join('\n'))}</pre></details>` : ''}
+    </div>`).join('') : '<div class="panel empty">没有发现明确问题</div>';
+
+  // 壁纸窗口表
+  if (!wp.length) {
+    $('wpWindows').innerHTML = '<div class="empty">没有解析到 TYPE_WALLPAPER 窗口。确认 dump 包含 <code>ty=WALLPAPER</code>，或壁纸在别的 display。</div>';
+  } else {
+    $('wpWindows').innerHTML = `<div class="scroll"><table>
+      <tr><th>#</th><th>窗口</th><th>类型</th><th>可见</th><th>Surface</th><th>DrawState</th><th>Frame</th><th>Layer</th><th>Alpha</th><th>状态</th></tr>
+      ${wp.map(w => `<tr>
+        <td>${w.idx}</td><td>${esc(short(w.name, 42))}</td><td>${esc(w.type || '?')}</td>
+        <td class="${w.visible === 'true' ? 'ok' : 'bad'}">${esc(w.visible || '?')}</td>
+        <td class="${w.hasSurface === 'true' ? 'ok' : 'bad'}">${esc(w.hasSurface || '?')}</td>
+        <td class="${w.drawState === 'HAS_DRAWN' ? 'ok' : 'bad'}">${esc(w.drawState || '?')}</td>
+        <td>${w.frame ? w.frame.join(',') : '?'}</td><td>${esc(w.baseLayer || '?')}</td><td>${esc(w.alpha || '?')}</td>
+        <td>${w.isBad ? '<span class="bad">异常</span>' : '<span class="ok">正常</span>'}</td>
+      </tr>`).join('')}
+    </table></div>`;
+    if (win.wpTarget) {
+      $('wpWindows').innerHTML += `<p class="muted" style="margin-top:8px">mWallpaperTarget=${esc(win.wpTarget)}${win.prevWpTarget ? ' · mPrevWallpaperTarget=' + esc(win.prevWpTarget) : ''}</p>`;
+    }
+  }
+
+  renderWinTable();
+  renderTimeline();
+  $('reportOut').value = buildReport(win, log, ordered, risk);
+}
+
+function renderWinTable() {
+  const win = LAST.win;
+  if (!win) return;
+  const q = ($('winFilter').value || '').toLowerCase().trim();
+  const onlyBad = $('onlyBad').checked;
+  const rows = win.windows.filter(w => {
+    if (onlyBad && !w.isBad) return false;
+    if (!q) return true;
+    return (w.name + ' ' + w.pkg + ' ' + w.type + ' ' + w.drawState).toLowerCase().includes(q);
+  });
+  $('winTable').innerHTML = rows.length ? `<table>
+    <tr><th>#</th><th>类型</th><th>包名</th><th>可见</th><th>Surface</th><th>DrawState</th><th>Frame</th><th>Layer</th><th>状态</th></tr>
+    ${rows.map(w => `<tr>
+      <td>${w.idx}</td><td>${esc(w.type || '?')}</td><td>${esc(short(w.pkg || w.name, 34))}</td>
+      <td class="${w.visible === 'true' ? 'ok' : 'warn'}">${esc(w.visible || '?')}</td>
+      <td class="${w.hasSurface === 'true' ? 'ok' : 'warn'}">${esc(w.hasSurface || '?')}</td>
+      <td class="${w.drawState === 'HAS_DRAWN' ? 'ok' : 'bad'}">${esc(w.drawState || '?')}</td>
+      <td>${w.frame ? w.frame.join(',') : '?'}</td><td>${esc(w.baseLayer || '?')}</td>
+      <td>${w.isBad ? '<span class="bad">异常</span>' : '<span class="ok">正常</span>'}</td>
+    </tr>`).join('')}
+  </table>` : '<div class="empty">没有匹配的窗口</div>';
+}
+
+function renderTimeline() {
+  const log = LAST.log;
+  if (!log) return;
+  const f = LAST.timelineFilter;
+  const key = (e) => e.cat === 'wallpaper' || e.cat === 'render' || e.cat === 'transition' || e.err;
+  const pass = (e) => f === 'all' ? true : f === 'key' ? key(e) : f === 'error' ? e.err : e.cat === f;
+  const rows = log.events.filter(pass);
+  const show = rows.slice(0, 700);
+  $('timeline').innerHTML = show.length ? show.map(e => `<div class="ev ${e.cat === 'wallpaper' ? 'wp' : ''} ${e.cat === 'transition' ? 'tr' : ''} ${e.err ? 'error' : ''}">
+      <span class="t">${e.t == null ? '-' : '+' + Math.round(e.t) + 'ms'}</span>
+      <span class="tag" title="${esc(e.tag)}">${esc(e.tag || '(无标签)')}</span>
+      <span class="msg">${esc(e.msg)}</span>
+    </div>`).join('') : '<div class="empty">该筛选下没有事件</div>';
+  $('tlNote').textContent = rows.length > show.length ? `显示前 ${show.length} 条，共 ${rows.length} 条匹配事件` : `共 ${rows.length} 条匹配事件`;
+}
+
+function buildReport(win, log, findings, risk) {
+  const wp = win.windows.filter(w => w.isWallpaper);
+  const riskText = { high: '高', med: '中', low: '低', info: '信息不足' }[risk] || '信息不足';
+  const L = [];
+  L.push('# 壁纸切换闪黑分析报告');
+  L.push('');
+  L.push('- 生成时间：' + new Date().toLocaleString());
+  L.push('- 风险等级：' + riskText);
+  L.push('- 窗口数：' + win.windows.length + '，壁纸窗口：' + wp.length);
+  L.push('- 日志行数：' + log.events.length + '，跨度：' + (log.noTime ? '无时间戳' : Math.round(log.spanMs) + ' ms'));
+  L.push('');
+  L.push('## 结论');
+  if (!findings.length) L.push('未发现明确问题。');
+  findings.forEach((f, i) => {
+    L.push(`${i + 1}. [${ {high:'高',med:'中',low:'低',info:'提示'}[f.sev] }] ${f.title}`);
+    L.push('   - ' + f.detail);
+    (f.evidence || []).slice(0, 6).forEach(x => L.push('   - `' + String(x).replace(/`/g, '\`') + '`'));
+  });
+  L.push('');
+  L.push('## 壁纸窗口');
+  if (!wp.length) L.push('未解析到 TYPE_WALLPAPER 窗口。');
+  wp.forEach(w => L.push(`- #${w.idx} \`${w.name}\` type=${w.type} visible=${w.visible} surface=${w.hasSurface} draw=${w.drawState}`));
+  if (win.wpTarget) L.push('- mWallpaperTarget=' + win.wpTarget);
+  if (win.prevWpTarget) L.push('- mPrevWallpaperTarget=' + win.prevWpTarget);
+  L.push('');
+  L.push('## 关键时间线（前 80 条）');
+  const keyEv = log.events.filter(e => e.cat === 'wallpaper' || e.cat === 'render' || e.cat === 'transition' || e.err).slice(0, 80);
+  if (!keyEv.length) L.push('无。');
+  keyEv.forEach(e => L.push(`- ${e.t == null ? '-' : '+' + Math.round(e.t) + 'ms'} [${e.level}] ${e.tag}: ${e.msg}`));
+  L.push('');
+  L.push('> 由 wallpaper-blackflash-analyzer.html 生成；解析基于 AOSP 12 dumpsys 字段。');
+  return L.join('\n');
+}
+
+// ============ 交互 ============
+const SAMPLE_WIN = `WINDOW MANAGER WINDOWS (dumpsys window windows)
+  Display: mDisplayId=0
+    init=1080x2400 420dpi cur=1080x2400 app=1080x2260
+    mCurrentFocus=Window{8f2a1b u0 com.android.launcher3/com.android.launcher3.Launcher}
+    mWallpaperTarget=Window{5c3d2e u0 com.android.systemui.ImageWallpaper}
+    mPrevWallpaperTarget=Window{1a2b3c u0 com.android.systemui.ImageWallpaper}
+    mLastWallpaperX=0.5 mLastWallpaperY=0.5
+
+  Window #0 Window{5c3d2e u0 com.android.systemui.ImageWallpaper}:
+    mDisplayId=0 mSession=Session{7d1e2f 1234:u0a10000}
+    mOwnerUid=1000 showForAllUsers=true package=com.android.systemui
+    mAttrs={(0,0)(fillxfill) sim={adjust=pan} ty=WALLPAPER fmt=RGBA_8888 fl=NOT_FOCUSABLE|NOT_TOUCHABLE}
+    mFrame=[0,0][1080,2400] last=[0,0][1080,2400]
+    mBaseLayer=21000 mSubLayer=0
+    mViewVisibility=0x8 mHaveFrame=true mObscured=false
+    mHasSurface=false surfaceShowing=false
+    isVisible=false
+    mDrawState=DRAW_PENDING
+    mAnimatingExit=false mRemoveOnExit=false mDestroying=false
+    mAlpha=0.0
+
+  Window #1 Window{8f2a1b u0 com.android.launcher3/com.android.launcher3.Launcher}:
+    mDisplayId=0 mSession=Session{9a8b7c 2345:u0a10123}
+    mOwnerUid=10123 package=com.android.launcher3
+    mAttrs={(0,0)(fillxfill) ty=APPLICATION fmt=RGBA_8888 fl=HARDWARE_ACCELERATED}
+    mFrame=[0,0][1080,2400] last=[0,0][1080,2400]
+    mBaseLayer=21010 mSubLayer=0
+    mViewVisibility=0x0 mHaveFrame=true mObscured=false
+    mHasSurface=true surfaceShowing=true
+    isVisible=true
+    mDrawState=HAS_DRAWN
+    mAlpha=1.0`;
+
+const SAMPLE_LOG = `11-08 23:10:00.000  1234  1300 I WallpaperManagerService: setWallpaper which=0x3
+11-08 23:10:00.015  1234  1300 I WallpaperManagerService: Crop done; invoking completion callback
+11-08 23:10:00.090  1234  1300 I WindowManager: New wallpaper target: Window{5c3d2e u0 com.android.systemui.ImageWallpaper}
+11-08 23:10:00.120  1234  1300 I Transitions: Start transition type=TO_LAUNCHER
+11-08 23:10:00.140  1234  1300 I SurfaceFlinger: destroyLayer wallpaper layer 0x7f2a
+11-08 23:10:00.210   987   987 I ImageWallpaper: onSurfaceCreated
+11-08 23:10:00.260   987   987 I ImageWallpaper: drawFrame
+11-08 23:10:00.520  1234  1300 I Transitions: finishTransition
+11-08 23:10:00.540  1234  1300 I WallpaperManagerService: Wallpaper colors changed which=0x3`;
+
+function analyzeSafe() {
+  try { analyzeAll(); } catch (err) { $('status').textContent = '解析失败：' + (err && err.message ? err.message : err); console.error(err); }
+}
+
+$('btnAnalyze').addEventListener('click', analyzeSafe);
+$('btnSample').addEventListener('click', () => {
+  $('winInput').value = SAMPLE_WIN;
+  $('logInput').value = SAMPLE_LOG;
+  analyzeSafe();
+});
+$('btnClear').addEventListener('click', () => {
+  $('winInput').value = ''; $('logInput').value = '';
+  $('results').classList.add('hidden');
+  $('status').textContent = '等待输入';
+});
+$('btnCopy').addEventListener('click', async () => {
+  const text = $('reportOut').value;
+  if (!text) { $('status').textContent = '没有可复制的报告'; return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    $('status').textContent = '报告已复制';
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); $('status').textContent = '报告已复制'; }
+    catch (_) { $('status').textContent = '复制失败，请手动选择文本'; }
+    document.body.removeChild(ta);
+  }
+});
+$('winFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  f.text().then(t => { $('winInput').value = t; $('status').textContent = '已载入 ' + f.name; });
+});
+$('logFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  f.text().then(t => { $('logInput').value = t; $('status').textContent = '已载入 ' + f.name; });
+});
+$('winFilter').addEventListener('input', renderWinTable);
+$('onlyBad').addEventListener('change', renderWinTable);
+$('filters').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  [...$('filters').children].forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  LAST.timelineFilter = b.dataset.f;
+  renderTimeline();
+});
+
+// 主题
+(function theme() {
+  const key = 'wallpaper_analyzer_theme';
+  const btn = $('theme-btn');
+  const html = document.documentElement;
+  let mode = localStorage.getItem(key) || 'auto';
+  const dark = () => { const h = new Date().getHours(); return h < 7 || h >= 22; };
+  const apply = () => {
+    const t = mode === 'auto' ? (dark() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', t);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+  };
+  btn.addEventListener('click', () => { mode = mode === 'auto' ? 'light' : mode === 'light' ? 'dark' : 'auto'; localStorage.setItem(key, mode); apply(); });
+  setInterval(() => { if (mode === 'auto') apply(); }, 60000);
+  apply();
+})();
+
+// 自测入口：file:///...#selftest
+if (location.hash === '#selftest') {
+  $('btnSample').click();
+  document.title = 'SELFTEST|' + LAST.risk + '|' + LAST.findings.length;
+}
+</script>
+</body>
+</html>

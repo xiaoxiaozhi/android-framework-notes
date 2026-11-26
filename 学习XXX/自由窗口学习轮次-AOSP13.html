@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>自由窗口学习轮次 · AOSP 13</title>
+<style>
+  /* ===== 主题变量：浅色暖调 / 深色低对比 ===== */
+  :root{
+    --bg:#faf8f5; --bg2:#f3eee6; --panel:#ffffff; --panel2:#f6f1e9;
+    --text:#2b2620; --muted:#7a7166; --line:#e7ded1;
+    --accent:#b45309; --accent2:#0f766e; --purple:#7c3aed; --red:#b91c1c;
+    --accent-soft:rgba(180,83,9,.08); --teal-soft:rgba(15,118,110,.08);
+    --purple-soft:rgba(124,58,237,.08); --red-soft:rgba(185,28,28,.07);
+    --code-bg:#f7f2ea; --shadow:0 20px 45px -28px rgba(70,48,20,.35);
+  }
+  html[data-theme="dark"]{
+    --bg:#1a1a1e; --bg2:#202027; --panel:#212127; --panel2:#2a2a31;
+    --text:#e7e3dc; --muted:#9b968d; --line:#34343c;
+    --accent:#e0a458; --accent2:#6fcf97; --purple:#b58cff; --red:#f87171;
+    --accent-soft:rgba(224,164,88,.12); --teal-soft:rgba(111,207,151,.1);
+    --purple-soft:rgba(181,140,255,.12); --red-soft:rgba(248,113,113,.1);
+    --code-bg:#141417; --shadow:0 24px 50px -30px rgba(0,0,0,.8);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth;scroll-padding-top:84px}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:16px/1.8 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;transition:background .25s,color .25s;}
+  .bgfx{position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(800px 380px at 6% -6%, var(--accent-soft), transparent 65%),
+               radial-gradient(700px 340px at 98% 2%, var(--purple-soft), transparent 62%);}
+  /* ===== 顶栏 ===== */
+  .topbar{position:sticky;top:0;z-index:30;backdrop-filter:blur(14px);
+    background:color-mix(in srgb, var(--bg) 82%, transparent);border-bottom:1px solid var(--line);}
+  .topbar-inner{max-width:1240px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:14px;}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px;}
+  .brand .dot{width:8px;height:8px;border-radius:50%;background:var(--accent2);box-shadow:0 0 0 4px var(--teal-soft);}
+  .topnav{display:flex;gap:2px;margin-left:auto;overflow-x:auto;scrollbar-width:none;
+    flex:1 1 auto;min-width:0;}
+  .topnav::-webkit-scrollbar{display:none}
+  .topnav a{font-size:12.5px;color:var(--muted);text-decoration:none;padding:6px 9px;border-radius:8px;white-space:nowrap;}
+  .topnav a:hover{color:var(--text);background:var(--panel2);}
+  .topnav a.active{color:var(--accent);background:var(--accent-soft);}
+  .layout{position:relative;z-index:1;max-width:1240px;margin:0 auto;
+    display:grid;grid-template-columns:minmax(0,1fr) 224px;gap:46px;padding:34px 24px 110px;}
+  .layout>*{min-width:0;}
+  /* ===== Hero ===== */
+  .hero{padding:8px 0 26px;border-bottom:1px solid var(--line);}
+  .eyebrow{display:inline-flex;align-items:center;gap:9px;font-size:12px;color:var(--accent);
+    letter-spacing:.16em;text-transform:uppercase;font-weight:700;margin-bottom:12px;}
+  .eyebrow::before{content:"";width:24px;height:1px;background:var(--accent);}
+  h1{margin:0 0 12px;font-size:clamp(26px,3.3vw,39px);line-height:1.28;letter-spacing:-.02em;}
+  h1 em{font-style:normal;color:var(--accent);}
+  .lede{margin:0;color:var(--muted);max-width:66ch;font-size:16px;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;}
+  .chip{font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--line);
+    border-radius:999px;padding:4px 11px;}
+  .chip b{color:var(--text);}
+  .chip.ok{color:var(--accent2);border-color:color-mix(in srgb,var(--accent2) 40%,var(--line));background:var(--teal-soft);}
+  .chip.ok b{color:var(--accent2);}
+  /* ===== TOC ===== */
+  .toc{position:sticky;top:82px;align-self:start;font-size:13px;}
+  .toc-title{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 8px 10px;}
+  .toc a{display:block;color:var(--muted);text-decoration:none;padding:6px 10px;border-left:2px solid transparent;}
+  .toc a:hover{color:var(--text);background:var(--panel);}
+  .toc a.active{color:var(--accent);border-left-color:var(--accent);background:var(--accent-soft);}
+  /* ===== 排版 ===== */
+  section{margin-top:50px;}
+  h2{display:flex;align-items:center;gap:12px;font-size:22px;margin:0 0 16px;letter-spacing:-.01em;}
+  h2 .num{flex:0 0 auto;width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent);
+    font:700 13px/30px ui-monospace,monospace;text-align:center;}
+  h3{font-size:16px;margin:24px 0 8px;}
+  p{margin:10px 0;}
+  .muted{color:var(--muted);}
+  a{color:var(--accent);}
+  code{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:.89em;
+    background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:6px;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);}
+  /* ===== 骨架流程表 ===== */
+  .flow{overflow:hidden;}
+  .flow-head,.flow-row{display:grid;grid-template-columns:minmax(200px,1fr) 34px minmax(230px,1.3fr) minmax(200px,1fr);
+    gap:14px;align-items:center;}
+  .flow-head{padding:11px 18px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+    background:var(--panel2);border-bottom:1px solid var(--line);}
+  .flow-row{padding:10px 18px;border-top:1px solid var(--line);position:relative;}
+  .flow-row:first-of-type{border-top:0;}
+  .flow-row:hover{background:color-mix(in srgb,var(--accent) 4%,transparent);}
+  .flow-row .m{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:12.2px;line-height:1.55;
+    word-break:normal;hyphens:none;}
+  .flow-row .d{font-size:13.6px;color:var(--muted);line-height:1.6;}
+  .flow-row .a{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:10.8px;color:var(--accent);
+    text-align:right;line-height:1.5;}
+  .flow-row .a .f{display:block;white-space:nowrap;}
+  .flow-row .a .ln{display:block;color:var(--muted);}
+  .arw{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
+    font:700 13px ui-monospace,monospace;}
+  .arw.r{color:var(--accent);background:var(--accent-soft);}
+  .arw.l{color:var(--purple);background:var(--purple-soft);}
+  .lvl1{margin-left:22px;}
+  .lvl2{margin-left:44px;}
+  .lvl1::before,.lvl2::before{content:"";position:absolute;left:8px;top:0;bottom:0;width:1px;background:var(--line);}
+  .branch .m{color:var(--accent2);}
+  .group-label{padding:7px 18px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--line);
+    background:color-mix(in srgb,var(--panel2) 55%,transparent);letter-spacing:.06em;}
+  .group-label b{color:var(--text);margin-right:8px;font-weight:600;}
+  /* ===== 通用卡片/网格 ===== */
+  .grid{display:grid;gap:12px;}
+  .grid.two{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .grid.three{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;}
+  .card h3{margin:0 0 6px;font-size:14.8px;}
+  .card p{margin:4px 0 0;font-size:14px;color:var(--muted);line-height:1.7;}
+  .tag{font:600 10.5px/1 ui-monospace,monospace;color:var(--accent);background:var(--accent-soft);
+    padding:4px 7px;border-radius:5px;margin-right:7px;}
+  .tag.teal{color:var(--accent2);background:var(--teal-soft);}
+  .tag.purple{color:var(--purple);background:var(--purple-soft);}
+  .star{color:var(--accent);letter-spacing:2px;font-size:11px;margin-left:6px;white-space:nowrap;}
+  /* ===== 标注框 ===== */
+  .note{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0;
+    padding:11px 15px;margin:12px 0;font-size:14.2px;}
+  .note b{color:var(--accent);}
+  .note.warn{border-color:var(--red);background:var(--red-soft);}
+  .note.warn b{color:var(--red);}
+  .note.ok{border-color:var(--accent2);background:var(--teal-soft);}
+  .note.ok b{color:var(--accent2);}
+  /* ===== 步骤 ===== */
+  .steps{list-style:none;padding:0;margin:0;counter-reset:s;}
+  .steps li{counter-increment:s;position:relative;padding:11px 0 11px 50px;border-top:1px dashed var(--line);font-size:14.6px;}
+  .steps li:first-child{border-top:0;}
+  .steps li::before{content:counter(s,decimal-leading-zero);position:absolute;left:0;top:11px;width:33px;height:33px;
+    border-radius:50%;border:1px solid var(--line);background:var(--panel2);color:var(--accent);
+    font:700 12px/33px ui-monospace,monospace;text-align:center;}
+  /* ===== 代码块（技能规范） ===== */
+  .code-block{background:var(--code-bg);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:14px 0;}
+  .code-block .filename{padding:8px 14px;border-bottom:1px solid var(--line);background:var(--panel2);
+    font:11.5px/1.4 "JetBrains Mono",ui-monospace,monospace;color:var(--muted);}
+  .code-block pre{margin:0;padding:14px 16px;overflow-x:auto;font:12.4px/1.68 "JetBrains Mono",ui-monospace,Consolas,monospace;}
+  .cm{color:var(--muted);}
+  .kw{color:var(--purple);}
+  .fn{color:var(--accent);}
+  .str{color:var(--accent2);}
+  /* ===== 终端 ===== */
+  .term{background:var(--code-bg);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:12px 0;}
+  .term .bar{display:flex;align-items:center;gap:6px;padding:8px 13px;border-bottom:1px solid var(--line);background:var(--panel2);}
+  .term .bar i{width:9px;height:9px;border-radius:50%;background:#ff5f57;display:block;}
+  .term .bar i:nth-child(2){background:#febc2e}.term .bar i:nth-child(3){background:#28c840}
+  .term .bar .t{margin-left:8px;font:11.5px ui-monospace,monospace;color:var(--muted);}
+  .copy{margin-left:auto;border:1px solid var(--line);background:var(--panel);color:var(--muted);
+    font-size:11px;border-radius:6px;padding:3px 9px;cursor:pointer;}
+  .copy:hover{color:var(--accent);border-color:var(--accent);}
+  .term pre{margin:0;padding:13px 15px;overflow-x:auto;font:12.3px/1.7 "JetBrains Mono",ui-monospace,Consolas,monospace;}
+  .term pre .c{color:var(--muted);}
+  /* ===== 表格 ===== */
+  .tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13.6px;}
+  .tbl th,.tbl td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;}
+  .tbl th{color:var(--muted);font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;}
+  .tbl tr:last-child td{border-bottom:0;}
+  .tbl td:first-child{white-space:nowrap;color:var(--muted);}
+  /* ===== 对比 ===== */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;}
+  .compare .c{border:1px solid var(--line);border-radius:10px;padding:11px 13px;background:var(--panel);}
+  .compare .c .h{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;}
+  .compare .c code{display:block;background:none;border:0;padding:0;font-size:12px;white-space:nowrap;overflow-x:auto;}
+  .compare .c.ff{border-color:color-mix(in srgb,var(--accent2) 40%,var(--line));}
+  .compare .c.ff .h{color:var(--accent2);}
+  /* ===== 悬浮主题按钮 ===== */
+  #themeFab{position:fixed;right:18px;bottom:18px;z-index:40;background:var(--panel);color:var(--text);
+    border:1px solid var(--line);border-radius:999px;padding:9px 14px;cursor:pointer;font-size:13px;
+    box-shadow:var(--shadow);}
+  #themeFab:hover{border-color:var(--accent);color:var(--accent);}
+  footer{margin-top:54px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:13px;}
+  @media (max-width:1080px){
+    .layout{grid-template-columns:1fr;}
+    .toc{display:none;}
+    .flow-head{display:none;}
+    .flow-row{grid-template-columns:1fr;gap:5px;padding:12px 16px;}
+    .flow-row .a{text-align:left;}
+    .lvl1{margin-left:0;padding-left:30px;}
+    .lvl2{margin-left:0;padding-left:46px;}
+    .grid.two,.grid.three{grid-template-columns:1fr;}
+    .compare{grid-template-columns:1fr;}
+  }
+  @media (max-width:720px){
+    .term pre{white-space:pre-wrap;overflow-wrap:anywhere;}
+  }
+  @media print{.topbar,.toc,.copy,#themeFab{display:none} .panel,.card{box-shadow:none}}
+
+  /* ===== 统一视觉：与 framework-learning-round 新版对齐（2026-11-21） ===== */
+  :root{--bg:#faf8f5;--panel:#fffdfa;--panel2:#f4efe6;--text:#211f1c;
+    --muted:#8a8279;--line:#e7e1d7;--accent:#b4551f;--accent2:#2f6f5e;--code-bg:#f4efe6;}
+  html[data-theme="dark"]{--bg:#1a1a1e;--panel:#212126;--panel2:#2a2a31;--text:#e9e4dc;
+    --muted:#847b6f;--line:#2f2d31;--accent:#e08a5a;--accent2:#7fc0ab;--code-bg:#15151a;}
+  h1,h2,h3{font-family:"Noto Serif SC","Source Han Serif SC","Songti SC",Georgia,serif;
+    letter-spacing:-.01em;}
+  h1,h2{font-weight:600;}
+  #progress{position:fixed;top:0;left:0;height:2px;width:0;background:var(--accent);
+    z-index:60;transition:width .1s linear;}
+  .chip{padding:6px 12px;}
+
+  /* ===== 五件事色块 ===== */
+  .five{display:grid;gap:12px;margin-top:14px}
+  .fcard{border-left:4px solid var(--fc);border-radius:10px;padding:12px 15px 13px;background:var(--fb)}
+  .fcard .fh{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14.5px;color:var(--fc);margin-bottom:2px}
+  .fcard .fnum{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;
+    background:var(--fc);color:#fff;font-size:12.5px;font-weight:700;flex:0 0 auto}
+  .fcard pre{margin:9px 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:12.3px;line-height:1.72;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text);
+    background:transparent;border:0;padding:0}
+  .fcard .fr{margin-top:9px;padding-top:8px;border-top:1px dashed var(--line);font-size:12.6px;color:var(--muted)}
+  .fcard .fr b{color:var(--fc);font-weight:600}
+  .c1{--fc:#2f7f68;--fb:rgba(47,127,104,.10)}
+  .c2{--fc:#b4551f;--fb:rgba(180,85,31,.11)}
+  .c3{--fc:#35618f;--fb:rgba(53,97,143,.11)}
+  .c4{--fc:#6b4a8f;--fb:rgba(107,74,143,.11)}
+  .c5{--fc:#a8433c;--fb:rgba(168,67,60,.11)}
+  html[data-theme="dark"] .c1{--fc:#7fc0ab;--fb:rgba(127,192,171,.10)}
+  html[data-theme="dark"] .c2{--fc:#e08a5a;--fb:rgba(224,138,90,.10)}
+  html[data-theme="dark"] .c3{--fc:#8fb4d9;--fb:rgba(143,180,217,.10)}
+  html[data-theme="dark"] .c4{--fc:#b79ad6;--fb:rgba(183,154,214,.10)}
+  html[data-theme="dark"] .c5{--fc:#e0938c;--fb:rgba(224,147,140,.10)}
+
+  /* ===== 骨架行：五件事色标 ===== */
+  .flow-row.r1,.flow-row.r2,.flow-row.r3,.flow-row.r4,.flow-row.r5{position:relative;}
+  .flow-row.r1{background:rgba(47,127,104,.10);box-shadow:inset 4px 0 0 #2f7f68;}
+  .flow-row.r2{background:rgba(180,85,31,.11);box-shadow:inset 4px 0 0 #b4551f;}
+  .flow-row.r3{background:rgba(53,97,143,.11);box-shadow:inset 4px 0 0 #35618f;}
+  .flow-row.r4{background:rgba(107,74,143,.11);box-shadow:inset 4px 0 0 #6b4a8f;}
+  .flow-row.r5{background:rgba(168,67,60,.11);box-shadow:inset 4px 0 0 #a8433c;}
+  .qb{display:inline-block;min-width:15px;height:15px;line-height:15px;text-align:center;border-radius:3px;
+    color:#fff;font:700 10px/15px ui-monospace,monospace;margin-right:7px;vertical-align:1px}
+  .qb1{background:#2f7f68}.qb2{background:#b4551f}.qb3{background:#35618f}.qb4{background:#6b4a8f}.qb5{background:#a8433c}
+  .qlegend{display:flex;flex-wrap:wrap;gap:7px 18px;margin:12px 0 4px;font-size:12.8px;line-height:1.7}
+  .qlegend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:0}
+  .flow-row.state{background:rgba(138,130,121,.07);box-shadow:inset 3px 0 0 rgba(138,130,121,.5);}
+  .qnote{font-size:12.6px;color:var(--muted);margin:2px 0 8px;line-height:1.65}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<div class="bgfx"></div>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="dot"></span>自由窗口 · AOSP 13</div>
+    <nav class="topnav">
+      <a href="#s4b">五件事</a><a href="#s0">命令</a><a href="#s1">骨架</a><a href="#s2">白话</a><a href="#s4">决策点</a><a href="#s5">三问</a>
+      <a href="#s6">阅读法</a><a href="#s7">判据题</a><a href="#s8">速查</a>
+    </nav>
+  </div>
+</div>
+
+<div class="layout">
+<main>
+  <header class="hero">
+    <div class="eyebrow">Framework Learning Loop · Round 01</div>
+    <h1>自由窗口：<em>不是布局，是启动决策</em></h1>
+    <p class="lede">从 <code>am start --windowingMode 5</code> 到 <code>mode=freeform</code> 的任务，再到 WMShell 的标题栏。窗口模式与初始 Rect 在 launch 阶段就已确定，WMS 只负责执行。</p>
+    <div class="chips">
+      <span class="chip">模式 <b>A</b></span>
+      <span class="chip">基线 <b>AOSP 13 · android-13.0.0_r84</b></span>
+      <span class="chip ok">锚点现地 grep 核实</span>
+      <span class="chip ok">API 33 实测</span>
+      <span class="chip">形状校验 <b>PASS</b></span>
+    </div>
+  </header>
+
+  <section id="s4b">
+    <h2><span class="num">00</span>真正要学的 5 件事 + 3 条不变量 + 4 个失败模式</h2>
+    <p class="muted" style="font-size:13.5px">流程只是设计决策留下的痕迹；调用链本身没有张力，设计才有。先把这五件事立住，再回头看 02 的状态线 + 三起点骨架。</p>
+
+    <div class="grid">
+      <div class="card"><h3><span class="tag">1</span>一块屏怎么变成多个 Task</h3><p>自由窗口不是“画一个框”，而是让同一块 display 上出现多个可独立配置的 Task。层级是 Display → TaskDisplayArea → <b>root Task（容器）</b> → leaf Task（窗口）→ Activity；全屏时 root 与 leaf 常重合：<code>dumpsys activity activities</code> 会并列显示 root 和 leaf（如 <code>#1 home</code> 下面挂 <code>#96 launcher</code>），<code>dumpsys window containers</code> 才会缩进成树；同一个 Task 在这两份输出里都出现，是同一个节点，不是两个。一个 app 可以有多 task，多个 app 也可以共用一个 task。<br><span class="muted">TaskDisplayArea.java:942 · ActivityStarter.java:1621/:2693 · TaskLaunchParamsModifier.java:304</span></p></div>
+      <div class="card"><h3><span class="tag">2</span>四个数各归谁</h3><p>display 的 <code>init=1440x2960</code>、TDA 的 bounds、Task 的 override bounds、App 窗口的 frame。自由窗口的 bug 几乎都能归到“四个数里有一个没跟上”；流程只是它们的更新路径。<br><span class="muted">DisplayWindowSettings.java:124 · Task.java:2043</span></p></div>
+      <div class="card"><h3><span class="tag">3</span>策略、校验、执行三权分立</h3><p>策略：<code>TaskLaunchParamsModifier</code> 算“应该是什么模式、bounds 多少”；校验：<code>validateWindowingMode</code> / <code>resolveLeafTaskOnlyOverrideConfigs</code> 决定“能不能这样”；执行：WMS 布局与 surface。<br><span class="muted">TaskLaunchParamsModifier.java:565 · TaskDisplayArea.java:1415</span></p></div>
+      <div class="card"><h3><span class="tag">4</span>状态怎么活过下一次</h3><p>“记住上次大小”不是自然结果，是显式状态：<code>mLastNonFullscreenBounds</code>、Task 复用、旋转重建、force-stop 后再启动，各自走不同分支。<br><span class="muted">Task.java:1898/:1952 · ActivityStarter.java:1614</span></p></div>
+      <div class="card"><h3><span class="tag">5</span>失败模式</h3><p>能力没开、任务被复用、应用时校验回退、recents 入口被开关挡住——这四个是最常见的“小窗没生效 / 点了没反应”，也是面试最爱追问的“为什么没生效”。下面四张失败模式卡片逐一展开。<br><span class="muted">见 F1–F4</span></p></div>
+    </div>
+
+    <p class="muted" style="font-size:13.5px;margin-top:6px">决策点回答“代码在哪拐弯”；下面这组回答“不这么拐会坏在哪”。前者能背，后者只能靠破坏一次再看恢复。</p>
+
+    <h3 style="font-size:15px;margin:20px 0 10px">三条不变量（破了就出 bug）</h3>
+    <div class="grid">
+      <div class="card"><h3>① 窗口至少留一条可点的边</h3><p>窗口可以挂到屏幕外，但不能整个消失。落地时 <code>computeFreeformBounds()</code> 先 <code>intersect(stableBounds)</code>，再用 <code>MINIMUM_VISIBLE_WIDTH/HEIGHT_IN_DP</code> 把窗口拉回可视区。<br><span class="muted">Task.java:2128–2160 · 破坏方式：<code>am task resize</code> 推到屏外</span></p></div>
+      <div class="card"><h3>② config 与 bounds 必须一致</h3><p>旋转、改密度、换显示区之后，Task 的 override bounds 必须重算；否则内容按旧尺寸排版。重算发生在 <code>resolveLeafTaskOnlyOverrideConfigs()</code>，不是 launch 时。<br><span class="muted">Task.java:2043 → :2066 · 破坏方式：旋转后看 bounds 与 app frame 是否同步</span></p></div>
+      <div class="card"><h3>③ 改全局设置不重排已有 Task</h3><p><code>settings put</code> 只改能力 flag 和显示默认值（<code>WindowManagerService.java:973/:976</code>），不会把已经开着的窗口逐个搬一遍；已有 Task 继续按自己的 override bounds 活着，新启动才用新能力。<br><span class="muted">破坏方式：开着小窗改设置，看旧窗口是否原地不动</span></p></div>
+    </div>
+
+    <h3 style="font-size:15px;margin:22px 0 10px">四个失败模式（“小窗没生效 / 点了没反应”先查这四个）</h3>
+    <div class="grid">
+      <div class="card"><h3><span class="tag">F1</span>能力没开</h3><p><code>mSupportsFreeformWindowManagement = false</code> → <code>canApplyFreeformWindowPolicy</code> 直接 false，显式 5 也落回全屏。<br><span class="muted">判别：<code>pm list features | grep freeform</code> 无输出，且 <code>settings get global enable_freeform_support</code> 为 0/null</span></p></div>
+      <div class="card"><h3><span class="tag">F2</span>任务被复用</h3><p>目标 Activity 已在前台且 launchFlags 允许复用时，<code>startActivityInner</code> 在 <code>deliverToCurrentTopIfNeeded()</code> 直接返回，不会重新选根任务，也不会重算模式。<br><span class="muted">TaskLaunchParams: 调用点 ActivityStarter.java:1614 · 判别：<code>force-stop</code> 后重试，看 taskId 是否变化</span></p></div>
+      <div class="card"><h3><span class="tag">F3</span>应用时校验回退</h3><p>模式在 launch 解析通过，但落地时 <code>validateWindowingMode()</code> 认为该 TDA 不支持，退回 <code>UNDEFINED</code>；或 unresizable 分支直接把模式改成 fullscreen 并清空 bounds。<br><span class="muted">TaskDisplayArea.java:1415 · TaskLaunchParamsModifier.java:294–296 · 判别：<code>dumpsys</code> 里模式与期望不符，但没有报错</span></p></div>
+
+      <div class="card"><h3><span class="tag">F4</span>最近任务入口被开关挡住</h3><p>点「自由窗口」没反应、也不报错。Launcher 侧 <code>supportsFreeformMultiWindow</code> 为 false 时连菜单项都不生成；服务端 <code>canUseActivityOptionsLaunchBounds</code> 为 false 时会话内跳过 setBounds/reparent。<b>F1 的一个特例，但表现形式完全不同</b>（F1 是全屏，F4 是没动静）。<br><span class="muted">ActivityManagerWrapper.java:346 · ActivityTaskSupervisor.java:1517 · 判别：先看菜单项在不在，再看 <code>dumpsys</code> 里 taskId 有没有被抬到前台</span></p></div>
+    </div>
+
+    <p class="muted" style="font-size:13px;margin-top:14px">这三条不变量对应“五件事”里的 #2（四个数）、#4（状态跨次启动）、#5（失败模式）；四个失败模式落在能力、复用、校验、入口四个岔口上。</p>
+
+    <h3 style="font-size:15px;margin:26px 0 8px">五件事 ↔ 调用链：颜色标在骨架上</h3>
+    <p class="muted" style="font-size:13.5px;margin-bottom:4px">不另画树。每条链就落在 <b>02 骨架</b>的某几行上，用颜色和编号标出来；看骨架时哪行带哪种颜色，就知道它在解决哪个问题。下面是索引。</p>
+
+    <div class="five">
+      <div class="fcard c1">
+        <div class="fh"><span class="fnum">1</span>一块屏怎么变成多个 Task</div>
+        <div class="fr" style="border-top:0;padding-top:2px;margin-top:4px">
+          位置：<b>02 骨架 B 段</b> — <code>TaskLaunchParamsModifier:149</code> → <code>canApplyFreeformWindowPolicy:565</code> → <code>TDA.getOrCreateRootTask:942</code> → <code>createRootTask:987</code><br>
+          入口差异：adb 线新建 Task；recents 线是<b>把已有 Task reparent 到 freeform root task</b>（<code>ATS:1456</code>），Task id 不变。<br>
+          证据：<code>dumpsys</code> 多一个 <code>mode=freeform</code> 的 Task，而不是同一个 Task 变宽。
+        </div>
+      </div>
+
+      <div class="fcard c2">
+        <div class="fh"><span class="fnum">2</span>四个数各归谁</div>
+        <div class="fr" style="border-top:0;padding-top:2px;margin-top:4px">
+          位置：<code>TaskLaunchParamsModifier:728 getTaskBounds</code> → <code>Task:2043 resolveLeafTaskOnlyOverrideConfigs</code> → <code>:2066 computeFreeformBounds</code><br>
+          入口差异：recents 的初值由 Launcher 算（<code>TaskShortcutFactory:231</code>），服务端 <code>ATS:1449</code> 直接采用，不经过 modifier。<br>
+          证据：<code>mBounds</code> 与 app frame 一致，旋转、改密度后仍一致。
+        </div>
+      </div>
+
+      <div class="fcard c3">
+        <div class="fh"><span class="fnum">3</span>策略、校验、执行三权分立</div>
+        <div class="fr" style="border-top:0;padding-top:2px;margin-top:4px">
+          位置：策略 <code>:565</code>（仅 adb 线）→ 校验 <code>TDA:957/:1414</code> → 执行 <code>WMS.relayoutWindow:2278</code><br>
+          入口差异：recents 没有策略层，只有「Launcher 侧菜单开关 + 服务端 bounds 采纳开关」两道。<br>
+          证据：launch 通过 ≠ 落地通过，被改回 fullscreen 就是 F3。
+        </div>
+      </div>
+
+      <div class="fcard c4">
+        <div class="fh"><span class="fnum">4</span>状态怎么活过下一次</div>
+        <div class="fr" style="border-top:0;padding-top:2px;margin-top:4px">
+          位置：能力 flag 走 <b>02 骨架 A 段</b>（<code>:879/:935</code> 开机算一次，<code>WMS:864/:966</code> 热更新）；窗口状态走 <code>Task:1919-1952</code> 的 <code>mLastNonFullscreenBounds</code><br>
+          证据：改设置不重排旧窗口；再次启动回到上次大小；force-stop 后清零。
+        </div>
+      </div>
+
+      <div class="fcard c5">
+        <div class="fh"><span class="fnum">5</span>失败模式（四个断点）</div>
+        <div class="fr" style="border-top:0;padding-top:2px;margin-top:4px">
+          位置：F1 <code>canApply:567</code> 直接 false；F2 <code>ActivityStarter:1614</code> 直接 return；F3 <code>TDA:1415 / TLM:294</code> 回退；F4 recents 入口被 <code>AMW:346 / ATS:1517</code> 两个开关挡住<br>
+          证据：显式 5 仍全屏 → 走 F1/F2/F3；点最近任务「自由窗口」没动静 → 直接查 F4。
+        </div>
+      </div>
+    </div>
+
+    <p class="muted" style="font-size:13px;margin-top:14px">反过来读也成立：02 骨架里每一段，都应能回答上面某一张色块；答不出来的段，就是还没学明白的段。</p>
+  </section>
+
+
+  <section id="s0">
+    <h2><span class="num">01</span>完整命令：<code style="font-size:.72em;vertical-align:middle">--windowingMode 5</code> 到底敲什么</h2>
+    <p class="muted" style="font-size:14px">最小可用的一条，直接复制就能跑；<code>5</code> 是整数常量，不是字符串 <code>freeform</code>。</p>
+    <div class="term">
+      <div class="bar"><i></i><i></i><i></i><span class="t">bash · 最小命令</span><button class="copy" data-copy="#cmd0">复制</button></div>
+      <pre id="cmd0">adb shell am start --windowingMode 5 -n com.android.settings/.Settings</pre>
+    </div>
+    <div class="grid three">
+      <div class="card"><h3><span class="tag">解析</span>--windowingMode 5</h3><p>按整数读入 <code>mWindowingMode</code>（<code>ActivityManagerShellCommand.java:429</code>）。传字符串会 <code>parseInt</code> 失败。</p></div>
+      <div class="card"><h3><span class="tag teal">常量</span>5 = FREEFORM</h3><p><code>WindowConfiguration.WINDOWING_MODE_FREEFORM = 5</code>（<code>:109</code>）；随后写入 <code>ActivityOptions.setLaunchWindowingMode(5)</code>（<code>:563</code>）。</p></div>
+      <div class="card"><h3><span class="tag purple">组件</span>-n 包名/.Activity</h3><p>换成自己的 demo 就是 <code>-n com.example.myapplication/.MainActivity</code>。</p></div>
+    </div>
+
+    <p class="muted" style="font-size:14px;margin-top:16px">要“起之前先清干净 + 起完立刻验证”，用这一组：</p>
+    <div class="term">
+      <div class="bar"><i></i><i></i><i></i><span class="t">bash · 完整可复现</span><button class="copy" data-copy="#cmd0b">复制</button></div>
+      <pre id="cmd0b"><span class="c"># 0) 打开 freeform 能力（原值可能是 null）</span>
+adb shell settings put global enable_freeform_support 1
+
+<span class="c"># 1) 杀掉旧任务，避免命中已有 task 而不重算模式</span>
+adb shell am force-stop com.android.settings
+
+<span class="c"># 2) 以 freeform 启动，并等待启动结果</span>
+adb shell am start -W --windowingMode 5 -n com.android.settings/.Settings
+
+<span class="c"># 3) 验证：应出现 mode=freeform 与 mBounds</span>
+adb shell dumpsys activity activities | grep -A1 "mode=freeform"</pre>
+    </div>
+    <div class="note"><b>为什么要 force-stop</b>：目标 Activity 已在前台时，<code>am start</code> 可能只把已有任务带到前台，不会重新走 launch 参数解析；不杀旧任务，<code>--windowingMode 5</code> 有时看不出效果。</div>
+
+    <h3 style="font-size:15px;margin:24px 0 8px">带 <code>-W</code> 和不带，差在哪</h3>
+    <div class="note ok"><b>先说结论</b>：<code>-W</code> <b>不影响 freeform 的任何决策</b>。它只加了一个布尔 <code>mWaitOption</code>（<code>ActivityManagerShellCommand.java:389</code>），改用另一条 Binder 入口，并让 shell 进程等首帧画完才返回。模式、bounds、root task 的代码路径完全一样。</div>
+
+    <div class="panel" style="padding:4px 6px;overflow-x:auto;margin-top:10px">
+      <table class="tbl">
+        <tr><th>维度</th><th>带 <code>-W</code></th><th>不带 <code>-W</code></th></tr>
+        <tr><td>shell 分支</td><td><code>:599 if (mWaitOption)</code> → <code>:600</code></td><td><code>:604 else</code> → <code>:605</code></td></tr>
+        <tr><td>Binder 入口</td><td><code>ATMS.startActivityAndWait:1529</code></td><td><code>ATMS.startActivityAsUser:1238</code></td></tr>
+        <tr><td>返回值</td><td><code>WaitResult</code>（含 Status / LaunchState / TotalTime / WaitTime）</td><td><code>int</code>（START_SUCCESS 等），只用来打错误信息</td></tr>
+        <tr><td>是否阻塞</td><td>阻塞，直到首帧画完或超时</td><td>立即返回，画面还在后面</td></tr>
+        <tr><td>提示信息输出到</td><td><code>pw</code>（stdout）</td><td><code>getErrPrintWriter()</code>（stderr，<code>:610</code>）</td></tr>
+        <tr><td>进程退出码</td><td colspan="2"><b>都是 0</b>（<code>runStartActivity</code> 末尾 <code>:700</code> 恒 <code>return 0</code>，只有参数错误才 <code>return 1</code>）</td></tr>
+      </table>
+    </div>
+
+    <div class="grid two" style="margin-top:14px">
+      <div class="card"><h3><span class="tag">关键</span>-W 等的是「首帧」，不是「代码跑完」</h3><p><code>ActivityStarter:735</code> 把结果塞进 <code>waitResult</code> 后调 <code>waitResultIfNeeded</code>（<code>:825</code>）；真正等的是 <code>ATS.waitActivityVisibleOrLaunched</code> 里的 <code>mGlobalLock.wait()</code> 循环。放行它的有四处：<code>ActivityRecord.onWindowsDrawn</code>（<code>:6682</code>，最常见）、<code>reportFullyDrawnLocked</code>（<code>:6605</code>）、idle 超时（<code>ATS:1361</code>）、记录被回收（<code>cleanupActivity:606</code>）。<br><span class="muted">所以 <code>-W</code> 返回时窗口已经存在、bounds 已经算好——这也是本文脚本都用 <code>-W</code> 的原因。</span></p></div>
+      <div class="card"><h3><span class="tag">代价</span>它会占住一个 system_server 线程</h3><p>等待发生在处理这次 Binder 事务的 system_server 线程上（<code>startActivityAndWait</code> 是同步 AIDL）。上限是 <code>IDLE_TIMEOUT = 10s × ro.hw_timeout_multiplier</code>（<code>ATS:174</code> / <code>:2069</code>），超时会打 <code>Status: timeout</code>。<br><span class="muted">这条 <code>ActivityRecord.java:6605/:6682</code> 与超时上限是纯代码核对，未在设备上构造“永不绘制”的场景验证。</span></p></div>
+    </div>
+
+    <div class="note warn" style="margin-top:12px"><b>两个实践坑</b>：① 不带 <code>-W</code> 时 <code>am start ... | grep</code> 抓不到报错（走 stderr），要 <code>2&gt;&amp;1</code>；② 别用 <code>echo $?</code> 判断启动成功——两种写法都返回 0，判断得看 <code>-W</code> 打出的 <code>Status: ok</code>。</div>
+
+    <div class="term" style="margin-top:12px">
+      <div class="bar"><i></i><i></i><i></i><span class="t">bash · 用 -W 当同步屏障</span><button class="copy" data-copy="#cmd0c">复制</button></div>
+      <pre id="cmd0c"><span class="c"># 有 -W：返回即可 dump，不用 sleep</span>
+adb shell am start -W --windowingMode 5 -n com.android.settings/.Settings | tee /tmp/r.txt
+grep -q "Status: ok" /tmp/r.txt &amp;&amp; adb shell dumpsys activity activities | grep -A1 "mode=freeform"
+
+<span class="c"># 无 -W：要自己等，而且报错在 stderr</span>
+adb shell am start --windowingMode 5 -n com.android.settings/.Settings 2&gt;&amp;1
+sleep 0.5
+adb shell dumpsys activity activities | grep -A1 "mode=freeform"</pre>
+    </div>
+
+    <div class="note" style="margin-top:12px"><b>什么时候该去掉 <code>-W</code></b>：批量连起多个 Activity、或要测「启动后立刻再点一次」的竞态时——<code>-W</code> 会把每次启动串行化成 1 个往返，脚本会慢很多，也测不出并发时序。</div>
+  </section>
+
+  <section id="s1">
+    <h2><span class="num">02</span>骨架（状态线 + 启动线；启动线有三个起点）</h2>
+    <div class="note warn"><b>两个读法要先纠正</b>：① <code>retrieveSettings()</code> 只在开机 <code>systemReady</code> 跑一次，<code>am start</code> 不调用它，只读它算好的 <code>mSupportsFreeformWindowManagement</code>；② 启动线<b>不是一条链</b>：三个起点（am start 带 -W / 不带 -W / 最近任务）分叉，<code>startActivityAsUser</code> 只是其中一条；<code>ActivityStarter.execute()</code> 也收不全（recents 快路径绕开它）。<b>真正三条都过的是 <code>TDA.getOrCreateRootTask</code></b>。</div>
+
+    <h3>A · 开机一次 / 改设置时（状态线 = 第 4 件事的主场）</h3>
+    <div class="qlegend">
+      <span><i style="background:#6b4a8f"></i><b>4</b> 状态（flag 生命周期）— 本段主体</span>
+      <span><i style="background:#35618f"></i><b>3</b> 三权（仅最后两行：默认值策略）</span>
+    </div>
+    <p class="qnote">这段是<b>第 4 件事（状态）的主场</b>：flag 在开机时算一次、改设置时热更新，全程不建 Task、不算 bounds。最后两行（默认 TDA 给不给 freeform）属于<b>第 3 件事的策略层</b>，所以额外标 3。第 1 / 2 / 5 件事在这里不出现——它们要等 <code>am start</code> 才进场。</p>
+<div class="panel flow">
+      <div class="flow-head"><span>方法 / 条件</span><span></span><span>流向或含义</span><span style="text-align:right">锚点</span></div>
+
+      <div class="group-label"><b>开机</b>能力 flag 只算一次</div>
+      <div class="flow-row r4">
+        <div class="m"><span class="qb qb4">4</span>AMS.systemReady()</div><div><span class="arw r">→</span></div>
+        <div class="d">触发一次 retrieveSettings；之后 launch 不再走这里</div>
+        <div class="a">ActivityManagerService.java:8161</div>
+      </div>
+      <div class="flow-row lvl1 r4">
+        <div class="m"><span class="qb qb4">4</span>AMS.retrieveSettings()</div><div><span class="arw r">→</span></div>
+        <div class="d">把 ContentResolver 转交给 ATMS</div>
+        <div class="a">ActivityManagerService.java:8043</div>
+      </div>
+      <div class="flow-row lvl2 r4">
+        <div class="m"><span class="qb qb4">4</span>ATMS.retrieveSettings(resolver)</div><div><span class="arw l">←</span></div>
+        <div class="d">读 feature 或 enable_freeform_support，一次算清</div>
+        <div class="a">ActivityTaskManagerService.java:879</div>
+      </div>
+      <div class="flow-row lvl2 r4">
+        <div class="m"><span class="qb qb4">4</span>mSupportsFreeformWindowManagement</div><div><span class="arw r">→</span></div>
+        <div class="d">有则 true（:935），无则 false（:942）</div>
+        <div class="a">ActivityTaskManagerService.java:935</div>
+      </div>
+
+      <div class="group-label"><b>运行时改设置</b>走 WMS 的观察者，不重启</div>
+      <div class="flow-row r4">
+        <div class="m"><span class="qb qb4">4</span>WMS SettingsObserver.onChange()</div><div><span class="arw l">←</span></div>
+        <div class="d">freeform URI 变了才进来</div>
+        <div class="a">WindowManagerService.java:864</div>
+      </div>
+      <div class="flow-row lvl1 r4">
+        <div class="m"><span class="qb qb4">4</span>updateFreeformWindowManagement()</div><div><span class="arw r">→</span></div>
+        <div class="d">重算并写回 ATMS 的 flag</div>
+        <div class="a">WindowManagerService.java:966</div>
+      </div>
+      <div class="flow-row lvl2 r4">
+        <div class="m"><span class="qb qb4">4</span>RootWindowContainer.onSettingsRetrieved()</div><div><span class="arw r">→</span></div>
+        <div class="d">重配显示与默认 TDA</div>
+        <div class="a">RootWindowContainer.java:976</div>
+      </div>
+
+      <div class="group-label"><b>默认 TDA</b>与能力联动</div>
+      <div class="flow-row r4 r3">
+        <div class="m"><span class="qb qb4">4</span><span class="qb qb3">3</span>DisplayWindowSettings.getWindowingModeLocked()</div><div><span class="arw l">←</span></div>
+        <div class="d">能力关掉时 freeform 强退 fullscreen（:128）</div>
+        <div class="a">DisplayWindowSettings.java:124</div>
+      </div>
+      <div class="flow-row lvl1 r4 r3">
+        <div class="m"><span class="qb qb4">4</span><span class="qb qb3">3</span>默认给不给 freeform</div><div><span class="arw r">→</span></div>
+        <div class="d">只有 mIsPc || forceDesktopMode 才给</div>
+        <div class="a">DisplayWindowSettings.java:135</div>
+      </div>
+    </div>
+    <p class="muted" style="font-size:13px">A 段落点：<b>am start 之前，flag 已经在内存里了</b>。开机算一次；之后改设置由 WMS 观察者补写（:973），也不需要重启。<code>adb shell settings put global enable_freeform_support 1</code> 就是触发入口：写 SettingsProvider → 通知该 URI 的观察者 → <code>onChange</code>（:844）→ <code>:864</code>。注意回调是异步投递的，脚本里紧接着 <code>am start</code> 建议留 0.2s。</p>
+
+    <h3>B · 每次启动（三个起点 → 中间汇合 → 真正汇合 → 落地）</h3>
+    <div class="qlegend">
+      <span><i style="background:#2f7f68"></i><b>1</b> 多 Task</span>
+      <span><i style="background:#b4551f"></i><b>2</b> 四个数（bounds）</span>
+      <span><i style="background:#35618f"></i><b>3</b> 三权（策略/校验/执行）</span>
+      <span><i style="background:#a8433c"></i><b>5</b> 失败模式</span>
+      <span style="color:var(--muted)">（4 状态已在 A 段讲完；B 段只在入口读一次）</span>
+    </div>
+    <div class="panel flow">
+      <div class="flow-head"><span>方法 / 条件</span><span></span><span>流向或含义</span><span style="text-align:right">锚点</span></div>
+
+      <div class="group-label"><b>三个起点</b>真正分叉在这，<code>startActivityAsUser</code> 只是其中之一（本组行不标 1–5，入口本身不是那五件事）</div>
+      <div class="flow-row">
+        <div class="m">adb am start <b>带 -W</b></div><div><span class="arw r">→</span></div>
+        <div class="d">shell:600 → ATMS.<b>startActivityAndWait</b>(:1529) → obtainStarter(:1539) → execute(:1552)</div>
+        <div class="a">ActivityManagerShellCommand.java:600</div>
+      </div>
+      <div class="flow-row lvl1">
+        <div class="m">adb am start <b>不带 -W</b></div><div><span class="arw r">→</span></div>
+        <div class="d">shell:605 → ATMS.<b>startActivityAsUser</b>(:1238) → obtainStarter(:1280) → execute(:1292)</div>
+        <div class="a">ActivityManagerShellCommand.java:605</div>
+      </div>
+      <div class="flow-row">
+        <div class="m">最近任务 → 点「自由窗口」</div><div><span class="arw l">←</span></div>
+        <div class="d">TaskShortcutFactory:225 → AMW:250 → ATMS:1786 → ATS.startActivityFromRecents(:2529)</div>
+        <div class="a">TaskShortcutFactory.java:225</div>
+      </div>
+
+      <div class="group-label"><b>中间汇合</b>ActivityStarter.execute(:647) —— 但不是三条都到</div>
+      <div class="flow-row lvl1 r3">
+        <div class="m"><span class="qb qb3">3</span>adb 两条 + recents 慢路径</div><div><span class="arw r">→</span></div>
+        <div class="d">三者都经 obtainStarter(...).execute()，此时 options 里的 5 才有机会被解析</div>
+        <div class="a">ActivityStarter.java:647</div>
+      </div>
+      <div class="flow-row lvl2 r1 r5">
+        <div class="m"><span class="qb qb1">1</span><span class="qb qb5">5</span>recents 快路径<b>绕开</b> execute</div><div><span class="arw l">←</span></div>
+        <div class="d">源码 :2617 自己写着「doesn't go to executeRequest() path」→ 直接 moveTaskToFrontLocked(:2593)</div>
+        <div class="a">ActivityTaskSupervisor.java:2617</div>
+      </div>
+      <div class="flow-row lvl2 r1">
+        <div class="m"><span class="qb qb1">1</span>ATMS.moveTaskToFrontLocked(:2174)</div><div><span class="arw r">→</span></div>
+        <div class="d">转 findTaskToMoveToFront(:1427)</div>
+        <div class="a">ActivityTaskManagerService.java:2217</div>
+      </div>
+      <div class="flow-row lvl2 r2 r3">
+        <div class="m"><span class="qb qb2">2</span><span class="qb qb3">3</span>ATS:1447 isResizeable() &amp;&amp; canUseActivityOptionsLaunchBounds()</div><div><span class="arw r">→</span></div>
+        <div class="d">setBounds(:1449) → getOrCreateRootTask(:1452) → reparent(:1456)</div>
+        <div class="a">ActivityTaskSupervisor.java:1447</div>
+      </div>
+
+      <div class="group-label"><b>真正汇合</b>TDA.getOrCreateRootTask(:942) —— 三条都必须过，mode 来源不同</div>
+      <div class="flow-row r3">
+        <div class="m"><span class="qb qb3">3</span>adb：mode 来自 <b>launchParams</b></div><div><span class="arw r">→</span></div>
+        <div class="d">ActivityStarter:1621 → RWC.getOrCreateRootTask(:2780) → TDA:948 用 launchParams.mWindowingMode</div>
+        <div class="a">TaskDisplayArea.java:946</div>
+      </div>
+      <div class="flow-row lvl1 r1 r2">
+        <div class="m"><span class="qb qb1">1</span><span class="qb qb2">2</span>recents：mode 来自 <b>options</b></div><div><span class="arw r">→</span></div>
+        <div class="d">ATS:1452 → RWC:2780 → TDA:952 用 options.getLaunchWindowingMode()（launchParams 为 null）</div>
+        <div class="a">TaskDisplayArea.java:949</div>
+      </div>
+      <div class="flow-row lvl1">
+        <div class="m">createRootTask(windowingMode=5)</div><div><span class="arw r">→</span></div>
+        <div class="d">新建 freeform root task（:987），task 随后 addChild</div>
+        <div class="a">TaskDisplayArea.java:987</div>
+      </div>
+<div class="group-label"><b>解析</b>ActivityStarter 内部，四跳压成一行（只 adb 线有）</div>
+      <div class="flow-row lvl1 r5">
+        <div class="m"><span class="qb qb5">5</span>execute → executeRequest → startActivityUnchecked → startActivityInner</div><div><span class="arw r">→</span></div>
+        <div class="d">5 在 shell 侧写进 options（:563）；:647 → :703 → :1227 → :1398；checkedOptions :1024，mOptions :2234</div>
+        <div class="a">ActivityStarter.java:647–1543</div>
+      </div>
+      <div class="flow-row lvl2 r3">
+        <div class="m"><span class="qb qb3">3</span>└ computeLaunchParams()</div><div><span class="arw r">→</span></div>
+        <div class="d">调 calculate(PHASE_BOUNDS)（:1582 → :1753）</div>
+        <div class="a">ActivityStarter.java:1751</div>
+      </div>
+      <div class="flow-row lvl2 r3">
+        <div class="m"><span class="qb qb3">3</span>└ LaunchParamsController.calculate()</div><div><span class="arw r">→</span></div>
+        <div class="d">遍历 modifier，调 onCalculate（:100）</div>
+        <div class="a">LaunchParamsController.java:84</div>
+      </div>
+      <div class="flow-row lvl2 r2">
+        <div class="m"><span class="qb qb2">2</span>TaskLaunchParamsModifier :149</div><div><span class="arw l">←</span></div>
+        <div class="d">launchMode = options.getLaunchWindowingMode() → 5</div>
+        <div class="a">TaskLaunchParamsModifier.java:149</div>
+      </div>
+      <div class="flow-row lvl2 r1 r3">
+        <div class="m"><span class="qb qb1">1</span><span class="qb qb3">3</span>canApplyFreeformWindowPolicy()</div><div><span class="arw l">←</span></div>
+        <div class="d">能力 flag（:567）+ 显式 5 → true；不调 retrieveSettings</div>
+        <div class="a">TaskLaunchParamsModifier.java:565</div>
+      </div>
+
+      <div class="group-label"><b>落地</b>root task 建好后，剩下三件</div>
+      <div class="flow-row r2 r3">
+        <div class="m"><span class="qb qb2">2</span><span class="qb qb3">3</span>adb 线：bounds 由 modifier 给初值</div><div><span class="arw r">→</span></div>
+        <div class="d">getTaskBounds()（:728）→ 应用配置时 computeFreeformBounds 钳制（Task:2066/:2128）</div>
+        <div class="a">TaskLaunchParamsModifier.java:728</div>
+      </div>
+      <div class="flow-row r2">
+        <div class="m"><span class="qb qb2">2</span>recents 线：bounds 由 Launcher 客户端给</div><div><span class="arw l">←</span></div>
+        <div class="d">decorW/2 × decorH/2，+50 偏移（:231–234）→ ATS:1449 setBounds 直接采用</div>
+        <div class="a">TaskShortcutFactory.java:231</div>
+      </div>
+      <div class="flow-row r5">
+        <div class="m"><span class="qb qb5">5</span>resize 与 root 不同步时的兜底</div><div><span class="arw r">→</span></div>
+        <div class="d">shouldResizeRootTaskWithLaunchBounds() 否则 task.resize（:1462/:1467）</div>
+        <div class="a">ActivityTaskSupervisor.java:1462</div>
+      </div>
+
+      <div class="group-label"><b>结果</b>异步旁路，不是调用子节点</div>
+      <div class="flow-row r2">
+        <div class="m"><span class="qb qb2">2</span>Task.toString → dumpsys</div><div><span class="arw r">→</span></div>
+        <div class="d">输出 mode=freeform（:3798）</div>
+        <div class="a">Task.java:3798</div>
+      </div>
+      <div class="flow-row r1">
+        <div class="m"><span class="qb qb1">1</span>ShellTaskOrganizer 选 listener</div><div><span class="arw r">→</span></div>
+        <div class="d">mode=5 → taskInfoToTaskListenerType(:801) → FreeformTaskListener 装 caption</div>
+        <div class="a">ShellTaskOrganizer.java:801</div>
+      </div>
+    </div>
+    <p class="muted" style="font-size:13px">基线 AOSP 13（<code>android-13.0.0_r84</code>，<code>/home/book/aosp13</code>）。未核实：PC / desktop 显示模式下的默认 freeform TDA（<code>mIsPc</code> 分支只做了代码核实，未跑设备）。</p>
+  </section>
+
+  <section id="s2">
+    <h2><span class="num">03</span>白话对照：这三个起点在说什么</h2>
+    <div class="note ok"><b>记号</b>：<code>→</code> 这行产出什么、往哪流；<code>←</code> 这行的结果被谁决定；缩进 = 调用/归属层级；<code>├─</code> <code>└─</code> = 同一处的两个分支，不是先后；行号 = 打开文件跳过去的位置，不是时间轴。</div>
+    <ol class="steps">
+      <li>启动有三个起点，先分清你在哪条：① <code>am start ... -W</code>；② <code>am start</code> 不带 <code>-W</code>；③ 最近任务里点「自由窗口」。</li>
+      <li>① 和 ② 都是把 <code>5</code> 塞进 <code>ActivityOptions</code> 走一次全新启动。区别只在 Binder 入口：<code>-W</code> 进 <code>ATMS.startActivityAndWait(:1529)</code>，不带进 <code>ATMS.startActivityAsUser(:1238)</code>；两者都落到 <code>obtainStarter(...).execute()</code>。</li>
+      <li>③ 走的是「把一个已存在的 task 再抬起来」，入口是 <code>ATMS.startActivityFromRecents(:1786)</code>；(Launcher 侧 <code>makeLaunchOptions</code> 顺手给了 mode=5 和一个 <code>decor/2</code> 的矩形)。</li>
+      <li>③ 里 task 还活着时，源码自己写明「不走 executeRequest 路径」(:2617)，直接 <code>moveTaskToFrontLocked</code> → <code>findTaskToMoveToFront</code>。所以 <b><code>computeLaunchParams</code> / <code>TaskLaunchParamsModifier</code> 这条链在 ③ 上根本不执行</b>。</li>
+      <li>三条真正都过的是 <code>TDA.getOrCreateRootTask(:942)</code>，但 mode 来源不同：①② 用 <code>launchParams.mWindowingMode</code>(:948)，③ 用 <code>options.getLaunchWindowingMode()</code>(:952，因为 launchParams 为 null)。</li>
+      <li>开机时 system_server 读一次 feature 和 <code>enable_freeform_support</code>，算出内存 flag；三个起点都不会重跑它，只读它。</li>
+      <li>设置一改，WMS 的 SettingsObserver 重算并写回 ATMS 的 flag，再让 RootWindowContainer 重配显示（不重启）。</li>
+      <li>①② 上「真正放行」发生在 launch 解析：设备有能力 + 这次显式要 freeform，两个都满足才保留 5（<code>canApplyFreeformWindowPolicy:565</code>）。</li>
+      <li>③ 的放行是两个开关：Launcher 侧 <code>supportsFreeformMultiWindow</code> 决定菜单项出不出现；服务端 <code>canUseActivityOptionsLaunchBounds:1517</code> 依赖 <code>mSupportsFreeformWindowManagement</code> 决定 bounds 采不采纳。开关一关，表现是「点了没反应」而不是报错。</li>
+      <li>bounds 的来源也不同：①② 由 modifier 给初值（<code>getTaskBounds:728</code> → 应用配置时 <code>computeFreeformBounds:2128</code> 钳制）；③ 由 Launcher 客户端算好（<code>decorW/2 × decorH/2</code>，+50 偏移，:231–234），服务端 <code>setBounds:1449</code> 直接采用。</li>
+      <li>之后才汇到同一处：新建/复用 freeform root task（<code>createRootTask:987</code>）→ <code>ShellTaskOrganizer.taskInfoToTaskListenerType(:801)</code> 按 mode=5 选 <code>FreeformTaskListener</code> 装 caption。</li>
+    </ol>
+
+    <h3>五个名词</h3>
+    <div class="grid two">
+      <div class="card"><h3><span class="tag">TDA</span>TaskDisplayArea</h3><p>一块显示区，决定“这屏里的任务默认什么窗口模式”。</p></div>
+      <div class="card"><h3><span class="tag">Rect</span>bounds vs frame</h3><p>bounds 是 launch 阶段要求的大小/位置；frame 是 WMS 最终摆出来的，通常相等。</p></div>
+      <div class="card"><h3><span class="tag">稳定区</span>stable 区</h3><p>扣掉状态栏/导航栏后的安全区，<code>computeFreeformBounds</code> 拿它做交集。</p></div>
+      <div class="card"><h3><span class="tag">回调</span>listener</h3><p>WMShell 按窗口模式注册的回调，freeform 的 listener 管标题栏。</p></div>
+      <div class="card"><h3><span class="tag">UI</span>caption / decoration</h3><p>标题栏和边框，不在 app 里画，归 WMShell。</p></div>
+      <div class="card"><h3><span class="tag teal">执行</span>WMS 的角色</h3><p>WMS 只执行 launch 的结果，不改写 freeform 的决策。</p></div>
+    </div>
+
+    <h3>四个最容易误读的点</h3>
+    <div class="note warn"><b>①</b> <code>:565</code> 放行 ≠ 一定能 freeform，<code>:286</code> 还有一次“不可缩放 app”的策略分支。</div>
+    <div class="note warn"><b>②</b> “手机能起自由窗口” ≠ “手机桌面是 freeform”：前者靠显式 5，后者要 <code>mIsPc || forceDesktopMode()</code>。</div>
+    <div class="note warn"><b>③</b> bounds 不是 WMS 布局算的；WMS 只执行，钳制在 <code>Task.java:2128</code>。而且 recents 入口的初始 bounds 是 Launcher 算的，不是系统算的。</div>
+    <div class="note warn"><b>④</b> 最近任务这条，<b>只要 task 还活着</b>就绕过整段 launch 参数解析：别拿 <code>TaskLaunchParamsModifier</code> 去解释「点自由窗口为什么是这个大小/位置」，那里没有它的代码。（task 已被回收 / 需要验凭据时，会退回慢路径重新走 launch 解析。）</div>
+  </section>
+
+  <section id="s4">
+    <h2><span class="num">04</span>决策点（6 条）</h2>
+    <div class="grid">
+      <div class="card" style="border-color:var(--accent)"><h3><span class="tag">先问这个</span>这次从哪个入口进来</h3><p>am start（带/不带 -W）走 launch 解析；最近任务走「抬已存在 task」，<b>task 仍活着时绕过整段 <code>TaskLaunchParamsModifier</code></b>。先定入口，再谈后面几条。<br><span class="muted">ActivityTaskSupervisor.java:2584/:2617 · TaskShortcutFactory.java:225</span></p></div>
+      <div class="card"><h3>设备到底支不支持 freeform</h3><p><code>feature</code> 与开发者开关二选一；开机时 ATMS 算一次，运行时改设置由 WMS 观察者写回 flag。<br><span class="muted">ActivityTaskManagerService.java:935 · WindowManagerService.java:864/:973</span></p></div>
+      <div class="card"><h3>“整个桌面自由窗口”还是“偶尔飘一个窗”</h3><p>默认 TDA 是否 freeform 取决 <code>mIsPc || forceDesktopMode()</code>。<br><span class="muted">DisplayWindowSettings.java:134</span></p></div>
+      <div class="card"><h3>这次启动 freeform 还是被最大化</h3><p><code>canApplyFreeformWindowPolicy()</code> 放行 + unresizable 分支。<br><span class="muted">TaskLaunchParamsModifier.java:565 · :286</span></p></div>
+      <div class="card"><h3>初始 Rect 谁定、拖出屏幕会不会丢</h3><p>adb 线：<code>getTaskBounds()</code> 给初值，<code>computeFreeformBounds()</code> 钳制。recents 线：Launcher 客户端算 <code>decor/2+50</code>，服务端 <code>setBounds</code> 直接采用。<br><span class="muted">TaskLaunchParamsModifier.java:728 · Task.java:2128 · TaskShortcutFactory.java:231</span></p></div>
+      <div class="card"><h3>caption 和 maximize 动画归谁</h3><p>ShellTaskOrganizer 按 mode 分发，三个 Freeform Shell 组件接装饰与转场。<br><span class="muted">ShellTaskOrganizer.java:801</span></p></div>
+    </div>
+  </section>
+
+  <section id="s5">
+    <h2><span class="num">05</span>4 个诊断题（现象 → 定位）</h2>
+    <div class="grid">
+      <div class="card"><h3><span class="tag">Q1</span>启动没生效，断在哪</h3><p><code>am start --windowingMode 5</code> 后 <code>dumpsys</code> 仍是 <code>mode=fullscreen</code>，logcat 无异常。列出 3 个可能断点（能力 flag / 任务复用 / 应用时校验），每个给一条区分命令或字段。</p></div>
+      <div class="card"><h3><span class="tag">Q2</span>改完设置为什么没生效</h3><p><code>settings put global enable_freeform_support 1</code> 后立刻 <code>am start</code> 仍落回全屏，隔 0.3s 再试成功。指出哪一步是异步的，并设计一个不改代码的验证。</p></div>
+      <div class="card"><h3><span class="tag">Q3</span>bounds 回弹是谁干的</h3><p><code>am task resize</code> 把 freeform 推到屏幕外，bounds 被改回来。判断是 <code>getTaskBounds</code> 还是 <code>computeFreeformBounds</code>，给出改前 / 改后 <code>bounds</code> 与依据行。</p></div>
+      <div class="card"><h3><span class="tag">Q4</span>点「自由窗口」没反应</h3><p>最近任务里长按/点击自由窗口，画面不动、也没报错。先分清是<b>菜单项不存在</b>（<code>supportsFreeformMultiWindow</code> 为 false）还是<b>点了但 bounds 没被采纳</b>（<code>canUseActivityOptionsLaunchBounds</code> 为 false）。给两条区分命令，并说明为什么这条链里 <code>TaskLaunchParamsModifier</code> 完全不该被怀疑。</p></div>
+    </div>
+  </section>
+
+  <section id="s6">
+    <h2><span class="num">06</span>骨架阅读法</h2>
+    <div class="panel" style="display:grid;grid-template-columns:118px 1fr">
+      <div style="padding:12px 15px;color:var(--muted);font-size:12.5px;border-bottom:1px solid var(--line)">一句话定位</div>
+      <div style="padding:12px 15px;font-size:14.2px;border-bottom:1px solid var(--line)">自由窗口不是 WMS 布局特性，而是 launch 阶段定 <code>windowingMode</code> + 初始 bounds，Shell 再加 caption 和转场。注意“launch 阶段”对最近任务入口不适用——那条只做 reparent + setBounds。</div>
+      <div style="padding:12px 15px;color:var(--muted);font-size:12.5px;border-bottom:1px solid var(--line)">三个接力边界</div>
+      <div style="padding:12px 15px;font-size:14.2px;border-bottom:1px solid var(--line)">① ATMS → <code>TaskLaunchParamsModifier</code>（仅 adb 线，:109）；② recents 线走 <code>ActivityTaskSupervisor.findTaskToMoveToFront</code>（:1427），不经 modifier；③ 跨进程 WMShell 走 TaskOrganizer（<code>ShellTaskOrganizer.java:801</code>）装 caption。三条都在 <code>mGlobalLock</code> 内完成。</div>
+      <div style="padding:12px 15px;color:var(--muted);font-size:12.5px;border-bottom:1px solid var(--line)">最小验证</div>
+      <div style="padding:12px 15px;font-size:14.2px;border-bottom:1px solid var(--line)"><code>adb shell dumpsys activity activities | grep -A1 "mode=freeform"</code><br><span class="muted">recents 线额外看一眼：<code>dumpsys activity recents | grep -i freeform</code>（taskId 不变、windowingMode 变 5 才算走通）</span></div>
+      <div style="padding:12px 15px;color:var(--muted);font-size:12.5px;border-bottom:1px solid var(--line)">最贵的一行</div>
+      <div style="padding:12px 15px;font-size:14.2px;border-bottom:1px solid var(--line)"><span style="color:var(--accent);font-weight:600">TaskLaunchParamsModifier.java:565</span> —— “为什么没进 freeform / 为什么被最大化”九成落这里。<b>但只对 am start 入口成立</b>；recents 入口根本没有这行代码。</div>
+      <div style="padding:12px 15px;color:var(--muted);font-size:12.5px">可追问的名字</div>
+      <div style="padding:12px 15px;font-size:14.2px"><code>getTaskBounds</code>、<code>computeFreeformBounds</code>、<code>FreeformTaskListener</code>。</div>
+    </div>
+  </section>
+
+  <section id="s7">
+    <h2><span class="num">07</span>L0 判据题 <span class="star">✦ ✦ ✦</span></h2>
+    <p class="muted" style="font-size:13.5px">零编译，≤25 min。前置：开关打开；<code>--windowingMode</code> 收整数，freeform = 5。</p>
+    <div class="term">
+      <div class="bar"><i></i><i></i><i></i><span class="t">bash · emulator-5554</span><button class="copy" data-copy="#cmd1">复制</button></div>
+      <pre id="cmd1"><span class="c"># 前置：打开 freeform 能力</span>
+adb shell settings put global enable_freeform_support 1
+
+<span class="c"># 1) 普通启动</span>
+adb shell am force-stop com.android.settings
+adb shell am start -n com.android.settings/.Settings
+adb shell dumpsys activity activities | grep -m1 "A=1000:com.android.settings"
+
+<span class="c"># 2) 自由窗口启动</span>
+adb shell am force-stop com.android.settings
+adb shell am start --windowingMode 5 -n com.android.settings/.Settings
+adb shell dumpsys activity activities | grep -m1 "mode=freeform"</pre>
+    </div>
+    <div class="grid two">
+      <div class="card"><h3>判据</h3><p>第一次 dump 行含 <code>mode=fullscreen</code>，第二次含 <code>mode=freeform</code>；紧跟一行 <code>mBounds=Rect(...)</code>，不能是全屏。</p></div>
+      <div class="card"><h3>锚点 → 产出</h3><p><code>TaskLaunchParamsModifier.java:565</code> → <code>:728</code>。模式由启动参数 + 设备能力在 launch 阶段决定，bounds 由 <code>getTaskBounds</code> 给初值。</p></div>
+    </div>
+
+    <h3>实测证据 <span class="chip ok">API 33</span></h3>
+    <div class="compare">
+      <div class="c"><div class="h">普通启动 · fullscreen</div><code>* Task{54979ad #69 ... mode=fullscreen ...}</code></div>
+      <div class="c ff"><div class="h">freeform · windowingMode 5</div><code>* Task{11929c7 #70 ... mode=freeform ...}<br>mBounds=Rect(338, 718 - 1103, 2158)</code></div>
+    </div>
+    <div class="panel" style="padding:4px 6px;overflow-x:auto">
+      <table class="tbl">
+        <tr><th>步骤</th><th>命令</th><th>实测输出</th></tr>
+        <tr><td>能力来源</td><td><code>pm list features | grep -i freeform</code><br><code>settings get global enable_freeform_support</code></td><td>无 feature；原值 <code>null</code>，置 1 后生效</td></tr>
+        <tr><td>显示尺寸</td><td><code>dumpsys window displays | grep init=</code></td><td><code>init=1440x2960 560dpi</code></td></tr>
+        <tr><td>任务行</td><td><code>dumpsys activity activities | grep "A=1000:com.android.settings"</code></td><td><code>mode=fullscreen</code> → <code>mode=freeform</code></td></tr>
+        <tr><td>窗口矩形</td><td><code>dumpsys activity activities | grep -A1 "mode=freeform"</code></td><td><code>mBounds=Rect(338, 718 - 1103, 2158)</code></td></tr>
+      </table>
+    </div>
+    <div class="note warn" style="margin-top:14px"><b>设备状态</b>：<code>enable_freeform_support</code> 仍为 1（原 <code>null</code>）。还原：<code>adb shell settings delete global enable_freeform_support</code>。</div>
+  </section>
+
+  <section id="s8">
+    <h2><span class="num">08</span>类总览 &amp; WSL 速查</h2>
+    <div class="panel" style="padding:4px 6px;overflow-x:auto">
+      <table class="tbl">
+        <tr><th>文件</th><th>行数</th><th>作用</th><th>关键锚点</th></tr>
+        <tr><td>TaskLaunchParamsModifier.java</td><td>1030</td><td>launch 参数解析：定 windowingMode 与初始 bounds</td><td>:565 / :728</td></tr>
+        <tr><td>Task.java</td><td>6704</td><td>任务状态、bounds 持久化与钳制</td><td>:2128 / :1906</td></tr>
+        <tr><td>ShellTaskOrganizer.java</td><td>877</td><td>WMShell 侧按窗口模式分发 task</td><td>:465 / :801</td></tr>
+        <tr><td>FreeformTaskListener.java</td><td>191</td><td>freeform 任务出现/变化时装装饰</td><td>:77</td></tr>
+        <tr><td>FreeformTaskTransitionObserver.java</td><td>182</td><td>让装饰跟随转场</td><td>:70</td></tr>
+      </table>
+    </div>
+
+    <div class="term">
+      <div class="bar"><i></i><i></i><i></i><span class="t">wsl · /home/book/aosp13</span><button class="copy" data-copy="#cmd2">复制</button></div>
+      <pre id="cmd2"><span class="c"># 放行条件</span>
+grep -n "canApplyFreeformWindowPolicy" frameworks/base/services/core/java/com/android/server/wm/TaskLaunchParamsModifier.java
+
+<span class="c"># 初始 bounds 与钳制</span>
+grep -n "private void getTaskBounds" frameworks/base/services/core/java/com/android/server/wm/TaskLaunchParamsModifier.java
+grep -n "private void computeFreeformBounds" frameworks/base/services/core/java/com/android/server/wm/Task.java
+
+<span class="c"># 能力开关</span>
+grep -n "updateFreeformWindowManagement" frameworks/base/services/core/java/com/android/server/wm/WindowManagerService.java</pre>
+    </div>
+  </section>
+
+  <footer>
+    <p>配套材料：<code>学习XXX\自由窗口\</code>（README / round-01 / walkthrough-01 / evidence-01）。学习卡四列在 <code>D:\workspace\FramworkContent\LAB.md</code>「学习卡：自由窗口」。</p>
+    <p>下一轮继续用 framework-learning-round：文章默认落盘到 <code>D:\openclaw\Android framework\学习XXX\</code>。</p>
+  </footer>
+</main>
+
+<aside class="toc" aria-label="目录">
+  <p class="toc-title">On this page</p>
+  <a href="#s4b">00 · 五件事</a><a href="#s0">01 · 完整命令</a><a href="#s1">02 · 骨架</a>
+  <a href="#s2">03 · 白话对照</a><a href="#s4">04 · 决策点</a><a href="#s5">05 · 三个问题</a><a href="#s6">06 · 阅读法</a>
+  <a href="#s7">07 · 判据题</a><a href="#s8">08 · 速查</a>
+</aside>
+</div>
+
+<button id="themeFab" title="点击切换：自动 → 浅色 → 深色">🌓 自动</button>
+
+<script>
+(function(){
+  var root=document.documentElement, fab=document.getElementById('themeFab');
+  var MODES=['auto','light','dark'], ICON={auto:'🌓',light:'☀️',dark:'🌙'}, NAME={auto:'自动',light:'浅色',dark:'深色'};
+  var mode='auto';
+  try{ var s=localStorage.getItem('fw-theme-mode'); if(MODES.indexOf(s)>=0) mode=s; }catch(e){}
+  var q=new URLSearchParams(location.search).get('theme'); if(MODES.indexOf(q)>=0) mode=q;
+
+  function resolved(m){
+    if(m!=='auto') return m;
+    var h=new Date().getHours();
+    return (h>=7 && h<22) ? 'light' : 'dark';   // 07:00–22:00 浅色
+  }
+  function paint(){
+    var t=resolved(mode);
+    root.dataset.theme=t;
+    fab.textContent=ICON[mode]+' '+NAME[mode];
+    fab.title='当前展示：'+(t==='light'?'浅色':'深色')+' · 点击切换：自动 → 浅色 → 深色';
+    try{ localStorage.setItem('fw-theme-mode', mode); }catch(e){}
+  }
+  paint();
+  fab.addEventListener('click', function(){ mode=MODES[(MODES.indexOf(mode)+1)%3]; paint(); });
+  setInterval(function(){ if(mode==='auto') paint(); }, 60000);   // 每分钟复查时段
+
+  document.querySelectorAll('.copy').forEach(function(b){
+    b.addEventListener('click', function(){
+      var el=document.querySelector(b.dataset.copy); if(!el) return;
+      var txt=el.innerText, done=function(){ b.textContent='已复制'; setTimeout(function(){b.textContent='复制';},1200); };
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done,done); }
+      else { var ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select();
+        try{document.execCommand('copy');}catch(e){} ta.remove(); done(); }
+    });
+  });
+
+  // 长类名在点号处换行；锚点拆成“文件名 + 行号”两行
+  document.querySelectorAll('.flow-row .m').forEach(function(el){
+    // 只处理纯文本节点，保留行首的色标 span
+    [].slice.call(el.childNodes).forEach(function(n){
+      if(n.nodeType!==3) return;
+      var t=n.textContent.replace(/\./g, '.<wbr>').replace(/\//g, '/<wbr>');
+      var sp=document.createElement('span');
+      sp.innerHTML=t;
+      n.parentNode.replaceChild(sp, n);
+    });
+  });
+  document.querySelectorAll('.flow-row .a').forEach(function(el){
+    var t=el.textContent.trim(), i=t.lastIndexOf(':');
+    if(i>0) el.innerHTML='<span class="f">'+t.slice(0,i)+'</span><span class="ln">'+t.slice(i)+'</span>';
+  });
+
+  var links=[].slice.call(document.querySelectorAll('.toc a, .topnav a'));
+  var map={}; links.forEach(function(a){ var id=a.getAttribute('href').slice(1); (map[id]=map[id]||[]).push(a); });
+  if('IntersectionObserver' in window){
+    var obs=new IntersectionObserver(function(es){
+      es.forEach(function(e){ if(!e.isIntersecting) return;
+        links.forEach(function(a){a.classList.remove('active');});
+        (map[e.target.id]||[]).forEach(function(a){a.classList.add('active');});
+      });
+    },{rootMargin:'-22% 0px -68% 0px',threshold:0});
+    Object.keys(map).forEach(function(id){ var s=document.getElementById(id); if(s) obs.observe(s); });
+  }
+
+  var bar=document.getElementById('progress');
+  function onScroll(){
+    var h=document.documentElement, max=h.scrollHeight-h.clientHeight;
+    bar.style.width=(max>0?(h.scrollTop/max)*100:0)+'%';
+  }
+  document.addEventListener('scroll', onScroll, {passive:true}); onScroll();
+  root.setAttribute('data-ready','1');
+})();
+
+</script>
+</body>
+</html>

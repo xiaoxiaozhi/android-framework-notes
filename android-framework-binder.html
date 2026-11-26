@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Binder 全链路：一次跨进程调用到底做了什么 — AOSP 12 源码深度分析</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol","Apple Symbols",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .think .qtag { color:var(--accent3); font-weight:bold; }
+    .analogy { border-left:4px solid var(--accent2); background:var(--bg-card); border:1px solid var(--border); border-left-width:4px; padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .analogy .tag { color:var(--accent2); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:10px 16px; margin:14px 0; font-size:.9rem; color:var(--text2); }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:14px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-size:.82rem; font-weight:bold; margin-right:8px; }
+    .why { color:var(--accent2); font-weight:bold; }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🔗 Binder 全链路：一次跨进程调用到底做了什么</h1>
+<p class="subtitle">Java → JNI → Native → 驱动 → 对端，逐层拆开；一次拷贝、线程池、oneway、死亡通知 · AOSP 12 源码逐行核实</p>
+<p class="series">📚 Android Framework 专题 · Binder 篇 ｜ 基于 <code>android-12.0.0_r32</code> ｜ 服务于 AMS / WMS / PMS 全链路 ｜ <a href="Android窗口层级/index.html">🌳 窗口层级系列</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p1">一、全景：为什么需要 Binder，一次调用穿过哪几层</a>
+  <a href="#p2">二、客户端路径：BinderProxy 与 Java 侧代理</a>
+  <a href="#p3">三、服务端路径：Binder.execTransact 与 onTransact</a>
+  <a href="#p4">四、JNI 层：JavaBBinder 打通两个世界</a>
+  <a href="#p5">五、Native 层：IPCThreadState 与驱动的对话</a>
+  <a href="#p6">六、Binder 线程池与 oneway</a>
+  <a href="#p7">七、ServiceManager 与死亡通知</a>
+  <a href="#p8">八、Binder 交互的几种形式（你项目用的只是其中一种）</a>
+  <a href="#p9">九、AIDL 生成物 + 源码速查与自测</a>
+  <a href="#p10">十、实践题（动手做）</a>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p1">一、全景：为什么需要 Binder，一次调用穿过哪几层</h2>
+
+<div class="card">
+  <p>前面十篇（窗口层级 00–09）里，你反复遇到这样一行：</p>
+  <div class="code-block">
+    <div class="filename">例子：06 篇里的一次跨进程</div>
+    <pre>res = mWindowSession.<span class="fn">addToDisplayAsUser</span>(mWindow, mWindowAttributes, ...);
+<span class="cm">// ↑ 这行看起来像普通 Java 方法调用，实际上：</span>
+<span class="cm">//   它把参数序列化 → 交给内核 → 唤醒 system_server 的一个 Binder 线程 →</span>
+<span class="cm">//   在 WMS 里执行 addWindow → 再把结果序列化回来 → 唤醒当前线程</span></pre>
+  </div>
+  <p>整条链上的每一跳，<strong>都用同一种机制</strong>。这篇就是把那个"看起来像普通方法调用"的黑箱拆开。</p>
+
+  <h3>为什么不直接用 Linux 已有的 IPC？</h3>
+  <table>
+    <tr><th>方案</th><th>问题</th></tr>
+    <tr><td>管道 / FIFO</td><td>单向、无"服务"概念，无法直接调用对方的方法</td></tr>
+    <tr><td>Socket / Unix Socket</td><td><strong>两次拷贝</strong>（用户→内核→用户）；没有身份传递，安全靠自己实现</td></tr>
+    <tr><td>共享内存</td><td>最快，但无同步机制、无"谁在调用"的身份，安全漏洞多</td></tr>
+    <tr><td><strong>Binder</strong></td><td><strong>一次拷贝</strong>（内核做地址映射）+ 内核携带调用者 UID/PID（<strong>不可伪造</strong>）+ 面向对象的"调方法"语义</td></tr>
+  </table>
+
+  <div class="annotation star3"><span class="tag">一句话</span> Binder 的设计目标是三件事同时满足：<strong>快</strong>（一次拷贝）、<strong>安全</strong>（内核带身份）、<strong>好用</strong>（像调本地方法）。这三条决定了它在 Android 里无可替代。</div>
+
+  <h3>一次调用穿过的六层</h3>
+  <div class="tree">【客户端进程】                          【服务端进程】
+1. Java 层
+   BinderProxy.transact()           ┐
+        │                           │  序列化到 Parcel
+        ▼                           │
+2. JNI 层                           │
+   android_os_BinderProxy_transact()│
+        │                           │
+        ▼                           │
+3. Native 层                        │
+   IPCThreadState::transact()       │
+        │                           │
+        ▼                           │
+4. ioctl(BINDER_WRITE_READ)         │
+        │                           │
+════════╪════════ 内核空间 ══════════╪════════
+        ▼                           │
+   binder 驱动                       │
+   · 找到目标进程                    │
+   · 复制数据（一次！）              │
+   · 唤醒目标线程                    │
+        │                           │
+        └───────────────▶ 5. Native 层
+                                IPCThreadState::executeCommand(BR_TRANSACTION)
+                                     │
+                                     ▼
+                          6. JNI 层：JavaBBinder::onTransact
+                                     │
+                                     ▼
+                             Java 层：Binder.execTransact → onTransact
+                                     │
+                                     ▼
+                             ★ 你写的服务实现（AIDL Stub）
+
+（返回路径同理反向走一遍）</div>
+
+  <div class="analogy">
+    <span class="tag">类比</span> 把 Binder 想象成<strong>公司的内部邮件系统</strong>：<br>
+    · 你要给隔壁部门发一份表单 —— <strong>序列化</strong>（把你脑子里的内容写成标准格式）；<br>
+    · 前台（<strong>内核驱动</strong>）负责转交，并且<strong>在信封上盖章写上你的工号</strong>（UID/PID，不可伪造）；<br>
+    · 对方部门有个<strong>专职收件员轮着班收信</strong>（Binder 线程池）；<br>
+    · 收件员把表单还原成对方能看懂的形式，交给<strong>具体经办人</strong>（你的服务实现）。
+  </div>
+
+  <div class="hint">🔗 本篇与窗口层级系列的关系：06 篇的 <code>addToDisplayAsUser</code>、05 篇的 InputChannel 建立、以及所有 <code>dumpsys</code> 底层调用的 <code>服务</code>，走的都是这条链。学完本篇再回看 06 篇，那一行 binder 调用会"变透明"。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p2">二、客户端路径：BinderProxy 与 Java 侧代理</h2>
+
+<div class="card">
+  <p>客户端手里拿到的"服务对象"，实际上是一个<strong>代理</strong>。理解这个代理的身份，是理解 Binder 的第一步。</p>
+
+  <h3>块 A：BinderProxy 是什么（BinderProxy.java:48 / 458）</h3>
+  <div class="code-block">
+    <div class="filename">BinderProxy.java:48、458、516</div>
+    <pre><span class="kw">public final class</span> <span class="fn">BinderProxy</span> <span class="kw">implements</span> IBinder {
+    <span class="cm">// ① 它是"远端服务的本地代言人"：实现了 IBinder 接口，</span>
+    <span class="cm">//    但所有方法最终都转成跨进程调用</span>
+
+    <span class="kw">private</span> <span class="fn">BinderProxy</span>(<span class="kw">long</span> nativeData) {
+        mNativeData = nativeData;
+        <span class="cm">// ② 只持有 native 层的指针（BpBinder）：Java 侧不关心"怎么发"，</span>
+        <span class="cm">//    只负责"发什么"——真正的通信在 native 层</span>
+    }
+
+    <span class="kw">public boolean</span> <span class="fn">transact</span>(<span class="kw">int</span> code, Parcel data, Parcel reply, <span class="kw">int</span> flags)
+            <span class="kw">throws</span> RemoteException {
+        Binder.<span class="fn">checkParcel</span>(<span class="kw">this</span>, code, data, <span class="cm">"Unreasonably large binder buffer"</span>);
+        <span class="cm">// ③ ★ 先查大小：Binder 事务有硬上限（约 1MB 的缓冲区），</span>
+        <span class="cm">//    超了就在这里抛 TransactionTooLargeException —— </span>
+        <span class="cm">//    这是"传大 Bitmap 崩溃"的源头</span>
+
+        <span class="kw">if</span> (mWarnOnBlocking &amp;&amp; ((flags &amp; FLAG_ONEWAY) == <span class="num">0</span>)
+                &amp;&amp; Binder.sWarnOnBlockingOnCurrentThread.<span class="fn">get</span>()) {
+            <span class="cm">// ④ 提示：从"不该阻塞的进程"发出同步调用时打个警告。</span>
+            <span class="cm">//    典型场景是 system_server 调 App（应一律 oneway，否则 App 卡住会反拖系统）</span>
+            Log.<span class="fn">w</span>(Binder.TAG, <span class="cm">"Outgoing transactions from this process must be FLAG_ONEWAY"</span>);
+        }
+        <span class="cm">// … 省略：tracing 埋点、最终调 transactNative（native 方法）</span>
+    }
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：Java 侧的代理——检查参数大小、给可疑的阻塞调用发警告，然后把活交给 native。</p>
+  <p><strong>设计意图</strong>：<span class="why">Java 层只做"策略"，不做"机制"</span>。大小检查、阻塞警告、tracing 这些是 Java 层能做得更好（能拿到调用栈、能读系统属性）的事；而真正的数据搬运在 native 层（靠近内核、无 GC 干扰）。这是 Android 里很典型的<span class="why">分层原则</span>。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>TransactionTooLargeException</strong>。<strong>因果</strong>：Binder 事务缓冲区约 1MB，且这个额度是<strong>整个进程共享的</strong>（不是每次调用 1MB）——所以并发调用多时更容易超。<strong>怎么查</strong>：崩溃栈里看是不是 <code>Binder.checkParcel</code>；排查传参里有没有大对象（Bitmap 应走 ashmem、文件应传 fd）。证据：<code>Binder.checkParcel</code> 抛错的文案就是 "Unreasonably large binder buffer"。</div>
+
+  <h3>块 B：本地调用不出门（Binder.java:1057）</h3>
+  <div class="code-block">
+    <div class="filename">Binder.java:1057-1068</div>
+    <pre><span class="kw">public final boolean</span> <span class="fn">transact</span>(<span class="kw">int</span> code, @NonNull Parcel data, @Nullable Parcel reply,
+        <span class="kw">int</span> flags) <span class="kw">throws</span> RemoteException {
+    <span class="kw">if</span> (data != <span class="kw">null</span>) {
+        data.<span class="fn">setDataPosition</span>(<span class="num">0</span>);
+        <span class="cm">// ① 读指针归零：调用方可能刚写完数据，位置在末尾</span>
+    }
+    boolean r = <span class="fn">onTransact</span>(code, data, reply, flags);
+    <span class="cm">// ② ★ 注意：这里直接调 onTransact，没有走任何 IPC！</span>
+    <span class="cm">//    因为 Binder（基类）代表"服务端对象本身"——</span>
+    <span class="cm">//    同一个进程内调用自己的服务时，就是一次普通函数调用</span>
+    <span class="cm">//    （"本地调用不出门"：省掉序列化/内核往返）</span>
+    <span class="kw">if</span> (reply != <span class="kw">null</span>) {
+        reply.<span class="fn">setDataPosition</span>(<span class="num">0</span>);
+    }
+    <span class="kw">return</span> r;
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：<code>Binder</code> 基类的 <code>transact</code> 直接调 <code>onTransact</code>——本地直通。</p>
+  <p><strong>设计意图</strong>：<span class="why">统一接口，自动优化</span>。客户端代码永远写 <code>xxx.transact(...)</code> 或 AIDL 生成的代理方法，<strong>不需要知道对面是本地还是远端</strong>。如果是本地对象（<code>Binder</code>），就直通；如果是代理（<code>BinderProxy</code>），就走 IPC。这让"服务在本进程/在别的进程"对调用方透明——这也是为什么有些 Binder 调用在 trace 里看不到跨进程痕迹。</p>
+  <div class="think"><span class="qtag">🧠 思考（单块）</span> 既然 <code>Binder.transact</code> 是直通 <code>onTransact</code>，那么同一个服务对象被 <strong>另一个进程</strong>调用时，走的是哪个 <code>transact</code>？提示：另一个进程手里拿到的是 <code>BinderProxy</code> 还是 <code>Binder</code>？这解释了两个类为什么必须实现同一个 <code>IBinder</code> 接口。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p3">三、服务端路径：Binder.execTransact 与 onTransact</h2>
+
+<div class="card">
+  <p>服务端的入口不在 Java 代码里直接发起——它由 <strong>Binder 线程</strong>从 native 层唤醒，回调进 Java。</p>
+
+  <h3>块 C：execTransact——native 回调进 Java 的落点（Binder.java:1136 / 1149）</h3>
+  <div class="code-block">
+    <div class="filename">Binder.java:1136-1200（裁剪）</div>
+    <pre><span class="kw">private boolean</span> <span class="fn">execTransact</span>(<span class="kw">int</span> code, <span class="kw">long</span> dataObj, <span class="kw">long</span> replyObj, <span class="kw">int</span> flags) {
+    <span class="cm">// ① 这个方法由 JNI 调用（见第四节），参数是 native 传来的"裸指针编码"</span>
+    <span class="kw">final int</span> callingUid = Binder.<span class="fn">getCallingUid</span>();
+    <span class="cm">// ② ★ 调用者身份从哪来？不是参数传的，是从<strong>当前线程的 TLS</strong> 里读的——</span>
+    <span class="cm">//    这个值由 native 层在收到事务时从驱动拿到并写入。</span>
+    <span class="cm">//    ★ 这是 Binder 安全模型的基石：UID 由内核提供，调用方无法伪造</span>
+
+    <span class="kw">final long</span> origWorkSource = ThreadLocalWorkSource.<span class="fn">setUid</span>(callingUid);
+    <span class="kw">try</span> {
+        <span class="kw">return</span> <span class="fn">execTransactInternal</span>(code, dataObj, replyObj, flags, callingUid);
+    } <span class="kw">finally</span> {
+        ThreadLocalWorkSource.<span class="fn">restore</span>(origWorkSource);
+    }
+}
+
+<span class="kw">private boolean</span> <span class="fn">execTransactInternal</span>(<span class="kw">int</span> code, <span class="kw">long</span> dataObj, <span class="kw">long</span> replyObj,
+        <span class="kw">int</span> flags, <span class="kw">int</span> callingUid) {
+    Parcel data = Parcel.<span class="fn">obtain</span>(dataObj);
+    Parcel reply = Parcel.<span class="fn">obtain</span>(replyObj);
+    <span class="cm">// ③ 从 native 指针包装出两个 Parcel：data 是请求，reply 是待写的回复</span>
+    <span class="cm">//    注释里说得很清楚："we just got these from an IPC, so we'll just call it directly"</span>
+    <span class="cm">//    —— 不重新走 transact，因为数据已经是序列化好的</span>
+
+    <span class="kw">boolean</span> res;
+    <span class="kw">final boolean</span> tracingEnabled = Binder.<span class="fn">isTracingEnabled</span>();
+    <span class="kw">try</span> {
+        <span class="cm">// … 省略：HeavyHitterWatcher（高频调用监控）、systrace 埋点</span>
+        res = <span class="fn">onTransact</span>(code, data, reply, flags);
+        <span class="cm">// ④ ★★ 进入你写的（或 AIDL 生成的）服务实现</span>
+        <span class="cm">//    —— 到这里，"跨进程"就彻底隐身了，剩下的全是普通 Java 逻辑</span>
+    } <span class="kw">catch</span> (RemoteException e) {
+        <span class="cm">// … 省略：只是打日志，不向调用方抛（错误通过返回值/异常码传回）</span>
+    } <span class="kw">catch</span> (RuntimeException e) {
+        <span class="cm">// … 省略：本地异常转成异常码写进 reply，由调用方 rethrow</span>
+    } <span class="kw">finally</span> {
+        <span class="cm">// … 省略：Parcel.recycle()、释放 TLS、写回 reply 头部</span>
+    }
+    <span class="kw">return</span> res;
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：从 native 指针包装出 Parcel，读出调用者 UID，然后把控制权交给 <code>onTransact</code>（真正的服务实现）。</p>
+  <p><strong>设计意图</strong>：<span class="why">身份来自 TLS 而非参数</span>。如果 UID 是参数传的，任何进程都能冒充别人调用特权服务。现在 UID 由内核在事务到达时写入线程的 TLS，Java 层只是<strong>读</strong>——这个设计让"权限检查"变得可信（这也是 <code>checkCallingPermission</code> 系列 API 的根基）。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>服务端抛异常，客户端收到奇怪结果</strong>。<strong>因果</strong>：<code>execTransactInternal</code> 的 catch 分支把异常转成"异常码 + 序列化的异常信息"写进 reply；客户端侧读到异常码再重新抛出 Method.Exceptions。<strong>关键差异</strong>：如果是 <strong>oneway</strong>（<code>flags &amp; FLAG_ONEWAY</code>），服务端抛的异常<strong>会静默消失</strong>（注释原文："If the call was FLAG_ONEWAY then these exceptions disappear into the ether"）。<strong>怎么查</strong>：服务端加日志；开 <code>Binder</code> 的 tracing（<code>Binder.isTracingEnabled()</code> 那条路径）。</div>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 B、块 C）</span> 块 B 里本地调用直接 <code>onTransact</code>，块 C 里远端调用也最终落到 <code>onTransact</code>。<strong>两条路都汇聚到同一个方法</strong>——那么服务实现里写的 <code>Binder.getCallingUid()</code>，在本地调用时会返回什么？这解释了一个常见陷阱：为什么有些服务必须检查"是不是本进程调用"。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p4">四、JNI 层：JavaBBinder 打通两个世界</h2>
+
+<div class="card">
+  <p>JNI 这一层的任务是：<strong>让 C++ 的 BBinder 能调用 Java 的方法</strong>，以及反向。所有"魔法"都在这里。</p>
+
+  <h3>块 D：JavaBBinder 是个 C++ 对象，但握着 Java 引用（android_util_Binder.cpp:340）</h3>
+  <div class="code-block">
+    <div class="filename">android_util_Binder.cpp:340-360、377-410（裁剪）</div>
+    <pre><span class="kw">class</span> <span class="fn">JavaBBinder</span> : <span class="kw">public</span> BBinder
+{
+<span class="kw">public</span>:
+    <span class="fn">JavaBBinder</span>(JNIEnv* env, jobject <span class="cm">/* Java Binder */</span> object)
+        : mVM(<span class="fn">jnienv_to_javavm</span>(env)), mObject(env-&gt;<span class="fn">NewGlobalRef</span>(object))
+        <span class="cm">// ① ★ 关键：持有一个 <strong>Java Binder 对象的全局引用</strong>。</span>
+        <span class="cm">//    所以 JavaBBinder 是"Java 服务对象的 C++ 化身"——</span>
+        <span class="cm">//    native 层收到事务后，靠这个引用来回调 Java</span>
+    { }
+
+    <span class="kw">bool</span> <span class="fn">checkSubclass</span>(<span class="kw">const void</span>* subclassID) <span class="kw">const</span>
+    { <span class="kw">return</span> subclassID == &amp;gBinderOffsets; }
+    <span class="cm">// ② 身份校验：确认这个对象确实是从 Java Binder 包装来的</span>
+
+    <span class="kw">virtual status_t</span> <span class="fn">onTransact</span>(uint32_t code, <span class="kw">const</span> Parcel&amp; data, Parcel* reply,
+            uint32_t flags = <span class="num">0</span>) {
+        <span class="cm">// … 省略：descriptor 校验、权限检查（mObject 是 Java 的）</span>
+        jboolean res = env-&gt;<span class="fn">CallBooleanMethod</span>(mObject, gBinderOffsets.mExecTransact,
+        <span class="cm">// ③ ★★ 全世界最关键的一行：从 C++ 调回 Java！</span>
+        <span class="cm">//    调用的是 Java Binder.execTransact（第三节块 C）——</span>
+        <span class="cm">//    跨进程的"最后一跳"就在这里完成</span>
+                (<span class="kw">jint</span>)code, (<span class="kw">jlong</span>)(uintptr_t)&amp;data, (<span class="kw">jlong</span>)(uintptr_t)reply, (<span class="kw">jint</span>)flags);
+        <span class="cm">// ④ 参数传的是 Parcel 的裸指针（编码成 jlong）——</span>
+        <span class="cm">//    Java 侧 Parcel.obtain(dataObj) 再包装回来（块 C 的 ③）</span>
+        <span class="cm">//    ★ 这个指针传递技巧避免了数据再拷贝一次</span>
+        <span class="cm">// … 省略：异常处理、返回值转换</span>
+    }
+};</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：<code>JavaBBinder</code> 是 Java 服务对象在 native 层的"影子"，它收到事务后用 <code>CallBooleanMethod</code> 回调 Java 的 <code>execTransact</code>。</p>
+  <p><strong>设计意图</strong>：<span class="why">为什么要造一个 C++ 影子对象</span>。因为 Binder 的 native 框架（<code>BBinder</code>）是 C++ 的，而服务实现是 Java 的。<code>JavaBBinder</code> 作为<strong>适配器</strong>：对 native 侧它是个正常的 <code>BBinder</code>（能被 <code>IPCThreadState</code> 处理），对 Java 侧它握着 <code>mObject</code> 能回调。没有这一层，Java 服务根本接不到 native 分发过来的事务。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>服务端崩溃栈里出现 native 帧看不懂</strong>。<strong>因果</strong>：Java 服务在 <code>onTransact</code> 里抛异常时，异常要穿过 JNI 边界回到 native，再由 native 写进 reply。中间任何一环出问题（如 JNI 局部引用溢出）都会表现为"莫名其妙的 native crash"。<strong>怎么查</strong>：看 tombstone 里有没有 <code>JavaBBinder::onTransact</code> 帧；<code>gcIfManyNewRefs</code> 相关日志（JNI 引用过多会主动 GC）。</div>
+
+  <h3>块 E：注册绑定（android_util_Binder.cpp:81 / 1094）</h3>
+  <div class="code-block">
+    <div class="filename">android_util_Binder.cpp:81、1094-1110（裁剪）</div>
+    <pre><span class="kw">static struct</span> {
+    jclass clazz;
+    jmethodID mExecTransact;
+    jmethodID mGetInterfaceDescriptor;
+} gBinderOffsets;
+<span class="cm">// ① 这就是 Java↔Native 的"接口表"：缓存了 Java 侧的方法 ID，</span>
+<span class="cm">//    避免每次调用都做 JNI 名字查找（那很慢）</span>
+
+<span class="kw">static int</span> <span class="fn">int_register_android_os_Binder</span>(JNIEnv* env)
+{
+    <span class="cm">// … 省略：找类、找方法、填 gBinderOffsets</span>
+    <span class="cm">// ② 这一步在 JNI_OnLoad 时执行一次，之后所有跨语言调用都直接查表</span>
+    <span class="cm">//    这也是为什么 "execTransact" 这个名字不能随便改——native 侧按名查找</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：启动时把 Java 侧的类与方法 ID 缓存下来，供后续跨语言调用直接使用。</p>
+  <p><strong>设计意图</strong>：<span class="why">缓存是为了性能</span>。JNI 按名字查找方法需要字符串比对，每次调用都做会非常慢。缓存成 <code>jmethodID</code> 后就是一次指针跳转。<strong>副作用</strong>：Java 侧如果混淆了这些方法名（或改了名），native 侧运行时找不到，会直接崩——这就是为什么 <code>Binder.java</code> 里某些方法必须保留名字。</p>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p5">五、Native 层：IPCThreadState 与驱动的对话</h2>
+
+<div class="card">
+  <p>这是"真正的通信"发生的地方。<code>IPCThreadState</code> 是<strong>每个线程一份</strong>的（名字里的 ThreadState 就是这个意思），它负责把命令写给驱动、把结果读回来。</p>
+
+  <h3>块 F：transact——发起一次调用（IPCThreadState.cpp:685）</h3>
+  <div class="code-block">
+    <div class="filename">IPCThreadState.cpp:685-730（裁剪）</div>
+    <pre><span class="kw">status_t</span> <span class="fn">IPCThreadState::transact</span>(int32_t handle,
+                                  uint32_t code, <span class="kw">const</span> Parcel&amp; data,
+                                  Parcel* reply, uint32_t flags)
+{
+    status_t err;
+    flags |= TF_ACCEPT_FDS;
+    <span class="cm">// ① 默认接受文件描述符传递（fd 能跨进程传是 Binder 的重要能力）</span>
+
+    <span class="cm">// … 省略：事务日志（IF_LOG_TRANSACTIONS）</span>
+
+    err = <span class="fn">writeTransactionData</span>(BC_TRANSACTION, flags, handle, code, data, <span class="kw">nullptr</span>);
+    <span class="cm">// ② 把命令写进 mOut 缓冲区（用户态缓冲区，还没到内核）</span>
+    <span class="cm">//    命令码 BC_TRANSACTION = "我要发一个事务"</span>
+
+    <span class="kw">if</span> ((flags &amp; TF_ONE_WAY) == <span class="num">0</span>) {
+        <span class="cm">// ③ ★ oneway 的分水岭：非 oneway 才等回复</span>
+        <span class="kw">if</span> (reply) {
+            err = <span class="fn">waitForResponse</span>(<span class="kw">nullptr</span>, &amp;acquireResult);
+            <span class="cm">// ④ 阻塞等待：talkWithDriver 会把自己挂起，</span>
+            <span class="cm">//    直到驱动唤醒它并送来 BR_REPLY</span>
+        }
+    } <span class="kw">else</span> {
+        <span class="cm">// ⑤ oneway：写完就走，不等回复（异步）</span>
+        err = <span class="fn">waitForResponse</span>(<span class="kw">nullptr</span>, &amp;acquireResult);
+        <span class="cm">//    但注意：仍要等 BR_TRANSACTION_COMPLETE——</span>
+        <span class="cm">//    "驱动已收下"这个回执，否则缓冲区可能被复用覆盖</span>
+    }
+    <span class="kw">return</span> err;
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：把事务命令写入缓冲区，然后根据是否 oneway 决定等不等回复。</p>
+  <p><strong>设计意图</strong>：<span class="why">oneway 也要等"已收下"回执</span>。这是个容易误解的点：oneway 是"不等业务结果"，但必须等驱动确认<strong>数据已被取走</strong>。否则函数返回后调用方复用缓冲区，就会覆盖掉还没送达的数据——数据会被悄悄改坏。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>主线程调 Binder 卡住 → ANR</strong>。<strong>因果</strong>：非 oneway 调用会 <code>waitForResponse</code> 阻塞当前线程。如果对端服务卡住（或它自己又在等第三个服务），当前线程就一直等。<strong>怎么查</strong>：ANR trace 里看主线程栈有没有停在 <code>IPCThreadState::waitForResponse</code> 或 <code>BinderProxy.transact</code>；再用 <code>dumpsys</code> 看对端服务所在进程的状态。</div>
+
+  <h3>块 G：talkWithDriver——与内核的对话（IPCThreadState.cpp:975）</h3>
+  <div class="code-block">
+    <div class="filename">IPCThreadState.cpp:975-1040（裁剪）</div>
+    <pre><span class="kw">status_t</span> <span class="fn">IPCThreadState::talkWithDriver</span>(<span class="kw">bool</span> doReceive)
+{
+    <span class="kw">if</span> (mProcess-&gt;mDriverFD &lt; 0) {
+        <span class="kw">return</span> -EBADF;
+        <span class="cm">// ① 驱动没打开就报错（进程初始化失败/被 seccomp 拦）</span>
+    }
+
+    <span class="kw">binder_write_read</span> bwr;
+    <span class="cm">// ② ★ 这个结构体就是与内核的"信封"：</span>
+    <span class="cm">//    write_buffer 放我要发的命令，read_buffer 收内核给我的命令</span>
+
+    <span class="kw">const bool</span> needRead = mIn.<span class="fn">dataPosition</span>() &gt;= mIn.<span class="fn">dataSize</span>();
+    <span class="cm">// ③ 输入缓冲区读完了吗？决定这次要不要顺便读</span>
+
+    <span class="kw">const size_t</span> outAvail = (!doReceive || needRead) ? mOut.<span class="fn">dataSize</span>() : <span class="num">0</span>;
+    bwr.write_size = outAvail;
+    bwr.write_buffer = (uintptr_t)mOut.<span class="fn">data</span>();
+    <span class="cm">// ④ 填写待写数据（就是我刚放进去的 BC_TRANSACTION）</span>
+
+    <span class="kw">if</span> (doReceive &amp;&amp; needRead) {
+        bwr.read_size = mIn.<span class="fn">dataCapacity</span>();
+        bwr.read_buffer = (uintptr_t)mIn.<span class="fn">data</span>();
+    } <span class="kw">else</span> {
+        bwr.read_size = <span class="num">0</span>;
+        bwr.read_buffer = <span class="num">0</span>;
+    }
+    <span class="cm">// ⑤ 填写待读缓冲区（若这次要收）</span>
+
+    <span class="cm">// … 省略：do { ioctl(mProcess->mDriverFD, BINDER_WRITE_READ, &amp;bwr); } while (err == -EINTR);</span>
+    <span class="cm">// ⑥ ★★ 就是对驱动的一次 ioctl —— 真正的"跨进程"发生在这一行之内：</span>
+    <span class="cm">//    内核里，binder 驱动根据 handle 找到目标进程，</span>
+    <span class="cm">//    把数据复制进目标进程的缓冲区，并唤醒它的一个 Binder 线程</span>
+    <span class="cm">//    （如果 read_size &gt; 0 而目标没有数据可给，这里会阻塞睡眠）</span>
+    <span class="cm">// … 省略：解析 bwr 返回的 consumed 值，更新 mOut/mIn 指针</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：填好"信封"（<code>binder_write_read</code>），调用 <code>ioctl(BINDER_WRITE_READ)</code> 与驱动交互——这一行之内完成了跨进程数据传递。</p>
+  <p><strong>设计意图</strong>：<span class="why">读写合一减少系统调用</span>。如果是"写一次、读一次"两次 ioctl，开销翻倍。<code>binder_write_read</code> 让一次系统调用同时完成"提交我的请求 + 收下给我的命令"，这在同步调用（发完就等回复）场景下正好匹配。</p>
+  <div class="annotation"><span class="tag">一次拷贝的真相</span> 驱动做的是 <code>copy_from_user</code>（把发送方数据拷进内核缓冲区）→ 目标进程读时通过 <code>mmap</code> 的映射<strong>直接访问</strong>内核缓冲区（<code>copy_to_user</code> 被省掉）。对比 Socket 的"用户→内核→用户"两次拷贝，Binder 省掉了一次。<strong>这也是为什么 Binder 事务大小受限</strong>——内核为每个进程预映射了一块固定大小的缓冲区（约 1MB）。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p6">六、Binder 线程池与 oneway</h2>
+
+<div class="card">
+  <p>"服务端谁在执行事务？"——不是主线程，是 <strong>Binder 线程池</strong>里的线程。</p>
+
+  <h3>块 H：线程池的诞生（ProcessState.cpp:139 / 45）</h3>
+  <div class="code-block">
+    <div class="filename">ProcessState.cpp:45、139-150 + IPCThreadState.cpp:617-640</div>
+    <pre><span class="cm">// ① 上限定义：</span>
+<span class="kw">#define</span> DEFAULT_MAX_BINDER_THREADS <span class="num">15</span>
+<span class="cm">// 每个进程最多 15 个 Binder 线程（可用系统属性调整）</span>
+
+<span class="kw">void</span> <span class="fn">ProcessState::startThreadPool</span>()
+{
+    AutoMutex _l(mLock);
+    <span class="kw">if</span> (!mThreadPoolStarted) {
+        mThreadPoolStarted = <span class="kw">true</span>;
+        <span class="fn">spawnPooledThread</span>(<span class="kw">true</span>);
+        <span class="cm">// ② 先起"主" Binder 线程（isMain=true），其余按需增长</span>
+    }
+}
+
+<span class="cm">// ③ 线程循环本体（IPCThreadState.cpp:617）：</span>
+<span class="kw">void</span> <span class="fn">IPCThreadState::joinThreadPool</span>(<span class="kw">bool</span> isMain)
+{
+    mOut.<span class="fn">writeInt32</span>(isMain ? BC_ENTER_LOOPER : BC_REGISTER_LOOPER);
+    <span class="cm">// ④ ★ 告诉驱动："我加入线程池了"</span>
+    <span class="cm">//    BC_ENTER_LOOPER = 主线程（驱动会为它多做准备）</span>
+    <span class="cm">//    BC_REGISTER_LOOPER = 普通池线程</span>
+
+    mIsLooper = <span class="kw">true</span>;
+    <span class="kw">do</span> {
+        <span class="fn">processPendingDerefs</span>();
+        result = <span class="fn">getAndExecuteCommand</span>();
+        <span class="cm">// ⑤ 取一条命令执行（内部就是 talkWithDriver → executeCommand）</span>
+
+        <span class="kw">if</span> (result == TIMED_OUT &amp;&amp; !isMain) {
+            <span class="kw">break</span>;
+            <span class="cm">// ⑥ ★ 池线程超时没活干就退出：线程池会自己收缩</span>
+            <span class="cm">//    主线程不退出（isMain），保证至少有一个人值守</span>
+        }
+    } <span class="kw">while</span> (result != -ECONNREFUSED &amp;&amp; result != -EBADF);
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：进程启动时起一个主 Binder 线程，之后按需增长（最多 15 个），空闲的池线程会自己退出。</p>
+  <p><strong>设计意图</strong>：<span class="why">弹性线程池是为了"够用又不浪费"</span>。Binder 线程会阻塞（同步调用等待时），所以不能只有一条；但每条线程都占内存（栈），所以不能预先开 15 条。做法是：驱动发现"目标进程所有 Binder 线程都忙"时，会要求它再启一条——这个"按需扩容"是内核与用户进程配合完成的。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>Binder 线程池耗尽</strong>（表现为服务"假死"，但对它自己发起的新调用还能响应）。<strong>因果</strong>：15 条线程全在等（典型：A 服务的 Binder 线程同步调用 B 服务，B 的线程又同步调回 A——环路死等）。这是<strong>系统性死锁</strong>模式。<strong>怎么查</strong>：<code>dumpsys</code> 或 <code>/proc/&lt;pid&gt;/task</code> 统计线程名含 <code>Binder:</code> 的数量到没到上限；再抓所有 Binder 线程的栈看是否互相等待。</div>
+
+  <h3>块 I：oneway 的本质</h3>
+  <table>
+    <tr><th></th><th>非 oneway（同步）</th><th>oneway（异步）</th></tr>
+    <tr><td>客户端行为</td><td>阻塞等 <code>BR_REPLY</code></td><td>只等 <code>BR_TRANSACTION_COMPLETE</code></td></tr>
+    <tr><td>能否拿返回值</td><td>能</td><td><strong>不能</strong>（reply 参数被忽略）</td></tr>
+    <tr><td>服务端异常</td><td>序列化回客户端，客户端 rethrow</td><td><strong>静默消失</strong>（代码注释原话："disappear into the ether"）</td></tr>
+    <tr><td>谁会用</td><td>需要结果的查询</td><td>系统 → App 的通知/回调（避免系统被 App 拖住）</td></tr>
+  </table>
+  <div class="annotation"><span class="tag">AIDL 里的 oneway</span> 接口或方法上标 <code>oneway</code>，AIDL 生成的代理就会带 <code>FLAG_ONEWAY</code>。<strong>注意</strong>：oneway 方法<strong>不能有返回值、不能用 out/inout 参数</strong>（编译期就会报错）——因为它根本不等结果。这个限制在写 AIDL 时会直接遇到。</div>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 F、块 I）</span> 系统向 App 发回调（如 <code>IApplicationThread</code> 的很多方法）几乎都是 oneway。为什么？如果改成同步，<strong>服务端会付出什么代价</strong>？想想"App 主线程卡住 5 秒"时，同步回调会让 system_server 的 Binder 线程也卡 5 秒——15 条线程能扛几次这样的卡？</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p7">七、ServiceManager 与死亡通知</h2>
+
+<div class="card">
+  <p>前面讲了"怎么调用"，但没讲<strong>"怎么找到服务"</strong>——这就是 ServiceManager 的职责。</p>
+
+  <h3>块 J：服务注册表（ServiceManager.java:110 / 128 / 165）</h3>
+  <div class="code-block">
+    <div class="filename">ServiceManager.java:110-200（裁剪）</div>
+    <pre><span class="kw">private static</span> IServiceManager <span class="fn">getIServiceManager</span>() {
+    <span class="kw">if</span> (sServiceManager != <span class="kw">null</span>) <span class="kw">return</span> sServiceManager;
+
+    sServiceManager = ServiceManagerNative.<span class="fn">asInterface</span>(
+            Binder.<span class="fn">allowBlocking</span>(BinderInternal.<span class="fn">getContextObject</span>()));
+    <span class="cm">// ① ★ 拿到"服务管理器的代理"：getContextObject() 是特殊调用——</span>
+    <span class="cm">//    它直接返回 handle=0 的 Binder，也就是 ServiceManager 本身，</span>
+    <span class="cm">//    不需要任何"查找"（它是所有查找的起点）</span>
+    <span class="kw">return</span> sServiceManager;
+}
+
+<span class="kw">public static</span> IBinder <span class="fn">getService</span>(String name) {
+    <span class="kw">try</span> {
+        IBinder service = sCache.<span class="fn">get</span>(name);
+        <span class="cm">// ② 本地缓存：查过的服务缓一手，省一次跨进程</span>
+        <span class="kw">if</span> (service != <span class="kw">null</span>) <span class="kw">return</span> service;
+        <span class="kw">return</span> Binder.<span class="fn">allowBlocking</span>(<span class="fn">rawGetService</span>(name));
+        <span class="cm">// ③ rawGetService 才真正跨进程问 ServiceManager</span>
+    } <span class="cm">/* catch ... */</span>
+}
+
+<span class="kw">public static void</span> <span class="fn">addService</span>(String name, IBinder service, <span class="kw">boolean</span> allowIsolated) {
+    <span class="cm">// ④ 注册：把自己这个 Binder 交给 ServiceManager 存起来</span>
+    <span class="cm">//    —— 系统服务在 SystemServer 启动时就是这样"挂牌"的</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：<code>getContextObject()</code> 拿到唯一的起点（handle 0 = ServiceManager），通过它查/注册所有其他服务，本地还带一层缓存。</p>
+  <p><strong>设计意图</strong>：<span class="why">为什么 ServiceManager 必须特殊</span>。这是个"鸡生蛋"问题：想知道服务在哪，得有个目录；但目录本身也是个服务，谁来告诉你目录在哪？Binder 的解法是<strong>在内核里预留一个特殊 handle（0）</strong>，任何进程都能直接拿到它，不需要查找。ServiceManager 进程启动时通过 <code>BECOME_CONTEXT_MANAGER</code> 声明自己占据这个位置（<code>ProcessState::becomeContextManager()</code>，<code>ProcessState.cpp:149</code>）。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>服务查不到（<code>getService</code> 返回 null / 抛 ServiceNotFound）</strong>。<strong>因果</strong>：可能是服务还没注册（时序问题——启动早期查一个稍后才创建的服务）、名字写错、或服务进程崩了。<strong>怎么查</strong>：<code>adb shell service list</code> 看注册表里有没有它；<code>dumpsys</code> 看目标进程是否活着；注意<b>系统服务通常在 SystemServer 不同阶段注册</b>（<code>startBootstrapServices</code>/<code>startCoreServices</code>/<code>startOtherServices</code>），过早查询会拿不到。</div>
+
+  <h3>块 K：死亡通知（Binder.java:1074 / IBinder.java:307）</h3>
+  <div class="code-block">
+    <div class="filename">IBinder.java:307 + Binder.java:1074 + 呼应 06 篇</div>
+    <pre><span class="cm">// 【接口定义】</span>
+<span class="kw">public interface</span> <span class="fn">DeathRecipient</span> {
+    <span class="kw">public void</span> <span class="fn">binderDied</span>();
+    <span class="cm">// ① 对端进程死了，回调这里</span>
+}
+
+<span class="cm">// 【本地对象：空实现】Binder.java:1074</span>
+<span class="kw">public void</span> <span class="fn">linkToDeath</span>(@NonNull DeathRecipient recipient, <span class="kw">int</span> flags) {
+}
+<span class="cm">// ② ★ 注意：Binder（本地实现）的 linkToDeath 是<b>空方法</b>！</span>
+<span class="cm">//    注释写着 "Local implementation is a no-op." ——</span>
+<span class="cm">//    本地对象不会"死"（就在本进程），自然不需要通知</span>
+
+<span class="cm">// 【代理对象：真实现】BinderProxy 里才会真正向驱动登记</span>
+<span class="cm">//    ⇒ 所以「linkToDeath 是否有效」取决于你拿到的是 Binder 还是 BinderProxy</span>
+
+<span class="cm">// 【与 06 篇的呼应】WMS 里那句：</span>
+<span class="cm">//    c.asBinder().linkToDeath(deathRecipient, 0);   (WindowState 构造函数)</span>
+<span class="cm">//    就是在这里登记的：App 进程一死，WMS 立刻收到 binderDied 回调，</span>
+<span class="cm">//    于是清理该窗口 —— 这解释了 07 篇"后台 kill 时 WindowState 消失"的机制</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：<code>linkToDeath</code> 让你在对端进程死亡时收到回调；但本地对象的实现是空方法。</p>
+  <p><strong>设计意图</strong>：<span class="why">这是 06 篇那个 <code>mDeathRecipient == null</code> 判断的底层</span>。回顾 06 篇：<code>WindowState</code> 构造函数里 <code>linkToDeath</code> 失败（抛 <code>RemoteException</code>）就说明客户端已经死了，于是构造出一个"半成品"返回。现在你知道为什么那次调用会失败了——<strong>因为 linkToDeath 内部要向驱动登记，对端 binder 已经断了。</strong></p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>内存泄漏：忘记 unlinkToDeath</strong>。Binder 驱动会持有你的 <code>DeathRecipient</code> 引用（防止被 GC）。如果不 <code>unlinkToDeath</code>，对象生命周期会被意外延长。<strong>怎么查</strong>：LeakCanary 报 <code>BinderProxy</code> / <code>DeathRecipient</code> 相关引用链；代码审查时搜 <code>linkToDeath</code> 看有没有配对的 <code>unlinkToDeath</code>。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p8">八、Binder 交互的几种形式（你项目用的只是其中一种）</h2>
+
+<div class="card">
+  <p><strong>先立结论</strong>：Binder 只是「跨进程调方法」的底层机制，而在它之上，Android 长出了<strong>至少 8 种</strong>不同形态的用法。你项目里那种（<code>bindService</code> + AIDL）是最标准的一种，但远不是全部 —— 而且它还有个容易踩的坑（见下）。</p>
+
+  <h3>全景对照表</h3>
+  <table>
+    <tr><th>#</th><th>形式</th><th>典型入口</th><th>特点 / 适用</th><th>底层</th></tr>
+    <tr><td>1</td><td><strong>AIDL + bindService</strong>（你项目用的）</td><td><code>bindService</code> + <code>IXxx.Stub</code></td><td>标准远程调用；能同步能异步、能双向回调</td><td>AIDL 生成 Stub/Proxy</td></tr>
+    <tr><td>2</td><td><strong>Messenger</strong></td><td><code>new Messenger(handler)</code> / <code>Handler.getIMessenger()</code></td><td><strong>消息式、天然 oneway</strong>；不用自己写 AIDL，但只能传 Message</td><td><code>IMessenger</code>（oneway AIDL）</td></tr>
+    <tr><td>3</td><td><strong>系统服务调用</strong></td><td><code>ServiceManager.getService(...)</code></td><td>App 调 system_server 的日常方式（AMS/WMS/PMS 全靠它）</td><td>拿到 <code>BpBinder</code> 代理</td></tr>
+    <tr><td>4</td><td><strong>ContentProvider</strong></td><td><code>getContentResolver().query(...)</code></td><td>跨进程<strong>数据</strong>访问（不是方法调用语义）</td><td><code>ContentProviderNative extends Binder</code></td></tr>
+    <tr><td>5</td><td><strong>BroadcastReceiver</strong></td><td><code>sendBroadcast</code> / <code>registerReceiver</code></td><td>系统 → App 的<strong>单向通知</strong></td><td><code>IIntentReceiver</code>（oneway）</td></tr>
+    <tr><td>6</td><td><strong>AIDL 回调（反向调用）</strong></td><td><code>Parcel.writeStrongBinder</code> 把回调传过去</td><td>服务端主动回调客户端（<code>onServiceConnected</code> 的 <code>IBinder</code> 只是入口）</td><td>同一个 Binder，方向相反</td></tr>
+    <tr><td>7</td><td><strong>native 层 Binder</strong></td><td><code>BnInterface</code> / <code>BpInterface</code></td><td>C++ 直接用（系统服务、HAL）</td><td><code>BBinder</code> / <code>BpBinder</code></td></tr>
+    <tr><td>8</td><td><strong>共享内存辅助</strong></td><td><code>ashmem</code> / <code>MemoryDealer</code> / <code>ParcelFileDescriptor</code></td><td>大数据（图片/视频帧）的<strong>正确传法</strong>——Binder 只传句柄</td><td>Binder 传 fd，数据走 mmap</td></tr>
+  </table>
+
+  <h3>块 L：形式 1（你项目那种）——AIDL + bindService</h3>
+  <div class="code-block">
+    <div class="filename">你的项目：CalculatorService.kt / MainActivity.kt（同目录 D:\workspace\binder）</div>
+    <pre><span class="cm">// 服务端（CalculatorService.kt）：返回一个 Binder 子类实例</span>
+<span class="kw">private val</span> binder = <span class="kw">object</span> : ICalculatorService.Stub() {
+    <span class="kw">override fun</span> <span class="fn">add</span>(a: Int, b: Int): Int = a + b
+    <span class="cm">// ① Stub 就是 Binder 的子类（第三节块 C 讲的 execTransact → onTransact 落点）</span>
+}
+
+<span class="kw">override fun</span> <span class="fn">onBind</span>(intent: Intent?): IBinder = binder
+<span class="cm">// ② 把 binder 交给系统 → 系统再交给客户端</span>
+
+<span class="cm">// 客户端（MainActivity.kt）：</span>
+<span class="kw">private val</span> connection = <span class="kw">object</span> : ServiceConnection {
+    <span class="kw">override fun</span> <span class="fn">onServiceConnected</span>(name: ComponentName?, service: IBinder?) {
+        calculatorService = ICalculatorService.Stub.<span class="fn">asInterface</span>(service)
+        <span class="cm">// ③ ★★ 关键：asInterface 决定"走不走 IPC"（见块 M）</span>
+    }
+}
+<span class="fn">bindService</span>(intent, connection, Context.BIND_AUTO_CREATE)
+<span class="cm">// ④ bindService 本身也是一次 binder 调用（连 AMS）</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：服务端把 <code>Stub</code> 实例交出去，客户端用 <code>asInterface</code> 把它变成可用接口。</p>
+  <p><strong>设计意图</strong>：<span class="why">这套设计的价值在于"位置透明"</span>——客户端代码写一次，服务在本进程还是别的进程都能跑。<code>asInterface</code> 内部做了判断（块 M），所以业务代码完全不需要关心。</p>
+
+  <h3>块 M：★ 你项目里的一个隐坑（同进程 ≠ 跨进程）</h3>
+  <div class="code-block">
+    <div class="filename">asInterface 的分叉 + 你项目的 Manifest</div>
+    <pre><span class="cm">// AIDL 生成的 asInterface 内部（第八节块 L 有完整版）：</span>
+<span class="kw">public static</span> IMyService <span class="fn">asInterface</span>(android.os.IBinder obj) {
+    IInterface iin = obj.<span class="fn">queryLocalInterface</span>(DESCRIPTOR);
+    <span class="kw">if</span> (iin != <span class="kw">null</span> &amp;&amp; iin <span class="kw">instanceof</span> IMyService) {
+        <span class="kw">return</span> (IMyService) iin;
+        <span class="cm">// ① ★ 本地对象：直接返回，后续调用就是普通 Java 方法调用，<b>不走 IPC</b></span>
+    }
+    <span class="kw">return new</span> <span class="fn">Proxy</span>(obj);
+    <span class="cm">// ② 代理：每次都 transact，真跨进程</span>
+}
+
+<span class="cm">// 而 Binder.queryLocalInterface 的实现（Binder.java:246 起）：</span>
+<span class="cm">//   返回 this 自身（如果 descriptor 匹配）</span>
+<span class="cm">// 而 BinderProxy.queryLocalInterface 的实现（<b>BinderProxy.java:491</b>）：</span>
+<span class="kw">public</span> IInterface <span class="fn">queryLocalInterface</span>(String descriptor) {
+    <span class="kw">return null</span>;
+    <span class="cm">// ③ ★★ 代理永远返回 null —— 这就是"跨进程"的判定开关</span>
+}
+
+<span class="cm">// ——— 回到你的项目 ———</span>
+<span class="cm">// AndroidManifest.xml 里的 service 声明：</span>
+<span class="cm">//   &lt;service android:name=".CalculatorService" android:exported="true"&gt;</span>
+<span class="cm">//   ★ 没有 android:process → 服务与 Activity <b>同进程</b>！</span>
+<span class="cm">//</span>
+<span class="cm">// 所以：你的 add() 调用 <b>根本没走 Binder IPC</b>——</span>
+<span class="cm">//   onBind 返回的是本地 Binder 对象，queryLocalInterface 返回 this，</span>
+<span class="cm">//   asInterface 直接把它当 ICalculatorService 用，后面全是普通方法调用。</span>
+<span class="cm">//   你看到的"跨进程"其实一次都没发生。</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：<code>queryLocalInterface</code> 是"是否走 IPC"的<strong>唯一开关</strong>；而你的项目没声明 <code>android:process</code>，所以一直在走本地直通分支。</p>
+  <p><strong>设计意图</strong>：<span class="why">这个开关是刻意的优化</span>。同一个进程内调用自己的服务时，走一遍序列化 + 内核往返纯属浪费；但写代码的人不应该为此改写代码，所以把这个判断藏在 <code>asInterface</code> 里。</p>
+  <div class="pitfall"><span class="tag">🐛 实战（也是你的练习）</span> <strong>怎么验证"到底走没走 IPC"？</strong><br>
+  ① 在 <code>CalculatorService</code> 每个方法里打印 <code>Binder.getCallingUid()</code> / <code>getCallingPid()</code>：<strong>同进程时会返回自己进程的 uid/pid（甚至是 myPid）</strong>，跨进程时返回对方的。这是最直接的判据。<br>
+  ② 给 manifest 加 <code>android:process=":remote"</code> 让它真跨进程，再对比同一份代码的行为差异（<code>onServiceConnected</code> 的时序、异常、线程都会变）。<br>
+  ③ <code>adb shell dumpsys activity services | grep -A3 CalculatorService</code> 看它挂在哪个进程。</div>
+
+  <h3>块 N：形式 2 —— Messenger（最容易被忽略的一种）</h3>
+  <div class="code-block">
+    <div class="filename">Messenger.java:35/45/68/147 + IMessenger.aidl</div>
+    <pre><span class="kw">public final class</span> <span class="fn">Messenger</span> <span class="kw">implements</span> Parcelable {
+    <span class="kw">private final</span> IMessenger mTarget;
+    <span class="cm">// ① 内部就一个 IMessenger —— AIDL 生成的接口</span>
+
+    <span class="kw">public</span> <span class="fn">Messenger</span>(Handler target) {
+        mTarget = target.<span class="fn">getIMessenger</span>();
+        <span class="cm">// ② ★ 构造：把 Handler 包装成 binder 对象（Handler.java:906）</span>
+        <span class="cm">//    于是"发消息"就变成了"跨进程调用"</span>
+    }
+
+    <span class="kw">public</span> IBinder <span class="fn">getBinder</span>() {
+        <span class="kw">return</span> mTarget.<span class="fn">asBinder</span>();
+        <span class="cm">// ③ 拿到的 IBinder 可以丢给别的进程（例如塞进 Message.obj 或 Service.onBind）</span>
+    }
+
+    <span class="kw">public</span> <span class="fn">Messenger</span>(IBinder target) {
+        mTarget = IMessenger.Stub.<span class="fn">asInterface</span>(target);
+        <span class="cm">// ④ 反向：从 IBinder 还原出 Messenger——和 AIDL 的 asInterface 一模一样</span>
+    }
+}
+
+<span class="cm">// 而 IMessenger.aidl 的全部内容就两行：</span>
+<span class="cm">//   oneway interface IMessenger {</span>
+<span class="cm">//       void send(in Message msg);</span>
+<span class="cm">//   }</span>
+<span class="cm">// ★ 注意 oneway：Messenger 天生异步、不等回复、没有返回值</span>
+<span class="cm">//   这就是为什么它不需要你写 AIDL、也不会 TransactionTooLarge 之外的回执问题</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：Messenger 是 AIDL 的"轻量封装"——把「跨进程调方法」简化成「发消息」。</p>
+  <p><strong>设计意图</strong>：<span class="why">为什么需要它</span>。AIDL 要求两端共享一个 <code>.aidl</code> 文件（编译期耦合），而 Messenger 只需要一个 <code>IBinder</code>（运行期传递即可）。当你要跨进程传"一个回调句柄"而不想引入接口定义时，Messenger 是最省事的选择。<strong>代价</strong>：只能传 Message，不能带返回值。</p>
+
+  <h3>块 O：形式 3 —— 系统服务调用（App 最常接触的一种）</h3>
+  <div class="code-block">
+    <div class="filename">ActivityManager.java:4353 + Parcel.java:898/2534</div>
+    <pre><span class="kw">final</span> IBinder b = ServiceManager.<span class="fn">getService</span>(Context.ACTIVITY_SERVICE);
+<span class="cm">// ① ★ App 调系统服务的第一步：从 ServiceManager 拿到代理（handle）</span>
+<span class="cm">//    07 篇的 ATMS、06 篇的 WMS（addToDisplayAsUser）走的都是这条链</span>
+
+<span class="cm">// ② 拿到 IBinder 之后再 asInterface 成具体接口：</span>
+<span class="cm">//    IActivityManager am = IActivityManager.Stub.asInterface(b);</span>
+<span class="cm">//    至此，App 就能像调本地对象一样调 system_server 了</span>
+
+<span class="cm">// ③ 反向：把 Binder 塞进 Parcel 传给对方（实现回调的关键）</span>
+<span class="kw">public final void</span> <span class="fn">writeStrongBinder</span>(IBinder val)   <span class="cm">// Parcel.java:898</span>
+<span class="kw">public final</span> IBinder <span class="fn">readStrongBinder</span>()           <span class="cm">// Parcel.java:2534</span>
+<span class="cm">// 这两个是 AIDL 生成代码里传 IBinder 参数的底层调用</span>
+<span class="cm">// ★ 它们让"回调"成为可能：客户端把自己的 binder 传过去，服务端就能反向调用</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：App 通过 <code>ServiceManager</code> 拿到系统服务代理；<code>writeStrongBinder</code> 让 Binder 对象能在进程间传递（回调的基础）。</p>
+  <p><strong>设计意图</strong>：<span class="why">"传 Binder"是 Binder 最强大的能力</span>——数据能传（Parcel），"调用能力"也能传（IBinder）。前者是值，后者是引用。回调、监听器、跨进程的 Listener 全建立在这上面。这也直接回答一个常见面试题：<strong>Binder 通信中可以传 Binder 对象吗？可以</strong>（通过 <code>writeStrongBinder</code>）。</p>
+
+  <h3>块 P：形式 4/5 —— ContentProvider 与广播</h3>
+  <div class="code-block">
+    <div class="filename">ContentProviderNative.java:46 / ContentProvider.java:212 / IIntentReceiver.aidl</div>
+    <pre><span class="cm">// 【ContentProvider：跨进程"数据访问"】</span>
+<span class="kw">abstract public class</span> <span class="fn">ContentProviderNative</span> <span class="kw">extends</span> Binder
+        <span class="kw">implements</span> IContentProvider {
+    <span class="cm">// ① ★ 继承 Binder —— 它就是 Binder 子类，只是语义变成了"数据操作"</span>
+    <span class="kw">static public</span> IContentProvider <span class="fn">asInterface</span>(IBinder obj) {
+        <span class="cm">// ② 连方法名都和 AIDL 生成的 asInterface 一样</span>
+    }
+}
+
+<span class="kw">class</span> <span class="fn">Transport</span> <span class="kw">extends</span> ContentProviderNative {
+    <span class="cm">// ③ ContentProvider.java:212 —— 每个 Provider 内部都有个 Transport</span>
+    <span class="cm">//    它把你的 query/insert/update/delete 暴露成 binder 事务</span>
+}
+
+<span class="cm">// 【BroadcastReceiver：系统 → App 的单向通知】</span>
+<span class="cm">// IIntentReceiver.aidl 全文：</span>
+<span class="cm">//   oneway interface IIntentReceiver {</span>
+<span class="cm">//       void performReceive(in Intent intent, int resultCode, String data,</span>
+<span class="cm">//               in Bundle extras, boolean ordered, boolean sticky, int sendingUser);</span>
+<span class="cm">//   }</span>
+<span class="cm">// ④ ★ 又是 oneway —— 系统给 App 发广播时不希望被 App 拖住</span>
+<span class="cm">//    所以注册广播时，App 其实是把一个 IIntentReceiver（自己的 binder）交给了 AMS</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：展示 ContentProvider 与广播在实现上都是 Binder —— 前者是"数据语义的 Binder"，后者是"oneway 通知语义的 Binder"。</p>
+  <p><strong>设计意图</strong>：<span class="why">Binder 是底座，上层语义可以不同</span>。同一个机制，包装成方法调用就是 AIDL，包装成数据访问就是 Provider，包装成单向通知就是 Receiver。<strong>看懂这一点，Android 的很多机制就不再是"记住它是这样"，而是"推导出它必然是这样"。</strong></p>
+
+  <h3>块 Q：形式 7/8 —— native 层与共享内存</h3>
+  <div class="code-block">
+    <div class="filename">native/include/binder/IInterface.h:70/84 + Binder.h:30</div>
+    <pre><span class="cm">// 【native 层：BnXxx / BpXxx 的两半】</span>
+<span class="kw">template</span>&lt;<span class="kw">typename</span> INTERFACE&gt;
+<span class="kw">class</span> <span class="fn">BnInterface</span> : <span class="kw">public</span> INTERFACE, <span class="kw">public</span> BBinder {
+    <span class="cm">// ① Bn = Binder native，服务端：继承 BBinder（相当于 Java 的 Binder）</span>
+    <span class="cm">//    Binder.h:30  class BBinder : public IBinder</span>
+};
+
+<span class="kw">template</span>&lt;<span class="kw">typename</span> INTERFACE&gt;
+<span class="kw">class</span> <span class="fn">BpInterface</span> : <span class="kw">public</span> INTERFACE, <span class="kw">public</span> BpRefBase {
+    <span class="cm">// ② Bp = Binder proxy，客户端：持有 BpBinder（相当于 Java 的 BinderProxy）</span>
+};
+
+<span class="cm">// 【Bp/Bn 是 AIDL 生成物的 C++ 版本 —— 对应关系：】</span>
+<span class="cm">//   Java:    IMyService.Stub  ↔  native: BnMyService   （服务端）</span>
+<span class="cm">//   Java:    IMyService.Proxy ↔  native: BpMyService   （客户端）</span>
+<span class="cm">//   马老师库里那篇《你真的懂 aidl 转换吗（aidl 转 cpp）》讲的就是这个转换</span>
+
+<span class="cm">// 【形式 8：大数据不要塞进 Parcel】</span>
+<span class="cm">//   ❌ 错误：把 Bitmap 直接 writeParcelable → 撞 1MB 上限 → TransactionTooLargeException</span>
+<span class="cm">//   ✅ 正确：走 ashmem / MemoryDealer / ParcelFileDescriptor，Binder 只传<b>句柄</b></span>
+<span class="cm">//   原理：Binder 只能"一次拷贝"小数据；大数据靠内核的 fd 传递 + mmap 共享</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：native 侧的 <code>Bn</code>/<code>Bp</code> 与 Java 的 <code>Stub</code>/<code>Proxy</code> 是一一对应的；大数据要走共享内存而非 Parcel。</p>
+  <p><strong>设计意图</strong>：<span class="why">一切都是同一个 Binder，只是包装层不同</span>。Java 有 JNI 适配（第四节），native 直接用模板。你在框架层看到的 <code>BnXxx</code>/<code>BpXxx</code> 和 App 层看到的 <code>Stub</code>/<code>Proxy</code>，是同一件事的两套语法糖。</p>
+
+  <div class="annotation star3"><span class="tag">把三种"形式"一句话记住</span>
+  <strong>要方法调用 → AIDL</strong>（或 native 的 Bn/Bp）；
+  <strong>要发消息 → Messenger</strong>；
+  <strong>要传数据 → ContentProvider / 共享内存</strong>；
+  <strong>要单向通知 → oneway AIDL / Broadcast 的 IIntentReceiver</strong>。
+  它们<strong>共用同一条 Binder 底座</strong>——你能分清它们的适用场景，比记住任何一个 API 都有用。</div>
+</div>
+
+<h2 id="p9">九、AIDL 生成物 + 源码速查与自测</h2>
+
+<div class="card">
+  <h3>AIDL 到底生成了什么</h3>
+  <p>写了这么多年 AIDL，它生成的四个东西各自是什么角色？</p>
+  <div class="code-block">
+    <div class="filename">AIDL 生成代码的结构（以 IMyService 为例）</div>
+    <pre><span class="cm">// 【1】接口本体：继承 IInterface</span>
+<span class="kw">public interface</span> IMyService <span class="kw">extends</span> android.os.IInterface {
+    <span class="kw">public void</span> <span class="fn">doSomething</span>(<span class="kw">int</span> arg) <span class="kw">throws</span> android.os.RemoteException;
+    <span class="cm">// 业务方法：两端都实现同一份接口</span>
+
+    <span class="cm">// 【2】Stub：服务端基类（你要继承它写实现）</span>
+    <span class="kw">public static abstract class</span> <span class="fn">Stub</span> <span class="kw">extends</span> android.os.Binder
+            <span class="kw">implements</span> IMyService {
+        <span class="cm">// ★ 它就是第三节说的 Binder 子类——本地直通 + 作为服务端身份</span>
+
+        <span class="kw">public boolean</span> <span class="fn">onTransact</span>(<span class="kw">int</span> code, Parcel data, Parcel reply, <span class="kw">int</span> flags) {
+            <span class="kw">switch</span> (code) {
+                <span class="kw">case</span> TRANSACTION_doSomething: {
+                    data.<span class="fn">enforceInterface</span>(DESCRIPTOR);
+                    <span class="cm">// ★ 校验接口标识：防止"传错对象"（类比：确认收件人是自己）</span>
+                    <span class="kw">int</span> arg = data.<span class="fn">readInt</span>();
+                    <span class="cm">// ★ 反序列化参数</span>
+                    <span class="kw">this</span>.<span class="fn">doSomething</span>(arg);
+                    <span class="cm">// ★ 调到你的实现</span>
+                    reply.<span class="fn">writeNoException</span>();
+                    <span class="kw">return true</span>;
+                }
+            }
+            <span class="cm">// … 缺省走 super.onTransact（处理 INTERFACE_TRANSACTION 等）</span>
+        }
+
+        <span class="cm">// 【3】asInterface：把 IBinder 包装成接口引用</span>
+        <span class="kw">public static</span> IMyService <span class="fn">asInterface</span>(android.os.IBinder obj) {
+            <span class="kw">if</span> (obj == <span class="kw">null</span>) <span class="kw">return null</span>;
+            android.os.IInterface iin = obj.<span class="fn">queryLocalInterface</span>(DESCRIPTOR);
+            <span class="kw">if</span> (iin != <span class="kw">null</span> &amp;&amp; iin <span class="kw">instanceof</span> IMyService) {
+                <span class="kw">return</span> (IMyService) iin;
+                <span class="cm">// ★★ 同进程：直接返回本地对象（不走 IPC）——块 B 的延续</span>
+            }
+            <span class="kw">return new</span> <span class="fn">Proxy</span>(obj);
+            <span class="cm">// ★★ 跨进程：包装成 Proxy</span>
+        }
+
+        <span class="cm">// 【4】Proxy：客户端代理（跨进程时用）</span>
+        <span class="kw">private static class</span> <span class="fn">Proxy</span> <span class="kw">implements</span> IMyService {
+            <span class="kw">private</span> android.os.IBinder mRemote;
+
+            <span class="kw">public void</span> <span class="fn">doSomething</span>(<span class="kw">int</span> arg) <span class="kw">throws</span> RemoteException {
+                Parcel data = Parcel.<span class="fn">obtain</span>();
+                Parcel reply = Parcel.<span class="fn">obtain</span>();
+                <span class="kw">try</span> {
+                    data.<span class="fn">writeInterfaceToken</span>(DESCRIPTOR);
+                    data.<span class="fn">writeInt</span>(arg);
+                    <span class="cm">// ★ 序列化参数</span>
+                    mRemote.<span class="fn">transact</span>(TRANSACTION_doSomething, data, reply, <span class="num">0</span>);
+                    <span class="cm">// ★ 发起跨进程（回到本篇第二节）</span>
+                    reply.<span class="fn">readException</span>();
+                    <span class="cm">// ★ 检查服务端是否抛了异常</span>
+                } <span class="kw">finally</span> { data.<span class="fn">recycle</span>(); reply.<span class="fn">recycle</span>(); }
+            }
+        }
+    }
+}</pre>
+  </div>
+  <p><strong>这四个东西的分工</strong>：<code>Stub</code>（服务端：Binder 子类 + 反序列化 + 分发）、<code>Proxy</code>（客户端：序列化 + transact）、<code>asInterface</code>（<strong>决定走不走 IPC</strong>）、接口本体（两端共享的契约）。</p>
+  <div class="annotation star3"><span class="tag">关键洞察</span> <code>asInterface</code> 里那个 <code>queryLocalInterface</code> 判断，就是"本地不出门"的<strong>唯一开关</strong>。它让同一份 AIDL 在"服务在同一进程"和"服务在别的进程"两种情况下都正确工作——<strong>这就是为什么很多系统服务在单进程调试时"看起来没有跨进程开销"</strong>。</div>
+
+  <h3>完整链路（一次同步调用的往返）</h3>
+  <div class="tree">【去程】
+Java:   Proxy.doSomething()
+  └─ BinderProxy.transact()                         :516   查大小、埋点
+       └─ [JNI] android_os_BinderProxy_transact()   :1382  取 native 对象
+            └─ IPCThreadState::transact()           :685   写 mOut
+                 └─ writeTransactionData(BC_TRANSACTION)
+                 └─ waitForResponse()               :875
+                      └─ talkWithDriver()           :975
+                           └─ ioctl(BINDER_WRITE_READ)   ★ 数据进内核
+═══════════════ 内核 binder 驱动 ═══════════════
+  · 按 handle 找到目标进程
+  · copy_from_user（一次拷贝）
+  · 唤醒目标进程的一个 Binder 线程
+
+【服务端】
+Binder 线程: IPCThreadState::getAndExecuteCommand()
+  └─ executeCommand(BR_TRANSACTION)                 :1125
+       └─ [C++] BBinder::onTransact → JavaBBinder::onTransact :340-410
+            └─ [JNI] CallBooleanMethod(mExecTransact)  ★ 跨回 Java
+                 └─ Binder.execTransact()           :1136  ★ 读 TLS 里的 UID
+                      └─ execTransactInternal()     :1149
+                           └─ onTransact() → Stub.onTransact() → 你的实现
+
+【回程】把 reply Parcel 写回，驱动唤醒客户端线程（同理反向）</div>
+
+  <h3>源码速查（WSL AOSP 12，行号均已 grep 核实）</h3>
+  <div class="code-block">
+    <div class="filename">Binder 全链路关键位置</div>
+    <pre><span class="cm"># Java 侧（frameworks/base/core/java/android/os/）</span>
+Binder.java:803            protected boolean onTransact(...)
+Binder.java:1057           transact()          <span class="cm"># 本地直通 onTransact</span>
+Binder.java:1074           linkToDeath()       <span class="cm"># 本地空实现</span>
+Binder.java:1087           checkParcel()       <span class="cm"># 800KB 阈值检查</span>
+Binder.java:1136           execTransact()      <span class="cm"># JNI 回调入口</span>
+Binder.java:1149           execTransactInternal()
+BinderProxy.java:48        class BinderProxy
+BinderProxy.java:458       构造（持有 nativeData）
+BinderProxy.java:516       transact()
+IBinder.java:93            FIRST_CALL_TRANSACTION
+IBinder.java:102/107/119   PING / DUMP / INTERFACE_TRANSACTION
+IBinder.java:307           interface DeathRecipient
+ServiceManager.java:110    getIServiceManager()   <span class="cm"># handle 0 起点</span>
+ServiceManager.java:128    getService()
+ServiceManager.java:165    addService()
+
+<span class="cm"># JNI（frameworks/base/core/jni/android_util_Binder.cpp）</span>
+:81                        gBinderOffsets（方法 ID 缓存）
+:340                       class JavaBBinder : public BBinder
+:407                       CallBooleanMethod(mExecTransact)  <span class="cm"># ★ 调回 Java</span>
+:1094                      int_register_android_os_Binder()
+:1382                      android_os_BinderProxy_transact()
+
+<span class="cm"># Native（frameworks/native/libs/binder/）</span>
+ProcessState.cpp:45        DEFAULT_MAX_BINDER_THREADS 15
+ProcessState.cpp:76        ProcessState::self()
+ProcessState.cpp:139       startThreadPool()
+ProcessState.cpp:149       becomeContextManager()   <span class="cm"># handle 0 认领</span>
+IPCThreadState.cpp:617     joinThreadPool()         <span class="cm"># 线程循环</span>
+IPCThreadState.cpp:685     transact()
+IPCThreadState.cpp:875     waitForResponse()
+IPCThreadState.cpp:975     talkWithDriver()         <span class="cm"># ioctl 在这</span>
+IPCThreadState.cpp:1125    executeCommand()         <span class="cm"># BR_TRANSACTION 处理</span>
+IPCThreadState.cpp:1118    the_context_object
+
+<span class="cm"># 相关技能/资料</span>
+<span class="cm"># 内核侧：drivers/android/binder.c（不在本 AOSP 用户态树内，按需另看）</span>
+<span class="cm"># 马老师库有《千里马Android Framework实战开发-你真的懂aidl转换吗》等专文</span>
+
+<span class="cm"># 设备侧观察</span>
+adb shell service list                    <span class="cm"># 服务注册表</span>
+adb shell dumpsys -l                      <span class="cm"># 所有可 dump 的服务名</span>
+adb shell cat /proc/&lt;pid&gt;/task/*/comm | grep Binder   <span class="cm"># Binder 线程数</span>
+adb shell cat /sys/kernel/debug/binder/stats          <span class="cm"># 驱动统计（需 root）</span></pre>
+  </div>
+
+  <h3>🧠 自测：6 个问题</h3>
+
+  <details><summary>1. 一次 Binder 调用，数据到底拷贝几次？为什么比 Socket 少？</summary>
+  <div class="ans"><strong>一次</strong>。<code>copy_from_user</code> 把发送方数据拷进内核缓冲区后，接收方通过驱动预先 <code>mmap</code> 好的映射<strong>直接读</strong>内核缓冲区——省掉了 <code>copy_to_user</code>。<br>Socket 是"用户→内核→用户"<strong>两次</strong>拷贝。<br><strong>代价</strong>：内核要为每个进程预留固定大小的缓冲区（约 1MB），所以单次事务大小受限（<code>Binder.checkParcel</code> 在 800KB 就开始警告）。</div></details>
+
+  <details><summary>2. <code>Binder.transact</code> 和 <code>BinderProxy.transact</code> 有什么区别？</summary>
+  <div class="ans"><code>Binder.transact</code> 是<strong>本地直通</strong>：直接调 <code>onTransact</code>，一次普通函数调用，不走 IPC（<code>Binder.java:1057</code>）。<br><code>BinderProxy.transact</code> 是<strong>跨进程</strong>：检查大小 → 调 <code>transactNative</code> → 走 JNI/native/驱动（<code>BinderProxy.java:516</code>）。<br>两者都实现 <code>IBinder</code>，所以调用方不需要知道对面是本地还是远端——这正是 Binder "像调本地方法"的体现。另外 <code>Binder.linkToDeath</code> 是空实现，<code>BinderProxy</code> 才真登记。</div></details>
+
+  <details><summary>3. 服务端执行事务的是哪个线程？一个进程最多几个？</summary>
+  <div class="ans">是 <strong>Binder 线程池</strong>里的线程，不是主线程。进程启动时 <code>ProcessState::startThreadPool()</code> 起一个"主"Binder 线程（<code>isMain=true</code>），之后按需增长，上限 <code>DEFAULT_MAX_BINDER_THREADS = 15</code>（<code>ProcessState.cpp:45</code>）。空闲的池线程会自己退出（<code>joinThreadPool</code> 里 <code>result == TIMED_OUT &amp;&amp; !isMain</code> 就 break）。<br>扩容是"内核发现所有 Binder 线程都忙 → 要求目标进程再起一条"这种配合机制。</div></details>
+
+  <details><summary>4. 服务端 <code>getCallingUid()</code> 的值从哪来？为什么可信？</summary>
+  <div class="ans">从<strong>当前线程的 TLS</strong> 里读（<code>execTransact</code> 的 <code>Binder.getCallingUid()</code>），而该值由 <strong>native 层在收到事务时从内核驱动拿到并写入</strong>。<br>因为 <strong>UID 是内核在传递事务时记录在 <code>binder_transaction</code> 结构里的</strong>，调用方进程无法伪造（它无法修改内核数据结构）。这是 Binder 安全模型的根基——所有 <code>checkCallingPermission</code> 系列 API 都建立在这上面。</div></details>
+
+  <details><summary>5. oneway 调用，服务端抛异常会怎样？为什么？</summary>
+  <div class="ans"><strong>异常会静默消失</strong>。<code>Binder.execTransactInternal</code> 的代码注释原话："If the call was FLAG_ONEWAY then these exceptions disappear into the ether"。<br>原因：oneway 不等回复，<strong>没有 reply Parcel</strong>（客户端传的 reply 被忽略），异常无处可写。<br>推论：<strong>oneway 方法不能有返回值、不能用 out/inout 参数</strong>（AIDL 编译期就会报错）。写 AIDL 时标了 oneway 才发现要返回值，这个限制会直接撞上。</div></details>
+
+  <details><summary>6. 为什么 <code>ServiceManager</code> 是特殊的存在？</summary>
+  <div class="ans">因为"找服务需要一份目录，但目录本身也是服务"是鸡生蛋问题。<br>Binder 的解法：内核里预留一个<strong>特殊 handle（0）</strong>，任何进程都能直接拿到它而不需要查找。ServiceManager 进程启动时通过 <code>BECOME_CONTEXT_MANAGER</code>（<code>ProcessState::becomeContextManager()</code>，<code>ProcessState.cpp:149</code>）认领这个位置。Java 侧 <code>getContextObject()</code> 拿到的就是它（<code>ServiceManager.java:110</code>）。<br>之后所有服务通过它注册/查询；客户端还带一层本地缓存（<code>sCache</code>）省跨进程。</div></details>
+</div>
+
+<!-- ====================================================== -->
+
+<h2 id="p10">十、实践题（动手做）</h2>
+
+<div class="card">
+  <p>前面九节都是"读懂"，这一节是"做出来"。<strong>Binder 光看是学不会的</strong>——你必须亲手制造一次跨进程、亲手抓一次 TransactionTooLarge、亲眼看一次线程池增长。</p>
+
+  <div class="annotation star3"><span class="tag">先给你一个起点</span> 你本地已经有项目：<code>D:\workspace\binder</code>（Kotlin + Compose + AIDL 计算器）。<strong>P1 就从它开始</strong> —— 它现在有个隐坑（服务与 Activity 同进程，根本没走 IPC），题目就是把它变成真跨进程。</div>
+
+  <h3>🛠️ P1 让你的项目真正跨进程（30 分钟 · ★ 必做）</h3>
+  <div class="step">
+    <p><span class="no">1</span><strong>先证明它现在是同进程</strong>：在 <code>CalculatorService</code> 的 <code>add()</code> 里打印 <code>Log.d(TAG, "calling=" + Binder.getCallingPid() + "/" + Binder.getCallingUid() + " my=" + Process.myPid())</code>。跑一遍，对比两个 pid。</p>
+    <p><span class="no">2</span><strong>改成跨进程</strong>：给 manifest 的 <code>service</code> 加 <code>android:process=":remote"</code>。重跑，再看那两个 pid。</p>
+    <p><span class="no">3</span><strong>观察行为差异</strong>：① <code>resultText</code> 的更新线程变了（远程调用可能在 Binder 线程回来）；② 断点进不去 <code>CalculatorService</code>（在另一个进程）；③ <code>adb shell dumpsys activity services | grep -A5 CalculatorService</code> 能看到独立进程。</p>
+  </div>
+  <div class="deliver">
+    <span class="tag">交付</span> 一份对照表：同进程 vs 跨进程，<code>getCallingPid()</code> / <code>getCallingUid()</code> / <code>myPid()</code> 三个值的差异，外加一句「为什么 <code>queryLocalInterface</code> 是这一切的开关」。
+  </div>
+
+  <h3>🛠️ P2 亲手撞一次 TransactionTooLargeException（20 分钟）</h3>
+  <div class="step">
+    <p><span class="no">1</span>在 AIDL 里加一个方法：<code>void sendBytes(in byte[] data);</code></p>
+    <p><span class="no">2</span>客户端依次传 100 KB / 500 KB / 900 KB / 2 MB，看哪一档开始崩。</p>
+    <p><span class="no">3</span>抓崩溃栈，确认是 <code>Binder.checkParcel</code> 抛的（对照第二节块 A 那句 <code>"Unreasonably large binder buffer"</code>）。</p>
+    <p><span class="no">4</span><strong>算一笔账</strong>：为什么阈值不是精确 1MB？想想"缓冲区是进程共享的"这件事——如果你同时开 10 个线程各传 500 KB，会发生什么？</p>
+  </div>
+  <div class="deliver">
+    <span class="tag">交付</span> 一张阈值实测表（档位 → 成功/失败 → 报错文案）+ 一段对"进程共享缓冲区"的解释。
+  </div>
+
+  <h3>🛠️ P3 数清你手机上的 Binder 服务与线程（30 分钟 · ★ 推荐）</h3>
+  <div class="step">
+    <p><span class="no">1</span><code>adb shell service list</code> → 导出全部已注册服务，<strong>数一数有多少个</strong>（提示：AOSP 原生通常 200+）。</p>
+    <p><span class="no">2</span><code>adb shell dumpsys -l</code> → 能 dump 的服务名单，和服务注册表对比，看差在哪。</p>
+    <p><span class="no">3</span>数 Binder 线程：<code>adb shell ls /proc/&lt;system_server_pid&gt;/task | wc -l</code> 太粗，改用 <code>adb shell "cat /proc/&lt;pid&gt;/task/*/comm" | grep -c Binder</code>。</p>
+    <p><span class="no">4</span><strong>加压观察</strong>：写脚本每秒采样一次 Binder 线程数，同时疯狂开关 App / 滑动桌面，画出曲线——看它是不是"按需增长、空闲收缩"（对照第六节块 H）。</p>
+  </div>
+  <div class="deliver">
+    <span class="tag">交付</span> ① 你手机的服务数量（并列出你最意外的 3 个服务名）；② Binder 线程数随时间变化的曲线 + 你观察到的上限。
+  </div>
+
+  <h3>🛠️ P4 写一个 Messenger 版的最小跨进程（40 分钟）</h3>
+  <div class="step">
+    <p><span class="no">1</span>起一个带 <code>:remote</code> 进程的 Service，<code>onBind</code> 返回 <code>new Messenger(handler).getBinder()</code>。</p>
+    <p><span class="no">2</span>客户端 <code>new Messenger(service)</code> 后 <code>send(msg)</code>，观察：<strong>它不等回复</strong>（对照块 N 的 <code>oneway</code>）。</p>
+    <p><span class="no">3</span><strong>做回调</strong>：客户端把自己的 <code>Messenger</code> 塞进 <code>msg.replyTo</code>，服务端收到后回发一条。这一步就把"双向"跑通了。</p>
+  </div>
+  <div class="deliver">
+    <span class="tag">交付</span> 可运行的 demo + 一句话说明「为什么 Messenger 不需要写 .aidl 文件」。
+  </div>
+
+  <h3>🛠️ P5 抓一次真实的好死（进阶）</h3>
+  <div class="step">
+    <p><span class="no">1</span>读马老师那篇《oneway 导致的 transaction failed》，照着复现"buffer 申请不到"。</p>
+    <p><span class="no">2</span>开 <code>WM_DEBUG_...</code> 不对——开 Binder 侧日志：<code>adb shell setprop log.tag.Binder VERBOSE</code>，或看 <code>dmesg | grep binder</code>（需 root）。</p>
+    <p><span class="no">3</span>用 <code>/sys/kernel/debug/binder/stats</code>（root）看每个进程的 buffer 占用。</p>
+  </div>
+  <div class="deliver">
+    <span class="tag">交付</span> 一份「Binder 资源耗尽的三种成因 + 各自怎么查」（可从 oneway 洪水、死锁环路、大数据三条线写）。
+  </div>
+
+  <h3>🧠 场景面试题（马老师那 6 道，你能答几道？）</h3>
+  <p>这几道来自马老师库里的《汇总 binder 相关一些常见面试题》，都是<strong>场景题</strong>——比"说说 Binder 原理"难得多：</p>
+  <table>
+    <tr><th>#</th><th>问题</th><th>答案要点（先自己想）</th></tr>
+    <tr><td>1</td><td>多个进程通过 ServiceManager 拿到同一个 service，各自的 <strong>handle 一样吗</strong>？</td><td>同一进程内一致；<strong>不同进程可以不同</strong>——handle 是"该进程 ta 私有表中的索引"，由驱动按进程分配。所以跨进程传 handle 没意义，要传 Binder 对象本身。</td></tr>
+    <tr><td>2</td><td>Binder 通信中<strong>能否传递 BpBinder 对象</strong>？</td><td><strong>能</strong>。通过 <code>Parcel.writeStrongBinder</code>（<code>Parcel.java:898</code>）：驱动会把对象转换成目标进程可用的 handle，对方 <code>readStrongBinder</code> 后拿到的仍是代理。这就是"回传能力"。</td></tr>
+    <tr><td>3</td><td><strong>同进程内部</strong>做 Binder 调用，需要经过驱动吗？</td><td><strong>不需要</strong>。<code>queryLocalInterface</code> 返回本地对象后直接函数调用（第二节块 B、第八节块 M）。这也解释了为什么很多"看起来跨进程"的单进程调试其实一次 IPC 都没走。</td></tr>
+    <tr><td>4</td><td>App 进程天生支持 Binder，<strong>初始自带几个线程</strong>？</td><td>启动时 <code>ProcessState::startThreadPool()</code> 起 <strong>1 个</strong>主 Binder 线程（<code>isMain=true</code>），其余按需增长，上限 <code>DEFAULT_MAX_BINDER_THREADS = 15</code>（<code>ProcessState.cpp:45</code>）。</td></tr>
+    <tr><td>5</td><td>通讯建立后需要<strong>新开 Binder 线程</strong>时，创建过程是怎样的？</td><td>驱动发现目标进程所有 Binder 线程都忙 → 向该进程发命令（<code>BR_SPAWN_LOOPER</code>）→ 进程侧 <code>ProcessState::spawnPooledThread()</code> 起新线程 → 新线程 <code>BC_REGISTER_LOOPER</code> 入池（第六节块 H）。</td></tr>
+    <tr><td>6</td><td>Binder 如何用<strong>异步请求</strong>？优势？频繁使用的风险？</td><td>用 <code>oneway</code> / <code>FLAG_ONEWAY</code>。优势：不阻塞调用方（尤其 system_server → App 必备）。风险：<strong>不等回执就继续发</strong>，驱动缓冲区（进程共享，约 1MB）容易被灌满 → <code>transaction failed</code> / <code>BR_FAILED_REPLY</code>（见 P5）。</td></tr>
+  </table>
+  <div class="hint">💡 建议：先合上答案自己答一遍，答不出的回对应章节重读——<strong>这几道能不能答上来，是 Binder 学没学通的直接判据</strong>。</div>
+</div>
+
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android Framework 专题 | <strong>Binder 全链路：一次跨进程调用到底做了什么</strong></p>
+  <p>基于 AOSP 12（android-12.0.0_r32）· WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实</p>
+  <p style="margin-top:10px;"><strong>Binder 篇（独立专题）← 你在这</strong> &nbsp;|&nbsp; <a href="Android窗口层级/index.html">🌳 窗口层级系列 00–09 →</a></p>
+  <p style="margin-top:8px;"><a href="Android窗口层级/WMS学习路线图.html">🗺️ WMS 学习路线图</a> &nbsp;|&nbsp; <a href="../Android-Framework学习路线图.html">🧭 Framework 路线图（B 赛道）</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📌 下一篇预告：AMS 启动链已并有系列 07；本专题后续可接 PMS 篇。</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

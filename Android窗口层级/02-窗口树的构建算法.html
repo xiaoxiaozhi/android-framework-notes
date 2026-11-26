@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>窗口树是怎样建起来的：DisplayAreaPolicyBuilder 构建算法（WMS 学习 02）</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:30px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+
+    .step-box { background:var(--step-bg); border:1px solid var(--step-border); border-radius:8px; padding:18px 22px; margin:16px 0; }
+    .step-num { display:inline-block; background:var(--accent); color:#fff; width:28px; height:28px; border-radius:50%; text-align:center; line-height:28px; font-weight:bold; font-size:.85rem; margin-right:8px; }
+
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.83rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; }
+    .fn { color:var(--fn); font-weight:600; }
+    .cm { color:var(--cm); font-style:italic; }
+    .num { color:#b48a3a; }
+
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+
+    .flow { display:flex; flex-wrap:wrap; align-items:center; gap:4px 4px; margin:16px 0; font-family:"SF Mono","Fira Code",monospace; font-size:.8rem; }
+    .flow-box { background:var(--code-bg); border:1px solid var(--border); border-radius:6px; padding:5px 10px; white-space:nowrap; }
+    .flow-box.star { border-color:var(--accent); background:var(--tag-bg); }
+    .flow-arrow { color:var(--text2); font-size:1.1rem; }
+
+    .tree { font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; }
+    .tree .nl { color:var(--accent3); font-weight:600; }
+    .tree .nl2 { color:var(--accent2); }
+    .tree .dim { color:var(--text2); }
+    .tree .hl { background:var(--tag-bg); border-radius:3px; padding:0 3px; }
+
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🏗️ 窗口树是怎样建起来的：DisplayAreaPolicyBuilder 构建算法</h1>
+<p class="subtitle">从 SystemServer 启动到窗口显示 · 三阶段构建 · AOSP 12 源码深度拆解</p>
+<p class="series">📚 Android 窗口层级专题 02 ｜ 基于 <code>android-12.0.0_r32</code> ｜ 上篇：<a href="01-窗口树全景.html">← 01 窗口树全景</a> ｜ 下篇：<a href="03-窗口刷新与事务提交.html">03 窗口刷新 →</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p1">一、全景：三个阶段</a>
+  <a href="#p2">二、阶段一：系统启动 · 树的根基</a>
+  <a href="#p3">三、三个关键角色速览（Feature / PendingArea / Layer）</a>
+  <a href="#p4">四、骨架怎么搭：DisplayAreaPolicyBuilder 构建算法</a>
+  <a href="#p5">&nbsp;&nbsp;&nbsp;4.1 Feature 系统：按需分区</a>
+  <a href="#p6">&nbsp;&nbsp;&nbsp;4.2 PendingArea：中间树</a>
+  <a href="#p7">&nbsp;&nbsp;&nbsp;4.3 三层遍历算法</a>
+  <a href="#p8">&nbsp;&nbsp;&nbsp;4.4 instantiateChildren：诞生真实节点</a>
+  <a href="#p9">&nbsp;&nbsp;&nbsp;4.5 onHierarchyBuilt：收尾</a>
+  <a href="#p10">五、门禁与叶子：Token 与 WindowState 怎样挂树</a>
+  <a href="#p11">六、完整链路一览</a>
+  <a href="#p12">七、源码速查</a>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p1">一、全景：三个时间阶段</h2>
+
+<div class="card">
+  <p>窗口层级树不是一次性建成的，而是在系统运行的不同时刻分阶段构建：</p>
+
+  <table>
+    <tr><th>阶段</th><th>时间点</th><th>做什么</th><th>源码位置</th></tr>
+    <tr>
+      <td><strong>① 搭骨架</strong></td>
+      <td>设备启动 / 显示器插入</td>
+      <td>创建 RootWindowContainer、DisplayContent，<br>由 DisplayAreaPolicyBuilder 构建<strong>全部 DisplayArea 层级</strong></td>
+      <td><code>DisplayAreaPolicyBuilder.build()</code></td>
+    </tr>
+    <tr>
+      <td><strong>② 开门禁</strong></td>
+      <td>应用进程连接 / 创建系统窗口</td>
+      <td>创建 WindowToken（或 ActivityRecord），<br>根据窗口类型<strong>挂入对应的 DisplayArea.Tokens</strong></td>
+      <td><code>DisplayContent.addWindowToken()</code></td>
+    </tr>
+    <tr>
+      <td><strong>③ 挂叶子</strong></td>
+      <td>addView() 调用</td>
+      <td>创建 WindowState，<br><strong>挂入 WindowToken.mChildren</strong>，分配 Surface 层级</td>
+      <td><code>WindowToken.addWindow()</code></td>
+    </tr>
+  </table>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 关键区分 ✦ ✦ ✦</span><br>
+    <strong>阶段① 只做一次</strong>（每个显示器），创建的是"架子"（DisplayArea）。<br>
+    <strong>阶段② ③</strong> 在系统运行中反复发生——每个新窗口都会触发。<br>
+    本文重点讲解 <strong>阶段① 的算法</strong>（最复杂），附带二三阶段的完整流程。
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p2">二、阶段一：系统启动 · 树的根基</h2>
+
+<div class="card">
+
+  <h3>2.1 启动链</h3>
+
+  <div class="flow">
+    <span class="flow-box">SystemServer.startOtherServices()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box">WindowManagerService.main()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box star">new WMS() → new RootWindowContainer()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box">Display 事件 → RootWindowContainer.createDisplay()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box star">new DisplayContent() → DisplayAreaPolicy.build()</span>
+  </div>
+
+  <div class="code-block">
+    <div class="filename">WindowManagerService.java — 初始化链</div>
+    <pre>
+<span class="cm">// WMS 构造函数中</span>
+<span class="kw">private</span> <span class="fn">WindowManagerService</span>(Context context, ...) {
+    mRoot = <span class="kw">new</span> <span class="fn">RootWindowContainer</span>(<span class="kw">this</span>);   <span class="cm">// ★ 创建树的根</span>
+    ...
+    mDisplayAreaPolicyProvider = DisplayAreaPolicy.Provider
+        .fromResources(mContext.getResources());       <span class="cm">// ★ 加载策略提供者</span>
+}
+      </pre>
+    </div>
+
+  <p>此时 <code>mRoot</code>（RootWindowContainer）已创建，但它还是空的——没有子节点。</p>
+
+  <h3>2.2 显示器注册触发 DisplayContent 创建</h3>
+
+  <p>当 <code>DisplayManager</code> 通知有新显示器时：</p>
+
+  <div class="code-block">
+    <div class="filename">RootWindowContainer.java → 创建 DisplayContent</div>
+    <pre>
+<span class="cm">// 创建新的 DisplayContent 并加入 RootWindowContainer 的子节点</span>
+DisplayContent displayContent = <span class="kw">new</span> <span class="fn">DisplayContent</span>(
+    display, <span class="kw">this</span>, ...);
+addChild(displayContent, null);  <span class="cm">// displayContent 挂入 mRoot.mChildren</span>
+      </pre>
+    </div>
+
+  <p>此时树变为：</p>
+  <pre class="tree">
+<span class="nl">RootWindowContainer</span>
+ └── <span class="nl">DisplayContent</span> (id=0, 默认屏)  ← 刚创建，内部还是空的
+  </pre>
+
+  <h3>2.3 DisplayContent 构造函数触发 DisplayArea 构建</h3>
+
+  <p>这是整篇文章最核心的一步。DisplayContent 构造函数中调用了：</p>
+
+  <div class="code-block">
+    <div class="filename">DisplayContent.java (构造函数内)</div>
+    <pre>
+<span class="cm">// ★ 核心：调用 DisplayAreaPolicy 构建 DisplayArea 层级</span>
+mDisplayAreaPolicy = mWmService.getDisplayAreaPolicyProvider()
+    .<span class="fn">instantiate</span>(mWmService, <span class="kw">this</span>, <span class="kw">this</span>, mImeWindowsContainer);
+    <span class="cm">//                        ↑content  ↑root(DC)  ↑IME 容器</span>
+
+<span class="cm">// 构建 SurfaceControl 层级</span>
+mSurfaceControl = b.setName("Root").setContainerLayer().build();
+getPendingTransaction()
+    .setLayer(mSurfaceControl, 0)
+    .setLayerStack(mSurfaceControl, mDisplayId)
+    .show(mSurfaceControl)
+    .apply();
+      </pre>
+    </div>
+
+  <p><code>instantiate()</code> 里的 <code>DefaultProvider</code> 做了三件事，我们一步步看。</p>
+
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p3">三、三个关键角色速览：Feature / PendingArea / Window Layer</h2>
+<div class="card">
+  <p>在深入算法之前，先搞清楚三个反复出现的角色：</p>
+
+  <table>
+    <tr><th>角色</th><th>是什么</th><th>在这个阶段的作用</th></tr>
+    <tr>
+      <td><strong>Feature</strong></td>
+      <td>一个"区域需求"，如：<br>"我要把放大镜覆盖所有窗口类型"<br>"我要给挖孔屏排除状态栏"</td>
+      <td>在构建时决定<strong>是否需要额外包一层 DisplayArea</strong></td>
+    </tr>
+    <tr>
+      <td><strong>PendingArea</strong></td>
+      <td>一棵"中间临时树"<br>纯内存对象，不挂 Surface</td>
+      <td>在 build() 中构建一棵逻辑树，<br>最后调用 instantiateChildren() 转化为真正的 DisplayArea</td>
+    </tr>
+    <tr>
+      <td><strong>Window Layer</strong></td>
+      <td>每种窗口类型对应一个数字<br>如 WALLPAPER=2, STATUS_BAR=15, TOAST=26</td>
+      <td>layer 值决定了窗口在 Z 轴的位置<br>layer 相邻且同用途的 → 共享一个 DisplayArea.Tokens</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p4">四、骨架怎么搭：DisplayAreaPolicyBuilder 构建算法</h2>
+<div class="card">
+
+  <h3>4.0 起点：DefaultProvider.instantiate()</h3>
+
+  <div class="code-block">
+    <div class="filename">DisplayAreaPolicy.java — DefaultProvider.instantiate()</div>
+    <pre>
+<span class="kw">public</span> DisplayAreaPolicy <span class="fn">instantiate</span>(WMS, DisplayContent content,
+        RootDisplayArea root, DisplayArea.Tokens imeContainer) {
+
+    <span class="cm">// ① 创建默认的 TaskDisplayArea（应用任务的"家"）</span>
+    <span class="kw">final</span> TaskDisplayArea defaultTaskDisplayArea = <span class="kw">new</span> TaskDisplayArea(
+            content, wmService, "DefaultTaskDisplayArea",
+            FEATURE_DEFAULT_TASK_CONTAINER);
+
+    <span class="cm">// ② 使用 HierarchyBuilder 定义层级规则</span>
+    <span class="kw">final</span> HierarchyBuilder rootHierarchy = <span class="kw">new</span> HierarchyBuilder(root);
+    rootHierarchy.setImeContainer(imeContainer)
+                 .setTaskDisplayAreas(tdaList);
+
+    <span class="kw">if</span> (content.isTrusted()) {
+        configureTrustedHierarchyBuilder(rootHierarchy, ...);
+    }
+
+    <span class="cm">// ③ 构建并返回策略</span>
+    <span class="kw">return new</span> DisplayAreaPolicyBuilder()
+            .setRootHierarchy(rootHierarchy)
+            .<span class="fn">build</span>(wmService);           <span class="cm">// ★ 入口</span>
+}
+      </pre>
+    </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p5">4.1 Feature 系统：按需分区</h2>
+<div class="card">
+
+  <p>Feature 回答了 <strong>"在 DisplayArea 层级中是否需要为某个功能额外创建一层容器"</strong>这个问题。</p>
+
+  <p>每个 Feature 有一个 <code>boolean[] mWindowLayers</code>，长度 = 系统最大 layer 数 + 1。例如：</p>
+
+  <div class="code-block">
+    <div class="filename">Feature 示例："OneHanded" 单手模式</div>
+    <pre>
+Feature.Builder(wmService.mPolicy, "OneHanded", FEATURE_ONE_HANDED)
+    .<span class="fn">all</span>()                             <span class="cm">// 覆盖所有窗口类型</span>
+    .<span class="fn">except</span>(TYPE_NAVIGATION_BAR,      <span class="cm">// 但不包括导航栏和状态栏</span>
+            TYPE_NOTIFICATION_SHADE)
+    .build();
+<span class="cm">// 生成的 mLayers 数组示例（部分）：
+// layer=WALLPAPER(2)     → true   (被单手模式影响)
+// layer=STATUS_BAR(15)   → false  (不被影响)
+// layer=NAVIGATION(31)   → false  (不被影响)
+// layer=TOAST(26)        → true   (被单手模式影响)</span>
+      </pre>
+    </div>
+
+  <p><strong>Feature 的顺序决定了 DisplayArea 的嵌套层级</strong>——先声明的 Feature 在上面。</p>
+
+  <table>
+    <tr><th>声明顺序</th><th>Feature</th><th>在层级中的位置</th></tr>
+    <tr><td>1</td><td>WindowedMagnification</td><td>最外层（放大镜包裹所有内容）</td></tr>
+    <tr><td>2</td><td>HideDisplayCutout</td><td>第二层</td></tr>
+    <tr><td>3</td><td>OneHandedBackgroundPanel</td><td>第三层</td></tr>
+    <tr><td>4</td><td>OneHanded</td><td>第四层</td></tr>
+    <tr><td>5</td><td>FullscreenMagnification</td><td>最内层（全屏放大器）</td></tr>
+  </table>
+
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p6">4.2 PendingArea：内存中的中间树</h2>
+<div class="card">
+
+  <p>在真正创建 DisplayArea 之前，算法先在内存中构建一棵 <strong>PendingArea 树</strong>——它是实际 DisplayArea 树的"蓝图"。</p>
+
+  <div class="code-block">
+    <div class="filename">DisplayAreaPolicyBuilder.java — PendingArea</div>
+    <pre>
+<span class="kw">static class</span> <span class="fn">PendingArea</span> {
+    <span class="kw">final int</span> mMinLayer;                      <span class="cm">// 覆盖的最小 window layer</span>
+    <span class="kw">int</span> mMaxLayer;                            <span class="cm">// 覆盖的最大 window layer</span>
+    <span class="kw">final</span> ArrayList&lt;PendingArea&gt; mChildren = <span class="kw">new</span> ArrayList&lt;&gt;();  <span class="cm">// 子节点</span>
+    <span class="kw">final</span> Feature mFeature;                    <span class="cm">// 关联的 Feature（null = 普通 Tokens）</span>
+    <span class="kw">final</span> PendingArea mParent;                  <span class="cm">// 父节点</span>
+    <span class="kw">@Nullable</span> DisplayArea mExisting;             <span class="cm">// 复用已有的 DA（非 null 就不新建）</span>
+    <span class="kw">boolean</span> mSkipTokens;                       <span class="cm">// 是否跳过 Tokens 创建</span>
+}
+      </pre>
+    </div>
+
+  <div class="annotation">
+    <strong>PendingArea 的三种"结果"：</strong>
+    <table>
+      <tr><th>mFeature</th><th>mExisting</th><th>mSkipTokens</th><th>最终创建的 DA 类型</th></tr>
+      <tr><td>非 null</td><td>null</td><td>false</td><td>按 Feature.mNewDisplayAreaSupplier 创建（如 Dimmable）</td></tr>
+      <tr><td>null</td><td>null</td><td>false</td><td><code>new DisplayArea.Tokens("Leaf:min:max")</code></td></tr>
+      <tr><td>null</td><td>TaskDisplayArea</td><td>true</td><td><strong>不复用！</strong>直接用传入的 TDA</td></tr>
+      <tr><td>null</td><td>ImeContainer</td><td>true</td><td><strong>不复用！</strong>直接用传入的 IME 容器</td></tr>
+    </table>
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p7">4.3 三层遍历算法（HierarchyBuilder.build()）</h2>
+<div class="card">
+
+  <p>这是整个构建流程的核心。算法分 <strong>三个嵌套循环</strong>：</p>
+
+  <div class="step-box">
+    <p><span class="step-num">1</span> <strong>Feature 遍历</strong> → 为每个 Feature 在当前 layer 范围内创建必要的 DisplayArea 分支</p>
+  </div>
+  <div class="step-box">
+    <p><span class="step-num">2</span> <strong>Layer 遍历</strong> → 为每个 window layer 分配叶子节点（DisplayArea.Tokens）</p>
+  </div>
+  <div class="step-box">
+    <p><span class="step-num">3</span> <strong>实例化</strong> → 把 PendingArea 树转化为真实的 DisplayArea 对象并挂入树中</p>
+  </div>
+
+  <h4>第一层遍历：为 Feature 建立分支</h4>
+
+  <div class="code-block">
+    <div class="filename">HierarchyBuilder.build() — Feature 遍历</div>
+    <pre>
+<span class="cm">// Feature 按声明顺序遍历（先声明的在上面）</span>
+<span class="kw">for</span> (<span class="kw">int</span> i = 0; i &lt; mFeatures.size(); i++) {
+    <span class="kw">final</span> Feature feature = mFeatures.get(i);
+    PendingArea featureArea = null;
+
+    <span class="kw">for</span> (<span class="kw">int</span> layer = 0; layer &lt; maxWindowLayerCount; layer++) {
+        <span class="kw">if</span> (feature.mWindowLayers[layer]) {
+            <span class="cm">// 这个 Feature 应用到当前 layer</span>
+            <span class="kw">if</span> (featureArea == null
+                    || featureArea.mParent != areaForLayer[layer]) {
+                <span class="cm">// ★ 不能复用上一层的 area → 创建新的 PendingArea</span>
+                featureArea = <span class="kw">new</span> PendingArea(feature, layer, areaForLayer[layer]);
+                areaForLayer[layer].mChildren.add(featureArea);
+            }
+            areaForLayer[layer] = featureArea;
+        } <span class="kw">else</span> {
+            <span class="cm">// Feature 不应用到当前 layer → 断开引用</span>
+            featureArea = null;
+        }
+    }
+}
+      </pre>
+    </div>
+
+  <p>这一步的核心逻辑：<strong>相邻的、同一 Feature 覆盖的 layer，共享一个 Feature DisplayArea</strong>。</p>
+
+  <h4>第二层遍历：为每个 layer 创建叶子 Tokens</h4>
+
+  <div class="code-block">
+    <div class="filename">HierarchyBuilder.build() — 叶子层遍历</div>
+    <pre>
+PendingArea leafArea = null;
+<span class="kw">int</span> leafType = LEAF_TYPE_TOKENS;
+
+<span class="kw">for</span> (<span class="kw">int</span> layer = 0; layer &lt; maxWindowLayerCount; layer++) {
+    <span class="kw">int</span> type = typeOfLayer(policy, layer);
+    <span class="cm">// typeOfLayer 返回三种值之一：
+    //   APPLICATION_LAYER → LEAF_TYPE_TASK_CONTAINERS
+    //   IME 的 layer → LEAF_TYPE_IME_CONTAINERS
+    //   其他 → LEAF_TYPE_TOKENS</span>
+
+    <span class="kw">if</span> (leafArea == null
+            || leafArea.mParent != areaForLayer[layer]
+            || type != leafType) {
+        <span class="cm">// ★ 创建新的叶子节点 PendingArea</span>
+        leafArea = <span class="kw">new</span> PendingArea(null, layer, areaForLayer[layer]);
+        areaForLayer[layer].mChildren.add(leafArea);
+        leafType = type;
+
+        <span class="kw">if</span> (leafType == LEAF_TYPE_TASK_CONTAINERS) {
+            <span class="cm">// 把 TaskDisplayArea 作为已有对象插入</span>
+            addTaskDisplayAreasToApplicationLayer(areaForLayer[layer]);
+            leafArea.mSkipTokens = true;
+        } <span class="kw">else if</span> (leafType == LEAF_TYPE_IME_CONTAINERS) {
+            <span class="cm">// 把 IME 容器作为已有对象插入</span>
+            leafArea.mExisting = mImeContainer;
+            leafArea.mSkipTokens = true;
+        }
+    }
+    leafArea.mMaxLayer = layer;  <span class="cm">// 更新跨度范围</span>
+}
+      </pre>
+    </div>
+
+  <h4>typeOfLayer 的判断逻辑</h4>
+
+  <div class="code-block">
+    <div class="filename">HierarchyBuilder.typeOfLayer()</div>
+    <pre>
+<span class="kw">private static int</span> <span class="fn">typeOfLayer</span>(WindowManagerPolicy policy, <span class="kw">int</span> layer) {
+    <span class="kw">if</span> (layer == APPLICATION_LAYER) {                <span class="cm">// layer=2，应用层</span>
+        <span class="kw">return</span> LEAF_TYPE_TASK_CONTAINERS;             <span class="cm">// → TaskDisplayArea</span>
+    } <span class="kw">else if</span> (layer == getLayer(TYPE_INPUT_METHOD)  <span class="cm">// IME 的 layer</span>
+            || layer == getLayer(TYPE_INPUT_METHOD_DIALOG)) {
+        <span class="kw">return</span> LEAF_TYPE_IME_CONTAINERS;              <span class="cm">// → ImeContainer</span>
+    } <span class="kw">else</span> {
+        <span class="kw">return</span> LEAF_TYPE_TOKENS;                      <span class="cm">// → 普通 DisplayArea.Tokens</span>
+    }
+}
+      </pre>
+    </div>
+
+  <h4>三个 layer 类型的含义</h4>
+
+  <table>
+    <tr><th>Layer 类型</th><th>叶子节点是什么</th><th>为什么特殊处理？</th></tr>
+    <tr>
+      <td><code>TOKENS</code></td>
+      <td><code>new DisplayArea.Tokens("Leaf:N:M")</code></td>
+      <td>普通系统窗口（壁纸、状态栏、Toast等），<br>直接创建 DisplayArea.Tokens 承载</td>
+    </tr>
+    <tr>
+      <td><code>TASK_CONTAINERS</code></td>
+      <td><strong>复用已创建的 TaskDisplayArea</strong></td>
+      <td>应用窗口不走 Tokens，而是进入 TaskDisplayArea → Task → ActivityRecord 的层次结构</td>
+    </tr>
+    <tr>
+      <td><code>IME_CONTAINERS</code></td>
+      <td><strong>复用已创建的 ImeContainer</strong></td>
+      <td>IME 需要特殊动画和焦点处理，单独挂在一个 RootDisplayArea 下</td>
+    </tr>
+  </table>
+
+  <h4>示例：PeningArea 树造出来的样子</h4>
+
+  <p>假设系统定义了 WindowedMagnification 和 OneHanded 两个 Feature，生成的 PendingArea 树如下：</p>
+
+  <pre class="tree">
+<span class="dim">PendingArea (root, 虚拟根)</span>
+ ├── <span class="nl">PendingArea</span> [Feature:WindowedMagnification, layer:0..26]
+ │    ├── <span class="nl2">PendingArea</span> [Feature:OneHanded, layer:0..14]
+ │    │    ├── <span class="dim">PendingArea</span> [Tokens, layer:0..1]
+ │    │    └── <span class="dim">PendingArea</span> [Tokens, layer:2..14]
+ │    └── <span class="nl2">PendingArea</span> [Feature:OneHanded, layer:15..26]
+ │         ├── <span class="dim">PendingArea</span> [Tokens, layer:15..19]
+ │         ├── <span class="dim">PendingArea</span> [TaskDisplayArea ★, layer:APP]     <span class="dim">← TaskDisplayArea 直接插入</span>
+ │         └── <span class="dim">PendingArea</span> [Tokens, layer:21..26]
+ └── <span class="dim">PendingArea</span> [Tokens, layer:27..31]                       <span class="dim">← 放大镜外的层</span>
+  </pre>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 关键洞察 ✦ ✦ ✦</span><br>
+    相邻的 layer、同一个 Feature 覆盖、且同一叶子类型的 → <strong>共享一个 DisplayArea.Tokens</strong>。<br>
+    这就是为什么 <strong>所有应用窗口都进入同一个 TaskDisplayArea</strong>——因为它们都在 APPLICATION_LAYER。<br>
+    这也是为什么 <strong>壁纸和启动画面各在一个 DA.Tokens</strong>——它们的 layer 虽然相邻，但 Feature 覆盖范围不同。
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p8">4.4 instantiateChildren：从蓝图到实物</h2>
+<div class="card">
+
+  <p>PendingArea 树建好后，<code>instantiateChildren()</code> 递归遍历它，<strong>把每个 PendingArea 转换为真正的 DisplayArea 对象</strong>，并挂入树：</p>
+
+  <div class="code-block">
+    <div class="filename">PendingArea.instantiateChildren()</div>
+    <pre>
+<span class="kw">void</span> <span class="fn">instantiateChildren</span>(DisplayArea&lt;DisplayArea&gt; parent,
+        DisplayArea.Tokens[] areaForLayer, <span class="kw">int</span> level,
+        Map&lt;Feature, List&lt;...&gt;&gt; areas) {
+
+    <span class="cm">// ★ 先按 mMinLayer 排序子节点（保证 Z-order 正确）</span>
+    mChildren.sort(Comparator.comparingInt(a -> a.mMinLayer));
+
+    <span class="kw">for</span> (PendingArea child : mChildren) {
+        <span class="cm">// ① 创建真正的 DisplayArea 对象</span>
+        DisplayArea area = child.<span class="fn">createArea</span>(parent, areaForLayer);
+        <span class="kw">if</span> (area == null) <span class="kw">continue</span>;     <span class="cm">// TaskDisplayArea 不新建</span>
+
+        <span class="cm">// ② ★ 挂入父节点</span>
+        parent.<span class="fn">addChild</span>(area, POSITION_TOP);
+
+        <span class="cm">// ③ 记录 Feature → DisplayArea 映射</span>
+        <span class="kw">if</span> (child.mFeature != null) {
+            areas.get(child.mFeature).add(area);
+        }
+
+        <span class="cm">// ④ 递归处理子节点</span>
+        child.<span class="fn">instantiateChildren</span>(area, areaForLayer, level + 1, areas);
+    }
+}
+      </pre>
+    </div>
+
+  <h4>createArea() — 决定创建什么类型的 DA</h4>
+
+  <div class="code-block">
+    <div class="filename">PendingArea.createArea()</div>
+    <pre>
+<span class="kw">private</span> DisplayArea <span class="fn">createArea</span>(DisplayArea&lt;DisplayArea&gt; parent,
+        DisplayArea.Tokens[] areaForLayer) {
+
+    <span class="kw">if</span> (mExisting != null) {                        <span class="cm">// IME 容器、TaskDisplayArea</span>
+        <span class="kw">if</span> (mExisting.asTokens() != null) {
+            fillAreaForLayers(mExisting.asTokens(), areaForLayer);
+        }
+        <span class="kw">return</span> mExisting;                           <span class="cm">// 直接用已有对象</span>
+    }
+    <span class="kw">if</span> (mSkipTokens) <span class="kw">return null</span>;                     <span class="cm">// 跳过（TDA / IME）</span>
+
+    <span class="cm">// 确定 DisplayArea 类型</span>
+    DisplayArea.Type type;
+    <span class="kw">if</span> (mMinLayer > APPLICATION_LAYER) type = ABOVE_TASKS;
+    <span class="kw">else if</span> (mMaxLayer < APPLICATION_LAYER) type = BELOW_TASKS;
+    <span class="kw">else</span> type = ANY;
+
+    <span class="kw">if</span> (mFeature == null) {
+        <span class="cm">// ★ 创建 DisplayArea.Tokens</span>
+        DisplayArea.Tokens leaf = <span class="kw">new</span> DisplayArea.Tokens(
+            parent.mWmService, type,
+            "Leaf:" + mMinLayer + ":" + mMaxLayer);
+        fillAreaForLayers(leaf, areaForLayer);   <span class="cm">// 填充 layer 映射表</span>
+        <span class="kw">return</span> leaf;
+    } <span class="kw">else</span> {
+        <span class="cm">// ★ 按 Feature 指定的工厂创建（如 Dimmable DA）</span>
+        <span class="kw">return</span> mFeature.mNewDisplayAreaSupplier.create(
+            parent.mWmService, type,
+            mFeature.mName + ":" + mMinLayer + ":" + mMaxLayer,
+            mFeature.mId);
+    }
+}
+      </pre>
+    </div>
+
+  <h4>fillAreaForLayers() — 注册到 layer 查找表</h4>
+
+  <div class="code-block">
+    <div class="filename">fillAreaForLayers()</div>
+    <pre>
+<span class="kw">private void</span> <span class="fn">fillAreaForLayers</span>(DisplayArea.Tokens leaf,
+        DisplayArea.Tokens[] areaForLayer) {
+    <span class="kw">for</span> (<span class="kw">int</span> i = mMinLayer; i &lt;= mMaxLayer; i++) {
+        areaForLayer[i] = leaf;   <span class="cm">// 按 layer 索引 → 指向对应的 DisplayArea.Tokens</span>
+    }
+}
+      </pre>
+    </div>
+
+  <p>这个查找表 (<code>areaForLayer</code>) 之后在 <code>onHierarchyBuilt()</code> 中赋值给 <code>RootDisplayArea.mAreaForLayer</code>，用于 <code>findAreaForWindowType()</code> 的 O(1) 查找：</p>
+
+  <div class="code-block">
+    <div class="filename">按窗口类型查找 DisplayArea：O(1)</div>
+    <pre>
+<span class="cm">// 窗口来了 → 根据类型算出 layer → 查表 → 直接得到应该挂载的 DisplayArea.Tokens</span>
+<span class="kw">int</span> windowLayerFromType = mWmService.mPolicy
+    .getWindowLayerFromTypeLw(windowType, ownerCanManageAppTokens);
+<span class="kw">return</span> mAreaForLayer[windowLayerFromType];   <span class="cm">// O(1) 查表！</span>
+      </pre>
+    </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p9">4.5 onHierarchyBuilt() — 收尾</h2>
+<div class="card">
+
+  <p>递归创建完成后，调用 <code>onHierarchyBuilt()</code> 把最终状态缓存在 RootDisplayArea 中：</p>
+
+  <div class="code-block">
+    <div class="filename">RootDisplayArea.onHierarchyBuilt()</div>
+    <pre>
+<span class="kw">void</span> <span class="fn">onHierarchyBuilt</span>(ArrayList&lt;Feature&gt; features,
+        DisplayArea.Tokens[] areaForLayer,
+        Map&lt;Feature, List&lt;DisplayArea&lt;...&gt;&gt;&gt; featureToDisplayAreas) {
+
+    <span class="kw">if</span> (mHasBuiltHierarchy) <span class="kw">throw new</span> IllegalStateException(...);  <span class="cm">// 只执行一次</span>
+
+    mHasBuiltHierarchy = true;
+    mFeatures = Collections.unmodifiableList(features);
+    mAreaForLayer = areaForLayer;              <span class="cm">// ★ 缓存 layer 查找表</span>
+    mFeatureToDisplayAreas = featureToDisplayAreas;  <span class="cm">// ★ 缓存 Feature→DA 映射</span>
+}
+      </pre>
+    </div>
+
+  <p>此时一棵完整的 DisplayArea 树就已经在内存中了。树中的每个 DisplayArea.Tokens 节点都在等待 WindowToken 的到来。</p>
+
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p10">五、门禁与叶子：Token 与 WindowState 怎样挂树</h2>
+<div class="card">
+
+  <h3>5.1 客户端侧：这个窗口的 WindowManager 从哪来</h3>
+
+  <p>5.2–5.4 讲的都是 <code>WMS.addWindow()</code> 之后的事。但请求到达 WMS 之前，窗口是先由客户端的 <code>WindowManagerImpl</code> 加进去的；而<strong>用哪个 <code>WindowManagerImpl</code> 实例，由三个工厂方法决定</strong>。三者只是同一个私有构造器的三套参数预设，差别就在 <code>(Context, parentWindow, windowContextToken)</code> 这个三元组：</p>
+
+  <div class="code-block">
+    <div class="filename">WindowManagerImpl.java — 三个工厂方法（@hide 类，:72/:74，第三方 App 调不到）</div>
+    <pre>
+<span class="cm">// :99 三个工厂最终都落到这个私有构造器：它决定 (Context, parentWindow, windowContextToken) 三元组</span>
+<span class="kw">private</span> <span class="fn">WindowManagerImpl</span>(Context context, Window parentWindow,
+        @Nullable IBinder windowContextToken) { ... }
+
+<span class="cm">// :106 ★工厂① 只换 parentWindow，Context 与 windowContextToken 原样继承（实例方法）</span>
+<span class="kw">public</span> WindowManagerImpl <span class="fn">createLocalWindowManager</span>(Window parentWindow) {
+    <span class="kw">return</span> <span class="kw">new</span> <span class="fn">WindowManagerImpl</span>(mContext, parentWindow, mWindowContextToken);   <span class="cm">// :107</span>
+}
+
+<span class="cm">// :110 ★工厂② 只换 Context（换成目标 Display 的），parentWindow / token 原样继承</span>
+<span class="kw">public</span> WindowManagerImpl <span class="fn">createPresentationWindowManager</span>(Context displayContext) {
+    <span class="kw">return</span> <span class="kw">new</span> <span class="fn">WindowManagerImpl</span>(displayContext, mParentWindow, mWindowContextToken);   <span class="cm">// :111</span>
+}
+
+<span class="cm">// :115 ★工厂③ 静态方法；parentWindow 置 null，且是唯一带上 windowContextToken 的一个</span>
+<span class="kw">public static</span> WindowManager <span class="fn">createWindowContextWindowManager</span>(Context context) {
+    <span class="kw">final</span> IBinder clientToken = context.<span class="fn">getWindowContextToken</span>();       <span class="cm">// :116 从 WindowContext 取</span>
+    <span class="kw">return</span> <span class="kw">new</span> <span class="fn">WindowManagerImpl</span>(context, <span class="kw">null</span> <span class="cm">/* parentWindow */</span>, clientToken);   <span class="cm">// :117</span>
+}
+    </pre>
+  </div>
+
+  <p>三个方法回答的都是“什么时候用”：<strong>平台内部按场景各走一条，App 自己基本不碰</strong>（类本身就是 <code>@hide</code>）。</p>
+
+  <table>
+    <tr><th>工厂方法</th><th>平台内调用方（已核实行号）</th><th>什么时候走这条路</th></tr>
+    <tr>
+      <td><code>createLocalWindowManager(Window)</code><br>:106</td>
+      <td><code>Window.setWindowManager()</code> <code>Window.java:829</code>（平台内唯一调用方）</td>
+      <td><strong>每个 Window 一诞生就配一个</strong>：Activity.attach() <code>Activity.java:7981/7988</code>、Dialog <code>Dialog.java:210</code>。所以任何 <code>Window.getWindowManager()</code> 返回的 WM，其 parentWindow 恒等于它自己——这就是“parentWindow != null ≠ 这是个子窗口”的原因</td>
+    </tr>
+    <tr>
+      <td><code>createPresentationWindowManager(Context)</code><br>:110</td>
+      <td><strong>本树内没有平台调用方</strong>：grep <code>frameworks/ packages/ cts/</code> 只命中它自身 :110 与 layoutlib 的同名 stub（<code>frameworks/layoutlib/bridge/src/android/view/WindowManagerImpl.java:64</code>）</td>
+      <td>历史遗留。S 起 Presentation 不再走它，改由 <code>Presentation.createPresentationContext()</code> <code>Presentation.java:327-328</code> 建 WindowContext（即工厂③）。讲课时当“老路 vs 新路”对照</td>
+    </tr>
+    <tr>
+      <td><code>createWindowContextWindowManager(Context)</code><br>:115（static）</td>
+      <td><code>WindowContext</code> 构造器 <code>WindowContext.java:69</code>；<code>WindowProviderService.onCreate()</code> <code>WindowProviderService.java:119</code></td>
+      <td>凡是以 <strong>WindowContext 身份</strong>建窗：<code>Context.createWindowContext()</code> <code>Context.java:6490/6518</code> 拿到的 Context、Presentation、SystemUI 的各面板</td>
+    </tr>
+  </table>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 为什么要三个 ✦ ✦ ✦</span><br>
+    三元组会一路传到 <code>addView()</code>：<code>WindowManagerImpl.addView()</code> <code>:131</code> 先调 <code>applyTokens()</code> <code>:143</code>，把 <code>mDefaultToken</code> 写进 <code>wparams.token</code> <code>:149-150</code>（三条条件同时成立才填），再把 <code>mWindowContextToken</code> <strong>无条件</strong>写进 <code>wparams.mWindowContextToken</code> <code>:152</code>，然后才交给 <code>WindowManagerGlobal.addView()</code> <code>:321</code> → WMS。<br>
+    所以<strong>选哪个工厂，等于提前决定了这个窗口“归谁管”和“谁生的”</strong>：<code>token</code> = 归谁管（WindowToken / ActivityRecord / 父窗口 binder，决定层级、权限、ANR 归属）；<code>mWindowContextToken</code> = 谁生的（WindowContext 预注册的 options，供 WMS 做类型一致性校验 + Configuration 精准推送，见 <code>WindowManagerService.java:1557/:1567-1578</code>）。只有工厂③会带上它——因为只有 WindowContext 才注册过 options。
+  </div>
+
+  <h3>5.2 非应用窗口：WindowToken 创建即挂树</h3>
+
+  <p>当 <code>WMS.addWindow()</code> 发现没有现成的 token 时，新建一个 WindowToken。对于<strong>非应用窗口</strong>（系统窗口），token 建好就立即通过 <code>DisplayContent.addWindowToken()</code> 挂入树：</p>
+
+  <div class="code-block">
+    <div class="filename">DisplayContent.addWindowToken()</div>
+    <pre>
+<span class="kw">void</span> <span class="fn">addWindowToken</span>(IBinder binder, WindowToken token) {
+    mTokenMap.put(binder, token);              <span class="cm">// 记录映射</span>
+    token.mDisplayContent = <span class="kw">this</span>;
+
+    <span class="kw">if</span> (token.asActivityRecord() == null) {     <span class="cm">// ★ 非应用 token</span>
+        DisplayArea.Tokens da = findAreaForToken(token).<span class="fn">asTokens</span>();
+        da.<span class="fn">addChild</span>(token);                        <span class="cm">// ★ 挂入 DisplayArea.Tokens</span>
+    }
+}
+      </pre>
+    </div>
+
+  <h3>5.3 应用窗口：ActivityRecord 通过 Task 挂树</h3>
+
+  <p>应用窗口的 token 是 <code>ActivityRecord</code>（extends WindowToken）。它不经过 <code>DisplayContent.addWindowToken()</code>，而是由 <strong>ActivityStarter</strong> 创建 ActivityRecord 后，调用 <code>Task.addChild(ActivityRecord, POSITION_TOP)</code> 挂入树：</p>
+
+  <div class="code-block">
+    <div class="filename">Task.addChild()</div>
+    <pre>
+<span class="cm">// ActivityRecord 作为子节点挂入 Task</span>
+<span class="kw">void</span> <span class="fn">addChild</span>(WindowContainer child, <span class="kw">int</span> index) {
+    index = getAdjustedChildPosition(child, index);
+    <span class="kw">super</span>.addChild(child, index);  <span class="cm">// → WindowContainer.addChild → 插入 mChildren</span>
+
+    <span class="cm">// 更新 Task 元数据</span>
+    <span class="kw">final</span> ActivityRecord r = child.asActivityRecord();
+    <span class="kw">if</span> (r == null) <span class="kw">return</span>;
+    r.inHistory = true;
+    <span class="kw">if</span> (!hadChild) {
+        setActivityType(r.getActivityType());  <span class="cm">// 首个 Activity 决定 Task 的类型</span>
+    }
+}
+      </pre>
+    </div>
+
+  <h3>5.4 最末一步：WindowState 挂到 Token 下</h3>
+
+  <p>无论应用窗口还是系统窗口，最终的 WindowState 都通过 <code>WindowToken.addWindow()</code> 挂入：</p>
+
+  <div class="code-block">
+    <div class="filename">WindowToken.addWindow() — 最终插入</div>
+    <pre>
+<span class="kw">void</span> <span class="fn">addWindow</span>(<span class="kw">final</span> WindowState win) {
+    <span class="kw">if</span> (win.<span class="fn">isChildWindow</span>()) <span class="kw">return</span>;        <span class="cm">// 子窗口挂到父 WindowState</span>
+
+    <span class="kw">if</span> (!mChildren.contains(win)) {
+        <span class="fn">addChild</span>(win, mWindowComparator);   <span class="cm">// ★ 按 baseLayer 排序插入</span>
+        mWmService.mWindowsChanged = true;
+        win.getParent().<span class="fn">assignChildLayers</span>();  <span class="cm">// ★ 递归分配 Surface 层级</span>
+    }
+}
+      </pre>
+    </div>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 三个阶段的树状态 ✦ ✦ ✦</span><br>
+    <strong>阶段① 后：</strong>树 = DisplayArea 层 + TaskDisplayArea（空 Task）<br>
+    <strong>阶段② 后：</strong>树 = 阶段① + WindowToken / ActivityRecord（挂入 Task 或 DA.Tokens）<br>
+    <strong>阶段③ 后：</strong>树 = 阶段② + WindowState（完整）
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p11">六、完整链路一览</h2>
+<div class="card">
+
+  <h3>从系统启动到窗口挂树的完整 DAG</h3>
+
+  <pre class="tree">
+<span class="dim">━━ 系统启动 ━━</span>
+SystemServer → WMS.main() → <span class="kw">new</span> WMS() {
+    mRoot = <span class="kw">new</span> <span class="fn">RootWindowContainer</span>()
+    mDisplayAreaPolicyProvider = DisplayAreaPolicy.Provider.fromResources()
+}
+
+<span class="dim">━━ 显示器注册 ━━</span>
+RootWindowContainer.createDisplay()
+  → <span class="kw">new</span> <span class="fn">DisplayContent</span>() {
+        mDisplayAreaPolicy = mDisplayAreaPolicyProvider
+            .<span class="fn">instantiate</span>(...)                            <span class="cm">// ① DefaultProvider</span>
+              → <span class="kw">new</span> <span class="fn">TaskDisplayArea</span>()                     <span class="cm">// ② 创建 TaskDisplayArea</span>
+              → <span class="kw">new</span> <span class="fn">DisplayAreaPolicyBuilder</span>()            <span class="cm">// ③ Builder</span>
+                  .setRootHierarchy(rootHierarchy
+                      .setImeContainer(imeContainer)
+                      .setTaskDisplayAreas(tdaList)
+                      .addFeature(...))
+                  .<span class="fn">build</span>(wmService)                      <span class="cm">// ④ 入口</span>
+                    → validate()
+                    → rootHierarchy.<span class="fn">build</span>()               <span class="cm">// ⑤ 构建 PendingArea 树</span>
+                    → root.<span class="fn">instantiateChildren</span>(...)       <span class="cm">// ⑥ 转化为真实 DA</span>
+                    → mRoot.<span class="fn">onHierarchyBuilt</span>(...)          <span class="cm">// ⑦ 缓存 layer 查找表</span>
+                    → <span class="kw">return new</span> Result(...)
+    }
+
+<span class="dim">━━ 窗口添加 ━━</span>
+WMS.<span class="fn">addWindow</span>()
+  → getDisplayContentOrCreate()                      <span class="cm">// 确保有 DisplayContent</span>
+  → 查找/创建 WindowToken
+      → <span class="kw">new</span> <span class="fn">WindowToken.Builder</span>(...).build()          <span class="cm">// 新建 token</span>
+      → displayContent.<span class="fn">addWindowToken</span>(token)           <span class="cm">// ★ 系统窗口 token 挂树</span>
+          → findAreaForToken()                       <span class="cm">// O(1) 查 mAreaForLayer</span>
+          → da.<span class="fn">addChild</span>(token)                        <span class="cm">// 挂入 DisplayArea.Tokens</span>
+  → 或 ActivityRecord <span class="kw">new</span> <span class="fn">ActivityRecord</span>(...)
+      → task.<span class="fn">addChild</span>(activityRecord)                <span class="cm">// ★ 应用窗口 token 挂树</span>
+  → <span class="kw">new</span> <span class="fn">WindowState</span>(...)                             <span class="cm">// 创建窗口</span>
+  → win.mToken.<span class="fn">addWindow</span>(win)                          <span class="cm">// ★ WindowState 挂树</span>
+      → addChild(win, mWindowComparator)             <span class="cm">// 按 baseLayer 插入 mChildren</span>
+  → win.getParent().<span class="fn">assignChildLayers</span>()               <span class="cm">// 递归分配 Surface Z-order</span>
+  </pre>
+
+</div>
+
+<!-- ============================================================ -->
+<h2 id="p12">七、源码速查</h2>
+<div class="card">
+
+  <div class="code-block">
+    <div class="filename">WSL AOSP 12 关键代码定位</div>
+    <pre>
+<span class="cm"># DISPLAY AREA 层级构建的核心算法</span>
+cat /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/DisplayAreaPolicyBuilder.java
+
+<span class="cm"># DefaultProvider 定义层级规则</span>
+grep -n "class DefaultProvider" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/DisplayAreaPolicy.java
+
+<span class="cm"># DisplayContent 初始化链</span>
+grep -n "mDisplayAreaPolicy\|instantiate" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/DisplayContent.java
+
+<span class="cm"># RootDisplayArea 的 layer 查找缓存</span>
+grep -n "mAreaForLayer\|onHierarchyBuilt" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/RootDisplayArea.java
+
+<span class="cm"># WindowToken / WindowState 的挂树方法</span>
+grep -n "addWindow\|addChild" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/WindowToken.java
+grep -n "addWindow" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/WindowManagerService.java
+
+<span class="cm"># Feature 构建（窗口类型 → layer 映射）</span>
+grep -rn "class Feature\|static class Builder" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/DisplayAreaPolicyBuilder.java
+
+<span class="cm"># PendingArea 临时树</span>
+grep -rn "class PendingArea" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/DisplayAreaPolicyBuilder.java
+    </pre>
+  </div>
+
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android 窗口层级专题 | <strong>02 — 窗口树是怎样建起来的：DisplayAreaPolicyBuilder 构建算法</strong></p>
+  <p>基于 AOSP 12（android-12.0.0_r32）· WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实</p>
+  <p style="margin-top:10px;"><a href="01-窗口树全景.html">← 01 窗口树全景</a> &nbsp;|&nbsp; <strong>02 窗口树是怎样建起来的 ← 你在这</strong> &nbsp;|&nbsp; <a href="03-窗口刷新与事务提交.html">03 窗口刷新 →</a></p>
+  <p style="margin-top:8px;"><a href="index.html">🏠 系列导航</a> &nbsp;|&nbsp; <a href="WMS学习路线图.html">🗺️ 学习路线图</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📌 下篇预告：03 窗口刷新 — WindowSurfacePlacer 总调度、forAllWindows 遍历、assignChildLayers 与事务提交</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

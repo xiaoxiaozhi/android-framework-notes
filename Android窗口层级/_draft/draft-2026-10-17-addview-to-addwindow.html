@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>窗口的诞生：从 WindowManagerGlobal#addView 到窗口上树（临时稿）— AOSP 12 源码深度分析</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+      --draft-bg: #fdecea; --draft-border: #c44536;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+      --draft-bg: #2a1c1c; --draft-border: #e0755a;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol","Apple Symbols",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:30px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .draft-note { border:1px dashed var(--draft-border); background:var(--draft-bg); border-radius:8px; padding:12px 18px; margin-bottom:24px; font-size:.88rem; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .think .qtag { color:var(--accent3); font-weight:bold; }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🪟 窗口的诞生：从 <code>WindowManagerGlobal#addView</code> 到窗口上树</h1>
+<p class="subtitle">App 进程侧窗口总入口 → 一次 binder → system_server 准入审查 → WindowState 挂进 WindowContainer 树 · 基于 <code>android-12.0.0_r32</code> 源码现地核实</p>
+<p class="series">📚 Android 窗口层级专题（拟 06 篇·生命周期开篇） | 主线阶段 2：Activity/Task 与窗口生命周期</p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="draft-note">
+  📝 <strong>临时稿（_draft）</strong>：本文件尚未分配系列编号、未放入正式目录、未更新 index.html。请直接在本文件上审阅修改；改完后由你下发正式落盘命令，再以本文件为唯一准稿续编号并入系列。生成日期 2026-10-17。
+</div>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p0">〇、全景：一次 addView 的七跳地图</a>
+  <a href="#p1">一、客户端台账：WindowManagerGlobal 的三个并行 List</a>
+  <a href="#p2">二、客户端 addView：校验 / dying 竞态 / 登记点火</a>
+  <a href="#p3">三、跨进程：Session 只是薄桩</a>
+  <a href="#p4">四、服务端准入：锁外权限 + 锁内 Display/重复/父窗口校验</a>
+  <a href="#p5">五、最关键分叉：WindowToken 解析或创建</a>
+  <a href="#p6">六、构造 WindowState：子窗口在构造函数里上树</a>
+  <a href="#p7">七、不可返回点：登记两张表</a>
+  <a href="#p8">八、顶层窗口上树与外围状态收尾</a>
+  <a href="#p9">九、跨站闭环：BadTokenException 完整因果链</a>
+  <a href="#p10">十、源码速查</a>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p0">〇、全景：一次 addView 的七跳地图</h2>
+
+<div class="card">
+  <p>本篇把两站连成一条完整链路：<strong>一个裸 View 怎么在 App 进程里变成“窗口台账”中的一条记录，又怎么跨过 binder 在 system_server 里变成挂在窗口树上的 WindowState</strong>。</p>
+
+  <div class="tree">App 进程                                   system_server
+─────────────────────────────────────────────────────────────────────────
+WindowManagerImpl.addView                  WindowManagerImpl.java:131
+└─ WindowManagerGlobal.addView             WindowManagerGlobal.java:321
+     ├─ new ViewRootImpl（线程绑定）         ViewRootImpl.java:766/781
+     └─ ViewRootImpl.setView                ViewRootImpl.java:1000
+          ├─ requestLayout()（先排首遍遍历）  :1096
+          └─ mWindowSession.addToDisplayAsUser :1119
+               ─── binder ────────────────▶  Session.addToDisplayAsUser  Session.java:200
+                                             └─ WMS.addWindow            WMS.java:1457
+                                                  1. checkAddPermission（锁外）
+                                                  2. synchronized(mGlobalLock) {
+                                                       Display/重复/父窗口校验
+                                                       WindowToken 解析或创建
+                                                       new WindowState  ← 子窗口在此上树
+                                                       openInputChannel
+                                                       win.attach + mWindowMap.put
+                                                       mToken.addWindow  ← 顶层窗口在此上树
+                                                       焦点/IME/Z/输入/insets
+                                                     }
+                                                  3. return res（错误码，不抛异常）</div>
+
+  <div class="annotation">
+    <p><span class="tag">一句话模型</span> 客户端维护“View ↔ ViewRootImpl ↔ LayoutParams”三本按下标对齐的台账；服务端在一把 <code>mGlobalLock</code> 内完成“准入 → 认容器（token）→ 造对象 → 挂树 → 通知外围”。<strong>上树 ≠ 显示</strong>：本篇结束时窗口有树位、有层级、有输入通道，但没有 frame、没有 Surface 内容，要等下一站 <code>relayoutWindow</code>。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p1">一、客户端台账：WindowManagerGlobal 的三个并行 List</h2>
+
+<div class="card">
+  <p><code>WindowManagerGlobal</code> 是进程内单例（:172 <code>getInstance()</code>），一个 App 进程的所有窗口都登记在它的四个字段里：</p>
+
+  <div class="code-block">
+    <div class="filename">WindowManagerGlobal.java:153-159</div>
+    <pre><span class="kw">private final</span> ArrayList&lt;View&gt; mViews = <span class="kw">new</span> ArrayList&lt;&gt;();                 <span class="cm">// 每个窗口的根 View</span>
+<span class="kw">private final</span> ArrayList&lt;ViewRootImpl&gt; mRoots = <span class="kw">new</span> ArrayList&lt;&gt;();         <span class="cm">// 与 mViews 按下标一一对应</span>
+<span class="kw">private final</span> ArrayList&lt;WindowManager.LayoutParams&gt; mParams = <span class="kw">new</span> ArrayList&lt;&gt;(); <span class="cm">// 同样按下标对齐</span>
+<span class="kw">private final</span> ArraySet&lt;View&gt; mDyingViews = <span class="kw">new</span> ArraySet&lt;&gt;();             <span class="cm">// 已请求删除、MSG_DIE 还没跑完的 View</span></pre>
+  </div>
+
+  <p><strong>这段在干什么</strong>：同一下标 <code>i</code> 在三个 List 里描述同一个窗口；<code>mDyingViews</code> 是“正在死”的过渡集合。全篇的异常处理都围绕这套下标对齐展开。</p>
+  <p><strong>设计意图</strong>：<code>mLock</code>（:151）保护的只是 App 进程内这三本账，<strong>与 system_server 里 ATMS.java:362 的 <code>mGlobalLock</code> 毫无关系</strong>——两把锁分处两个进程，别混淆。</p>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p2">二、客户端 addView：校验 / dying 竞态 / 登记点火</h2>
+
+<div class="card">
+  <p>入口 <code>WindowManagerGlobal#addView(View, LayoutParams, Display, Window parentWindow, int userId)</code>（:321），上游是 <code>WindowManagerImpl#addView</code>（:131，持有默认 Display 与 parentWindow 的薄封装）。</p>
+
+  <h3>块 A：入参校验与参数继承（:321-347）</h3>
+  <div class="code-block">
+    <div class="filename">WindowManagerGlobal.java:321-347（裁剪）</div>
+    <pre><span class="kw">if</span> (view == <span class="kw">null</span>) <span class="kw">throw new</span> IllegalArgumentException(<span class="cm">"view must not be null"</span>);
+<span class="kw">if</span> (display == <span class="kw">null</span>) <span class="kw">throw new</span> IllegalArgumentException(<span class="cm">"display must not be null"</span>);
+<span class="kw">if</span> (!(params <span class="kw">instanceof</span> WindowManager.LayoutParams))
+    <span class="kw">throw new</span> IllegalArgumentException(<span class="cm">"Params must be WindowManager.LayoutParams"</span>);
+<span class="cm">// ① why 强转前先验类型：跨 binder 传给 WMS 的必须是 WindowManager.LayoutParams（Parcelable 协议）</span>
+
+<span class="kw">final</span> WindowManager.LayoutParams wparams = (WindowManager.LayoutParams) params;
+<span class="kw">if</span> (parentWindow != <span class="kw">null</span>) {
+    parentWindow.<span class="fn">adjustLayoutParamsForSubWindow</span>(wparams);
+    <span class="cm">// ② why 子窗口（Dialog/Popup）：type、token、硬件加速标志都要从父窗口继承，</span>
+    <span class="cm">//    否则到 WMS 会因 token 对不上而 ADD_BAD_SUBWINDOW_TOKEN</span>
+} <span class="kw">else</span> {
+    <span class="kw">final</span> Context context = view.getContext();
+    <span class="kw">if</span> (context != <span class="kw">null</span>
+            &amp;&amp; (context.getApplicationInfo().flags
+                    &amp; ApplicationInfo.FLAG_HARDWARE_ACCELERATED) != <span class="num">0</span>) {
+        wparams.flags |= WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
+        <span class="cm">// ③ why 顶级窗口只能在这里把 manifest 的硬件加速设置翻译成窗口 flag——</span>
+        <span class="cm">//    之后渲染管线（ThreadedRenderer）只认这个 flag，不再回头看 manifest</span>
+    }
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：挡住非法入参；子窗口从父窗口继承属性，顶级窗口从 manifest 翻译硬件加速标志。</p>
+  <div class="pitfall">
+    <p><span class="tag">🐛 实战</span> 自己用 WindowManager 加的裸 View 若 Context 取错（非 Activity context 且 application 未开硬件加速），③ 的 flag 缺失，渲染走软件管线或行为异常。排查时 <code>dumpsys window windows</code> 看该窗口 flags 与预期是否一致。</p>
+  </div>
+
+  <h3>块 B：重复添加检查与 dying-view 竞态（:365-387）</h3>
+  <div class="code-block">
+    <div class="filename">WindowManagerGlobal.java:365-387（裁剪）</div>
+    <pre><span class="kw">int</span> index = <span class="fn">findViewLocked</span>(view, <span class="kw">false</span>);
+<span class="kw">if</span> (index &gt;= <span class="num">0</span>) {
+    <span class="kw">if</span> (mDyingViews.contains(view)) {
+        <span class="cm">// ① why 同一 View 的 removeView 还没跑完（MSG_DIE 排队中）又被 add 回来：</span>
+        <span class="cm">//    典型于 PopupWindow 快速 dismiss/show。不等消息，立刻同步 doDie 清掉旧根，</span>
+        <span class="cm">//    让本次 add 复用这个下标继续往下走</span>
+        mRoots.get(index).<span class="fn">doDie</span>();
+    } <span class="kw">else</span> {
+        <span class="kw">throw new</span> IllegalStateException(<span class="cm">"View " + view + " has already been added..."</span>);
+        <span class="cm">// ② 一个 View 同一时刻只能挂一个 ViewRootImpl，著名异常的出处</span>
+    }
+}
+<span class="cm">// … 省略：FIRST_SUB_WINDOW..LAST_SUB_WINDOW 区间（379-387），遍历 mRoots 按 wparams.token</span>
+<span class="cm">//   反查父 View，仅子窗口（Panel/Dialog）走，产物只有一个 panelParentView 传给 setView</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：拒绝重复登记；唯独“旧窗口正在异步死亡”这一种竞态被同步清理后放行。</p>
+  <p><strong>设计意图</strong>：删除路径 <code>removeView → removeViewLocked(index, immediate)</code>（:492）→ <code>root.die()</code>（ViewRootImpl.java:8117）非立即模式只发 <code>MSG_DIE</code> 并把 View 放进 <code>mDyingViews</code>，真正从三本账摘除发生在之后的 <code>doRemoveView</code>（:508）。这个“延迟死亡”就是 dying 分支存在的原因。</p>
+  <div class="pitfall">
+    <p><span class="tag">🐛 实战</span> <code>IllegalStateException: View ... has already been added to the window manager</code>：同一 DecorView/Popup 的 contentView 被 add 两次且旧的还没 remove 完。注意 dying 分支只救“remove 已发起”的竞态；没发起过 remove 就是硬异常。快速 dismiss/show 的 PopupWindow、把一个 View 复用加进多个 WindowManager 都会踩。</p>
+  </div>
+  <div class="think"><span class="qtag">🧠 思考（单块）</span> 块 B 对 dying-view 调的是 <code>doDie()</code> 而不是 <code>die(false)</code>。结合 <code>die()</code>（ViewRootImpl.java:8117：非遍历中才同步 doDie，否则只 sendEmptyMessage(MSG_DIE)）想：这里为什么必须同步死，而不能只发 MSG_DIE 排队？</div>
+  <details><summary>参考答案</summary><div class="ans">本次 addView 紧接着就要在同一下标上 <code>new ViewRootImpl</code> 并重新登记（块 C）。若只发 MSG_DIE，旧根要到后续主线程消息轮次才真正 <code>doDie → doRemoveView</code>，届时它会把<strong>新</strong>根按旧下标从 mRoots/mViews/mParams 里摘掉（三本账按下标对齐，不区分新旧）。同步 doDie 保证“旧根在新根登记前彻底出账”，把下标腾干净。</div></details>
+
+  <h3>块 C：建根、登记、最后才 setView（:389-407）</h3>
+  <div class="code-block">
+    <div class="filename">WindowManagerGlobal.java:389-407</div>
+    <pre>root = <span class="kw">new</span> <span class="fn">ViewRootImpl</span>(view.getContext(), display);
+<span class="cm">// ① why 在这 new：构造里 mThread = Thread.currentThread()（ViewRootImpl.java:781），</span>
+<span class="cm">//    从此这个窗口的所有操作都被 checkThread() 绑死在当前线程（主线程）。</span>
+<span class="cm">//    “子线程弹 Toast/更新 UI 崩溃”的根子在这一刻埋下</span>
+
+view.<span class="fn">setLayoutParams</span>(wparams);
+
+mViews.add(view);
+mRoots.add(root);
+mParams.add(wparams);
+<span class="cm">// ② why 先登记后 setView：三本账必须先按下标对齐；setView 一发出，系统事件（配置变更、</span>
+<span class="cm">//    insets、die）随时可能重入 WindowManagerGlobal 反查这个 root</span>
+
+<span class="cm">// do this last because it fires off messages to start doing things</span>
+<span class="kw">try</span> {
+    root.<span class="fn">setView</span>(view, wparams, panelParentView, userId);   <span class="cm">// ③ 真正“点火”，见块 D</span>
+} <span class="kw">catch</span> (RuntimeException e) {
+    <span class="kw">if</span> (index &gt;= <span class="num">0</span>) {
+        <span class="fn">removeViewLocked</span>(index, <span class="kw">true</span>);   <span class="cm">// ④ BadToken/InvalidDisplay：回滚登记</span>
+    }
+    <span class="kw">throw</span> e;
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：创建 ViewRootImpl 并完成线程绑定，先把三本账登记好，最后调 <code>setView</code> 启动窗口；失败则用进入同步块时算好的旧 <code>index</code> 回滚。</p>
+  <p><strong>设计意图</strong>：源码注释 <em>“do this last because it fires off messages”</em> 点明了顺序——setView 之后系统回调随时可能重入，台账必须先就位。这与服务端“先 <code>mWindowMap.put</code> 后挂树”是同一个防御思路在两个进程的对称出现（见第七、八节）。</p>
+  <div class="think"><span class="qtag">🧠 思考（单块）</span> 若把三个 <code>add(...)</code> 挪到 setView 成功之后（看似更省回滚），会破坏什么？catch 里为什么用进入同步块时的旧 <code>index</code>，而不是重新 <code>findViewLocked</code>？</div>
+  <details><summary>参考答案</summary><div class="ans">(1) setView 内 <code>addToDisplayAsUser</code> 返回后，窗口可能立刻收到 relayout/配置/insets 等回调，这些回调经 ViewRootImpl 重入 WMG 按 View 反查 root；若尚未登记，反查失败，出现“系统侧已在册、客户端查无此窗”的不一致。(2) 新登记位置一定在列表尾部，但在 dying-view 竞态 + 列表中还有别的窗口时，重新查找拿到的是新根下标，而需要回滚的正是新根本身——代码用旧 index 在“非竞态的重复添加”场景其实恒为 -1（那条路直接抛异常了），真正走到 catch 的常规路径 index 就是新登记位。关键是回滚语义要对准“本次刚加的那一条”，旧 index 在 doDie 同步清理后正好等于新根位置；重新查找反而引入歧义。</div></details>
+
+  <h3>块 D：下游点火——先排首遍布局，再跨进程加窗（ViewRootImpl.java:1096-1123，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">ViewRootImpl.java:1096-1123（裁剪）</div>
+    <pre><span class="cm">// Schedule the first layout -before- adding to the window manager,</span>
+<span class="cm">// to make sure we do the relayout before receiving any other events from the system.</span>
+<span class="fn">requestLayout</span>();                       <span class="cm">// ① 只是 schedule：往主线程队列排一次 traversal</span>
+<span class="cm">// … 省略：无 NO_INPUT_CHANNEL 标志时 new InputChannel()（1099-1102），这条“电话线”将在</span>
+<span class="cm">//   WMS.addWindow 里被 openInputChannel 接通（05 篇输入链路的上游）</span>
+mOrigWindowType = mWindowAttributes.type;
+res = mWindowSession.<span class="fn">addToDisplayAsUser</span>(mWindow, mWindowAttributes,
+        getHostVisibility(), mDisplay.getDisplayId(), userId,
+        mInsetsController.getRequestedVisibility(), inputChannel, mTempInsets,
+        mTempControls);                <span class="cm">// ② binder 跨进 system_server → Session → WMS</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：先往主线程队列排首遍 traversal，再带著 out 型参数（InputChannel、InsetsState、InsetsSourceControl[]）发起唯一一次跨进程添加调用。</p>
+  <p><strong>设计意图</strong>：<code>requestLayout</code> 先于 binder 调用是刻意的——调用返回后窗口随时可能收到 relayout/insets/配置事件，提前排队保证首帧绘制（measure/layout/draw 里带 relayout）先于其它系统事件被处理，避免“窗口已注册但根布局没准备好”的空窗。</p>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p3">三、跨进程：Session 只是薄桩</h2>
+
+<div class="card">
+  <p>binder 在 system_server 的落点是<strong>每进程一个</strong>的 <code>Session</code>。</p>
+  <div class="code-block">
+    <div class="filename">Session.java:200-207</div>
+    <pre>@Override
+<span class="kw">public int</span> <span class="fn">addToDisplayAsUser</span>(IWindow window, WindowManager.LayoutParams attrs,
+        <span class="kw">int</span> viewVisibility, <span class="kw">int</span> displayId, <span class="kw">int</span> userId, InsetsState requestedVisibility,
+        InputChannel outInputChannel, InsetsState outInsetsState,
+        InsetsSourceControl[] outActiveControls) {
+    <span class="kw">return</span> mService.<span class="fn">addWindow</span>(<span class="kw">this</span>, window, attrs, viewVisibility, displayId, userId,
+            requestedVisibility, outInputChannel, outInsetsState, outActiveControls);
+}
+<span class="cm">// ① why 不做任何校验：Session 只携带进程身份（mUid、mCanAddInternalSystemWindow），</span>
+<span class="cm">//    逐窗口决策必须集中到持锁、持树的 WMS，权限/层级策略才不会在多个入口分叉</span></pre>
+  </div>
+  <p><strong>在主线中的位置</strong>：<code>IWindowSession#addToDisplayAsUser</code>（客户端代理）→ <strong>Session 薄桩</strong>（进程身份）→ <code>WMS#addWindow</code>（准入 + 建档）。三个重载——<code>Session#addToDisplay</code>（Session.java:189）、<code>Session#addToDisplayAsUser</code>（Session.java:200，本篇走的就是这个）、<code>Session#addToDisplayWithoutInputChannel</code>（Session.java:209）——只差“有无输入通道、是否指定 userId”，校验逻辑零重复地收敛到 WMS 一处。（括号里的 <code>:189</code> 这类数字是源码行号锚点，不是方法名的一部分。）</p>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p4">四、服务端准入：锁外权限 + 锁内 Display/重复/父窗口校验</h2>
+
+<div class="card">
+  <p><code>WMS#addWindow</code>（:1457）是本篇最长的方法，按“能不能加 → 加到哪个容器 → 造对象挂树”三段读。</p>
+  <div class="code-block">
+    <div class="filename">WindowManagerService.java:1464-1513（裁剪）</div>
+    <pre><span class="kw">int</span> res = mPolicy.<span class="fn">checkAddPermission</span>(attrs.type, isRoundedCornerOverlay,
+        attrs.packageName, appOp);        <span class="cm">// ① PhoneWindowManager 查 SYSTEM_ALERT_WINDOW/AppOps</span>
+<span class="kw">if</span> (res != ADD_OKAY) <span class="kw">return</span> res;        <span class="cm">//    放锁外：AppOps 可能触发跨进程查询，不能持全局锁</span>
+
+<span class="kw">final long</span> origId = Binder.<span class="fn">clearCallingIdentity</span>();  <span class="cm">// ② 此后以 system_server 身份干活</span>
+<span class="kw">synchronized</span> (mGlobalLock) {
+    <span class="kw">final</span> DisplayContent displayContent = <span class="fn">getDisplayContentOrCreate</span>(displayId, attrs.token);
+    <span class="kw">if</span> (displayContent == <span class="kw">null</span>) <span class="kw">return</span> ADD_INVALID_DISPLAY;
+    <span class="kw">if</span> (!displayContent.<span class="fn">hasAccess</span>(session.mUid)) <span class="kw">return</span> ADD_INVALID_DISPLAY; <span class="cm">// ③ 多屏访问权</span>
+
+    <span class="kw">if</span> (mWindowMap.<span class="fn">containsKey</span>(client.asBinder()))
+            <span class="kw">return</span> ADD_DUPLICATE_ADD;   <span class="cm">// ④ 同一 IWindow client 不能注册两次</span>
+
+    <span class="kw">if</span> (type &gt;= FIRST_SUB_WINDOW &amp;&amp; type &lt;= LAST_SUB_WINDOW) {
+        parentWindow = <span class="fn">windowForClientLocked</span>(<span class="kw">null</span>, attrs.token, <span class="kw">false</span>);
+        <span class="kw">if</span> (parentWindow == <span class="kw">null</span>) <span class="kw">return</span> ADD_BAD_SUBWINDOW_TOKEN;
+        <span class="kw">if</span> (parentWindow.mAttrs.type &gt;= FIRST_SUB_WINDOW
+                &amp;&amp; parentWindow.mAttrs.type &lt;= LAST_SUB_WINDOW)
+            <span class="kw">return</span> ADD_BAD_SUBWINDOW_TOKEN; <span class="cm">// ⑤ 子窗口必须挂在“已存在的顶层窗口”上，不能子挂子</span>
+    }
+    <span class="cm">// … 省略：PRIVATE_PRESENTATION/PRESENTATION 显示屏类型校验（1522-1533）、</span>
+    <span class="cm">//   跨 userId 的 handleIncomingUser（1538-1547），同理都是 return 错误码</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：进树前第一轮准入——“有没有权加、屏存不存在、是不是重复加、子窗口的爹在不在”。</p>
+  <p><strong>设计意图</strong>：权限放锁外、进锁前 <code>clearCallingIdentity</code>、出锁 <code>restoreCallingIdentity</code>（:1864），是贯穿线“持 mGlobalLock 不做跨进程回调”的标准姿势。所有失败一律 <code>return ADD_xxx</code>，此刻树里没有任何半成品。</p>
+  <div class="pitfall">
+    <p><span class="tag">🐛 实战 1</span> <strong>悬浮窗加不上（ADD_PERMISSION_DENIED）</strong>：因果在 ①。<code>TYPE_APPLICATION_OVERLAY</code> 要 <code>SYSTEM_ALERT_WINDOW</code> 权限 <strong>且</strong> AppOps 开关打开（设置→“显示在其他应用上层”）；内部系统窗口类型还要 <code>session.mCanAddInternalSystemWindow</code>。查：<code>adb shell appops get &lt;pkg&gt; SYSTEM_ALERT_WINDOW</code>。</p>
+    <p><span class="tag">🐛 实战 2</span> <strong>Dialog/Popup 偶现 ADD_BAD_SUBWINDOW_TOKEN</strong>：因果在 ⑤。父窗口还没 add 成功（mWindowMap 查不到），或 token 设成了另一个子窗口。高发于 PopupWindow 复用旧 token、Activity 重建后仍拿旧 DecorView。查：开 <code>WindowManager:V</code> ProtoLog 看 “token that is not a window”，对照父窗口 add/remove 时序。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p5">五、最关键分叉：WindowToken 解析或创建</h2>
+
+<div class="card">
+  <div class="code-block">
+    <div class="filename">WindowManagerService.java:1557-1606（裁剪）</div>
+    <pre>WindowToken token = ***<span class="fn">getWindowToken</span>(
+        hasParent ? parentWindow.mAttrs.token : attrs.token);
+<span class="kw">final int</span> rootType = hasParent ? parentWindow.mAttrs.type : type;
+<span class="cm">// ① why 子窗口直接复用父窗口的 token：Dialog 必须和 Activity 同 token，</span>
+<span class="cm">//    可见性/配置/动画策略才成组作用</span>
+
+<span class="kw">if</span> (token == <span class="kw">null</span>) {
+    <span class="kw">if</span> (!<span class="fn">unprivilegedAppCanCreateTokenWith</span>(parentWindow, callingUid, type,
+            rootType, attrs.token, attrs.packageName))
+        <span class="kw">return</span> ADD_BAD_APP_TOKEN;       <span class="cm">// ② 应用窗口类型绝不允许凭空造 token</span>
+    token = *** WindowToken.Builder(<span class="kw">this</span>, binder, type)
+            .setDisplayContent(displayContent)
+            .setOwnerCanManageAppTokens(session.mCanAddInternalSystemWindow)
+            .build();                     <span class="cm">// ③ 系统窗口（壁纸/Toast/IME…）允许自带 token 建容器</span>
+} <span class="kw">else if</span> (rootType &gt;= FIRST_APPLICATION_WINDOW &amp;&amp; rootType &lt;= LAST_APPLICATION_WINDOW) {
+    activity = token.<span class="fn">asActivityRecord</span>();
+    <span class="kw">if</span> (activity == <span class="kw">null</span>) <span class="kw">return</span> ADD_NOT_APP_TOKEN;
+    <span class="kw">if</span> (activity.getParent() == <span class="kw">null</span>) <span class="kw">return</span> ADD_APP_EXITING;
+    <span class="cm">// ④ token 必须是一个还挂在 Task 上的 ActivityRecord——</span>
+    <span class="cm">//    Activity destroy 后再弹 Dialog 就死在这行</span>
+}
+<span class="cm">// … 省略：TYPE_INPUT_METHOD/TYPE_WALLPAPER/TYPE_TOAST/TYPE_QS_DIALOG/VOICE_INTERACTION/</span>
+<span class="cm">//   ACCESSIBILITY_OVERLAY 的 token 类型一致性校验（1608-1659），不匹配各自 ADD_BAD_APP_TOKEN；</span>
+<span class="cm">//   TYPE_TOAST 还在 1707-1721 排程 WINDOW_HIDE_TIMEOUT，并受每 UID 同时只许一个 toast 限制</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：决定新窗口落到哪个容器（WindowToken）。三条出路——复用已有 token；允许系统窗口新建 token；应用窗口必须认到一个活着的 ActivityRecord。</p>
+  <p><strong>设计意图</strong>：token 是 WMS 树里“一组窗口”的身份单元（02 篇：<code>WindowToken extends WindowContainer&lt;WindowState&gt;</code>，WindowToken.java:71）。应用自己的 IBinder 只有在 AMS startActivity 时才被系统建成 ActivityRecord，应用窗口无法伪造容器——这是窗口归属安全的核心一道闸。</p>
+  <div class="pitfall">
+    <p><span class="tag">🐛 实战</span> <strong>BadTokenException: ... is your activity running?</strong> 客户端文案只有一种，服务端码至少两种：<code>ADD_BAD_APP_TOKEN</code>（②，token 在 DisplayContent 上根本查不到，常见于系统窗口乱传 application context 的 token）与 <code>ADD_APP_EXITING</code>（④，ActivityRecord 已脱离 Task）。查：<code>dumpsys window windows | grep &lt;activity&gt;</code> 看记录还在不在；需要区分时开 WindowManager ProtoLog 看具体返回码。完整跨进程因果链见第九节。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p6">六、构造 WindowState：子窗口在构造函数里上树</h2>
+
+<div class="card">
+  <div class="code-block">
+    <div class="filename">WindowState.java:1100-1150（裁剪）</div>
+    <pre><span class="kw">if</span> (mAttrs.type &gt;= FIRST_SUB_WINDOW &amp;&amp; mAttrs.type &lt;= LAST_SUB_WINDOW) {
+    mBaseLayer = mPolicy.<span class="fn">getWindowLayerLw</span>(parentWindow)
+            * TYPE_LAYER_MULTIPLIER + TYPE_LAYER_OFFSET;
+    mSubLayer = mPolicy.<span class="fn">getSubWindowLayerFromTypeLw</span>(a.type); <span class="cm">// ① 子窗口只在父层内排 subLayer</span>
+    mIsChildWindow = <span class="kw">true</span>;
+    <span class="cm">// … 省略：mLayoutAttached / mIsImWindow / mIsWallpaper 继承</span>
+} <span class="kw">else</span> {
+    mBaseLayer = mPolicy.<span class="fn">getWindowLayerLw</span>(<span class="kw">this</span>)
+            * TYPE_LAYER_MULTIPLIER + TYPE_LAYER_OFFSET;
+    mSubLayer = <span class="num">0</span>;
+    mIsChildWindow = <span class="kw">false</span>;
+}
+<span class="cm">// … 省略：mWinAnimator 创建（:1131）、compat scale、isIm/isWallpaper 等字段初始化</span>
+<span class="cm">// Make sure we initial all fields before adding to parentWindow, to prevent</span>
+<span class="cm">// exception during onDisplayChanged.</span>
+<span class="kw">if</span> (mIsChildWindow) {
+    parentWindow.<span class="fn">addChild</span>(<span class="kw">this</span>, sWindowSubLayerComparator);   <span class="cm">// ② 子窗口上树点：直接挂父 WindowState</span>
+}</pre>
+  </div>
+  <div class="code-block">
+    <div class="filename">WindowManagerService.java:1665-1695（裁剪）</div>
+    <pre><span class="kw">final</span> WindowState win = <span class="kw">new</span> <span class="fn">WindowState</span>(<span class="kw">this</span>, session, client, token, parentWindow,
+        appOp[<span class="num">0</span>], attrs, viewVisibility, session.mUid, userId,
+        session.mCanAddInternalSystemWindow);
+<span class="kw">if</span> (win.mDeathRecipient == <span class="kw">null</span>) <span class="kw">return</span> ADD_APP_EXITING;  <span class="cm">// 客户端 binder 已死</span>
+<span class="cm">// … 省略：displayPolicy.adjustWindowParamsLw（policy 改写 flags，如强行加安全 flag）、</span>
+<span class="cm">//   validateAddingWindowLw（1683-1688）二次校验，失败仍是 return res</span>
+<span class="kw">final boolean</span> openInputChannels = (outInputChannel != <span class="kw">null</span>
+        &amp;&amp; (attrs.inputFeatures &amp; INPUT_FEATURE_NO_INPUT_CHANNEL) == <span class="num">0</span>);
+<span class="kw">if</span> (openInputChannels) win.<span class="fn">openInputChannel</span>(outInputChannel);
+<span class="cm">// ③ 05 篇链路第 1 站：服务端建 InputChannel 一对，对端经 out 参数回传 App</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：把客户端参数物化成服务端 WindowState 并定好基础层级；<strong>子窗口在这一步已经挂到父 WindowState 名下</strong>；同时接通输入“电话线”。</p>
+  <p><strong>设计意图</strong>：注释 ② 上那句 “initial all fields before adding” 防御半初始化对象——<code>addChild</code> 会立刻让节点对遍历/配置回调可见，字段必须先齐。注意它防的是“字段半初始化”，防不了 addChild 之后再抛异常（见思考题）。</p>
+  <div class="think"><span class="qtag">🧠 思考（单块）</span> 若 <code>parentWindow.addChild(this, ...)</code> 成功后构造函数剩余语句抛异常，窗口树会留下什么？WMS 调用方还能靠返回错误码干净回滚吗？注释承诺的保护边界到哪里为止？</div>
+  <details><summary>参考答案</summary><div class="ans">树里会留下一个已挂载但后续字段（mWinAnimator 等）可能未初始化完的 WindowState，而 mWindowMap 尚未 put（第七节才做），它成了“在树但查不到、无人回收”的孤儿节点。调用方拿异常而非错误码，块 D 第二段没有 try/catch 兜底，异常会直接穿回 binder 给客户端，服务端这一侧不会自动把它从父窗口摘除。注释只保证“addChild 之前字段初始化完，使 addChild 触发的 onDisplayChanged 等回调不读到半字段”，并不能保证 addChild 之后的代码不抛异常——这也是为什么 addChild 被刻意放在构造函数极靠后、其后只剩注册配置监听等少量代码的原因。</div></details>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p7">七、不可返回点：登记两张表</h2>
+
+<div class="card">
+  <div class="code-block">
+    <div class="filename">WindowManagerService.java:1743-1777（裁剪）</div>
+    <pre><span class="cm">// From now on, no exceptions or errors allowed!</span>
+res = ADD_OKAY;                          <span class="cm">// ① 全部准入审查到此结束</span>
+<span class="cm">// … 省略：BLAST flag、mWinAddedSinceNullFocus、mTapExcludedWindows 登记</span>
+win.<span class="fn">attach</span>();                            <span class="cm">// ② WindowState.attach()（:1171）只做一件事：</span>
+                                         <span class="cm">//    mSession.windowAddedLocked()，让 Session 记下名下有活窗口</span>
+                                         <span class="cm">//    （进程死亡清理/IME 计数要用）</span>
+mWindowMap.<span class="fn">put</span>(client.asBinder(), win);  <span class="cm">// ③ 全局 client binder → WindowState 反查表，</span>
+                                         <span class="cm">//    后续 relayout/remove/按键投递全靠它定位 win</span>
+win.<span class="fn">initAppOpsState</span>();
+<span class="cm">// … 省略：挂起隐藏/非系统 overlay 强隐（1762-1766）、TYPE_APPLICATION_STARTING 登记到</span>
+<span class="cm">//   ActivityRecord.mStartingWindow（1769-1773）</span>
+win.mToken.<span class="fn">addWindow</span>(win);               <span class="cm">// ④ 顶层窗口上树点（细节见第八节）</span>
+displayPolicy.<span class="fn">addWindowLw</span>(win, attrs);   <span class="cm">// ⑤ PhoneWindowManager 侧登记（状态栏/按键策略要用）</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：窗口从“候选人”变成“在册窗口”——Session 计数、全局反查表、树上挂载、策略登记，四笔副作用依次落定。</p>
+  <p><strong>设计意图</strong>：<code>mWindowMap.put</code> 先于 <code>mToken.addWindow</code>：树插入后可能立刻触发子节点位置/配置回调重入查询 win，反查表必须先就位——与第二节客户端“先登记后 setView”在两侧对称。① 那句注释是全方法分水岭：此前全是可拒绝的校验，此后全是保证成功的副作用。</p>
+  <div class="think"><span class="qtag">🧠 思考（单块）</span> 假如把 <code>mWindowMap.put</code> 之后、<code>mToken.addWindow</code> 之前改回“可失败返回错误码”，客户端 catch 回滚后，服务端会留下什么脏状态？为什么“在册但不在树”比直接崩溃更难排查？</div>
+  <details><summary>参考答案</summary><div class="ans">mWindowMap 里已有该 client → WindowState，后续 relayout/remove/按键投递都能查到它，但它不在任何 WindowToken 的 mChildren 里：不参与布局遍历、不参与层级/Z/可见性计算、dump 窗口树时不可见，却占着 client binder（重复 add 会撞 ADD_DUPLICATE_ADD）、持有 InputChannel 与死亡监听。它不会崩溃，也没有任何正常路径能把它清掉（removeWindow 按树查找反而可能找不到），成为静默泄漏。相比之下快速崩溃有明确栈和现场，这种“幽灵在册”只表现为后续莫名的重复添加/输入异常，排查成本高得多。所以源码用“no exceptions or errors allowed”把此后全部设计成不可能失败的纯内存操作。</div></details>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p8">八、顶层窗口上树与外围状态收尾</h2>
+
+<div class="card">
+  <h3>块 F-1：WindowToken.addWindow——真正插入 WindowContainer 树</h3>
+  <div class="code-block">
+    <div class="filename">WindowToken.java:297-318</div>
+    <pre><span class="kw">void</span> <span class="fn">addWindow</span>(<span class="kw">final</span> WindowState win) {
+    <span class="kw">if</span> (win.<span class="fn">isChildWindow</span>()) {
+        <span class="kw">return</span>;                       <span class="cm">// ① 子窗口在第六节已挂父 WindowState，这里不收</span>
+    }
+    <span class="kw">if</span> (mSurfaceControl == <span class="kw">null</span>) {
+        <span class="fn">createSurfaceControl</span>(<span class="kw">true</span> <span class="cm">/* force */</span>);  <span class="cm">// ② token 容器自身也要有 SurfaceControl 节点</span>
+    }
+    <span class="kw">if</span> (!mChildren.contains(win)) {
+        <span class="fn">addChild</span>(win, mWindowComparator);  <span class="cm">// ③ 真正插入 WindowContainer 树（按 type/layer 排序），</span>
+        mWmService.mWindowsChanged = <span class="kw">true</span>;   <span class="cm">//    02 篇那棵 DisplayArea 树从这里长出叶子</span>
+    }
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：顶层窗口按 <code>mWindowComparator</code> 插进 token 的子列表；若是 WindowContext 造的客户端 token，先确保容器自己的 SurfaceControl 存在。</p>
+
+  <h3>块 F-2：焦点 / IME / Z / 输入 / insets 收尾（WMS.java:1830-1865，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">WindowManagerService.java:1830-1865（裁剪）</div>
+    <pre><span class="kw">if</span> (win.<span class="fn">canReceiveKeys</span>()) {
+    focusChanged = <span class="fn">updateFocusedWindowLocked</span>(UPDATE_FOCUS_WILL_ASSIGN_LAYERS,
+            <span class="kw">false</span> <span class="cm">/*updateInputWindows*/</span>);  <span class="cm">// ① 新窗口可能抢焦点（先只算，暂不喂 native）</span>
+}
+<span class="kw">if</span> (imMayMove) displayContent.<span class="fn">computeImeTarget</span>(<span class="kw">true</span> <span class="cm">/* updateImeTarget */</span>);
+<span class="cm">// Don't do layout here, the window must call relayout to be displayed, so we'll do it there.</span>
+win.getParent().<span class="fn">assignChildLayers</span>();       <span class="cm">// ② 只排 Z，不布局！frame 留给 relayoutWindow</span>
+<span class="kw">if</span> (focusChanged)
+    displayContent.getInputMonitor().<span class="fn">setInputFocusLw</span>(displayContent.mCurrentFocus, <span class="kw">false</span>);
+displayContent.getInputMonitor().<span class="fn">updateInputWindowsLw</span>(<span class="kw">false</span> <span class="cm">/*force*/</span>); <span class="cm">// ③ 快照喂 InputDispatcher</span>
+<span class="kw">if</span> (win.<span class="fn">isVisibleOrAdding</span>() &amp;&amp; displayContent.<span class="fn">updateOrientation</span>())
+    displayContent.<span class="fn">sendNewConfiguration</span>(); <span class="cm">// ④ 新窗口（如 Activity）可能要求转屏</span>
+displayContent.getInsetsStateController().<span class="fn">updateAboveInsetsState</span>(win, <span class="kw">false</span>);
+<span class="fn">getInsetsSourceControls</span>(win, outActiveControls); <span class="cm">// ⑤ insets 控制权回传客户端</span>
+Binder.<span class="fn">restoreCallingIdentity</span>(origId);
+<span class="kw">return</span> res;   <span class="cm">// ⑥ ADD_OKAY 可附带 USE_BLAST / IN_TOUCH_MODE / APP_VISIBLE / ALWAYS_CONSUME_SYSTEM_BARS 等位</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：树变了，通知所有外围子系统——焦点、IME 目标、Z 序、输入窗口快照（05 篇的“交底”在这里被标脏并刷一次）、旋转与 insets，最后带标志位返回。</p>
+  <div class="annotation star3">
+    <p><span class="tag">关键结论：上树 ≠ 显示</span> ② 的注释直说这里不布局。此刻窗口有树位、有层级、有输入通道，但 frame 为空、无 Surface 内容；必须等 App 主线程跑首遍 <code>performTraversals → relayoutWindow</code>。这正好闭环解释第二节块 D 为什么把 <code>requestLayout()</code> 排在 binder 调用之前。焦点也分两步：先 <code>UPDATE_FOCUS_WILL_ASSIGN_LAYERS</code> 只更新逻辑焦点，布局就位后再随输入窗口列表下发。</p>
+  </div>
+  <div class="think"><span class="qtag">🧠 思考（闭环·需结合：第四节块B、第六节、本节）</span> 一个 <code>TYPE_APPLICATION_ATTACHED_DIALOG</code> 走完本方法后：它在树里的父节点是谁？Z 序由哪两个层级值/comparator 决定？此刻它的 frame 是什么值、屏幕位置要到哪个下游调用才确定？</div>
+  <details><summary>参考答案</summary><div class="ans">类型落在 FIRST_SUB_WINDOW..LAST_SUB_WINDOW，第四节块 B 经 <code>windowForClientLocked</code> 找到父顶层窗口（hasParent=true），第五节复用父窗口 token；第六节 <code>mIsChildWindow=true</code>，构造函数里 <code>parentWindow.addChild(this, sWindowSubLayerComparator)</code>——所以<strong>树父节点是父 WindowState，不是 WindowToken</strong>。Z 序由父窗口的 <code>mBaseLayer</code>（getWindowLayerLw × TYPE_LAYER_MULTIPLIER + OFFSET）定大区间、自己的 <code>mSubLayer</code>（getSubWindowLayerFromTypeLw，ATTACHED_DIALOG 为正值，在父窗口之上）定区间内次序，再由本节 <code>assignChildLayers()</code> 一次性赋值。此刻 frame 为空（WindowState 初始 mRequestedWidth/Height=0，未布局），屏幕位置要到下一站 <code>relayoutWindow → computeFrame</code>（阶段 3 主线）才确定；attached 类型 mLayoutAttached=true，frame 还会相对父窗口坐标系计算。</div></details>
+  <div class="pitfall">
+    <p><span class="tag">🐛 实战（闭环·需结合：第七、八节 + 第二节）</span> <strong>加窗口成功但黑屏/ANR、无崩溃</strong>：说明已越过不可返回点、树也上了，但 App 主线程迟迟不跑 relayout（典型 onCreate 里同步耗时）。查：<code>dumpsys window windows</code> 找到该 WindowState，看 <code>relayoutCalled=false</code>、<code>isDrawn=false</code>——这两个值把锅精确指向下一站 relayout 而非 addWindow；再 <code>dumpsys input</code> 看焦点是否已指向它（焦点在它、它不响应 → App 主线程卡；焦点没切过去 → 查焦点/可见性路径，两条路查法不同）。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p9">九、跨站闭环：BadTokenException 的完整因果链</h2>
+
+<div class="card">
+  <p><strong>线上现象</strong>：Activity 在异步回调里 show Dialog，偶现 <code>android.view.WindowManager$BadTokenException</code>，dump 显示该 ActivityRecord 已不在树中。包一层 <code>runOnUiThread</code> 仍偶发。</p>
+  <div class="tree">① Activity 进入销毁，ActivityRecord 从 Task 摘除（getParent() == null）
+② 异步回调（网络/Handler/post）此刻才执行 Dialog.show()
+③ App：WindowManagerGlobal.addView → ViewRootImpl.setView
+     └─ session.addToDisplayAsUser  ── binder ──▶ system_server
+④ WMS.addWindow 第五节两个返回点之一：
+     · token 查不到           → ADD_BAD_APP_TOKEN（:1564）
+     · activity.getParent()==null → ADD_APP_EXITING（:1594）
+⑤ 错误码过 binder 返回（全程无异常抛出）
+⑥ App：ViewRootImpl.setView :1148  res &lt; ADD_OKAY
+     └─ switch(res) 翻译成 BadTokenException 抛出（:1156-1166）
+⑦ WindowManagerGlobal 块 C catch：removeViewLocked(index, true) 回滚三本账
+⑧ 异常继续抛给业务线程 → 崩溃（或被业务 try/catch 吞掉）</div>
+  <p><strong>为什么 runOnUiThread 救不了</strong>：时序卡点不在“是不是主线程调用”，而在 show 执行的那一刻，服务端第五节的 ActivityRecord 是否还挂在 Task 上。Runnable 排队到主线程，完全可能在 destroy 之后才轮到执行。正确判据是生命周期状态：<code>activity.isFinishing() || activity.isDestroyed()</code>（Fragment 用 viewLifecycleOwner 的 RESUMED 状态）时不再弹窗；根治手段是把 UI 操作绑定生命周期（LifecycleObserver / lifecycleScope 自动取消），而不是切线程。</p>
+  <div class="annotation">
+    <p><span class="tag">设计回顾</span> “错误码跨进程、异常在客户端抛”是整条链的统一约定：服务端十几种拒绝原因全用整数码（ViewRootImpl.java:1156-1195 逐码翻译），保证服务端绝不留半成品；客户端在块 C 集中回滚台账并抛出带排查文案的异常。排障时务必用服务端返回码区分 <code>ADD_BAD_APP_TOKEN</code> 与 <code>ADD_APP_EXITING</code>，两者修复方向不同（前者多为 token 传错，后者纯生命周期时序）。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p10">十、源码速查</h2>
+
+<div class="card">
+  <div class="code-block">
+    <div class="filename">WSL AOSP 12 关键定位（grep 后再引用）</div>
+    <pre><span class="cm"># 客户端</span>
+sed -n '321,410p'  /home/book/aosp12/frameworks/base/core/java/android/view/WindowManagerGlobal.java
+sed -n '1000,1200p' /home/book/aosp12/frameworks/base/core/java/android/view/ViewRootImpl.java
+<span class="cm"># 跨进程桩</span>
+sed -n '189,215p'  /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/Session.java
+<span class="cm"># 服务端主方法（约 410 行，分段读）</span>
+sed -n '1457,1870p' /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/WindowManagerService.java
+<span class="cm"># 上树动作</span>
+sed -n '297,320p'  /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/WindowToken.java
+sed -n '1100,1152p' /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/WindowState.java
+<span class="cm"># 设备侧观察</span>
+adb shell dumpsys window windows | grep -A30 "Window #"
+adb shell appops get &lt;pkg&gt; SYSTEM_ALERT_WINDOW</pre>
+  </div>
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.82rem;">
+  <p>📝 <strong>临时稿</strong>：draft-2026-10-17-addview-to-addwindow.html（_draft 目录）</p>
+  <p>基于 AOSP 12 · WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号 2026-10-17 现地核实</p>
+  <p style="margin-top:10px;">
+    <a href="android-window-roadmap.html">🗺️ 学习路线图</a>
+  </p>
+  <p style="margin-top:8px;">正式落盘后续编号、并入系列并更新 index.html 与上下篇链接。</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

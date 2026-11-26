@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>setBitmap 设壁纸，Framework 发生了什么 — AOSP 13 全链路</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #5c5c5c; --border: #e2ddd3;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #35688f; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #5f8468; --tag-bg: #f4e8d6; --tag-text: #9a4f24;
+      --link: #2a5f8f; --h2-border: #ded8cb; --hover-bg: #f0ece3; --table-border: #e2ddd3;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e7c87f; --hero1: #fff4e8; --hero2: #f7fbf8;
+      --shadow: 0 8px 26px rgba(80,55,30,0.07); --app: #c44536; --sys: #35688f; --ui: #2a7f62; --sf: #8a5a9e;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e4e0d8; --text2: #a6a29a; --border: #35353b;
+      --accent: #e0755a; --accent2: #61c39a; --accent3: #7fa9c9; --code-bg: #28282d;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8fbf8f; --tag-bg: #3d3020; --tag-text: #d9a768;
+      --link: #6ab0e0; --h2-border: #35353b; --hover-bg: #2b2b32; --table-border: #38383f;
+      --table-hdr: #2b2b32; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #28261d; --step-border: #55492a; --hero1: #2a211b; --hero2: #1f2725;
+      --shadow: 0 10px 30px rgba(0,0,0,0.25); --app: #e0755a; --sys: #7fa9c9; --ui: #61c39a; --sf: #c39bd3;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:42px 20px 60px; transition:background .3s,color .3s; }
+    .container { max-width:1080px; margin:0 auto; }
+    #progress { position:fixed; top:0; left:0; height:3px; width:0; background:linear-gradient(90deg,var(--accent),var(--accent2)); z-index:1000; transition:width .1s linear; }
+    .hero { background:linear-gradient(135deg,var(--hero1),var(--hero2)); border:1px solid var(--border); border-radius:18px; padding:34px 36px 30px; box-shadow:var(--shadow); margin-bottom:26px; }
+    .kicker { color:var(--accent2); font-size:.78rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; margin-bottom:10px; }
+    h1 { font-size:2.05rem; line-height:1.35; margin-bottom:10px; color:var(--accent); }
+    .subtitle { color:var(--text2); font-size:.95rem; margin-bottom:14px; }
+    .badges { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+    .badge { display:inline-block; padding:3px 11px; border-radius:999px; border:1px solid var(--border); background:var(--bg-card); color:var(--text2); font-size:.78rem; }
+    .badge b { color:var(--accent3); font-weight:600; }
+    .lead { font-size:1rem; color:var(--text); border-left:4px solid var(--accent); background:rgba(196,69,54,.06); padding:12px 16px; border-radius:0 8px 8px 0; }
+    .lead strong { color:var(--accent); }
+    h2 { font-size:1.44rem; margin:42px 0 16px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.12rem; margin:24px 0 10px; color:var(--accent3); }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:14px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Cascadia Code","Consolas","Microsoft YaHei",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:20px; box-shadow:0 2px 6px rgba(0,0,0,.03); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:1px; }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:12px; padding:18px 24px; margin-bottom:26px; }
+    .toc-grid { display:grid; grid-template-columns:1fr 1fr; gap:2px 22px; margin-top:8px; }
+    .toc a { display:block; padding:3px 0; font-size:.9rem; }
+    .toc a::before { content:"›"; color:var(--accent); margin-right:8px; font-weight:bold; }
+    .pipeline { display:flex; align-items:stretch; gap:8px; margin:20px 0 8px; }
+    .phase { flex:1; min-width:0; background:var(--bg-card); border:1px solid var(--border); border-top:4px solid var(--accent3); border-radius:10px; padding:13px 14px; }
+    .phase:nth-child(1) { border-top-color:var(--app); } .phase:nth-child(3) { border-top-color:var(--sys); }
+    .phase:nth-child(5) { border-top-color:var(--ui); } .phase:nth-child(7) { border-top-color:var(--sf); }
+    .pipe-arrow { display:flex; align-items:center; color:var(--accent); font-size:1.2rem; font-weight:bold; }
+    .phase .pno { font-size:.72rem; font-weight:700; color:var(--accent); letter-spacing:.1em; }
+    .phase .proc { font-size:.75rem; color:var(--text2); margin-left:6px; }
+    .phase .title { font-weight:700; font-size:.92rem; margin:5px 0 4px; }
+    .phase .desc { font-size:.78rem; color:var(--text2); line-height:1.6; }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:16px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:25px; height:25px; line-height:25px; text-align:center; font-size:.8rem; font-weight:bold; margin-right:9px; }
+    .step h4 { display:inline; font-size:.98rem; }
+    .step p { margin:9px 0 0 34px; font-size:.92rem; }
+    .step .where { margin-left:34px; margin-top:6px; font-size:.78rem; color:var(--text2); }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.8rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,.03); font-family:"SF Mono","Fira Code","Consolas",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Cascadia Code","Consolas","Microsoft YaHei",monospace; font-size:.80rem; line-height:1.72; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    .tree { font-family:"SF Mono","Fira Code","Cascadia Code","Consolas","Microsoft YaHei",monospace; font-size:.80rem; line-height:1.82; padding:18px 20px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:10px; margin:16px 0; }
+    .t-app { color:var(--app); font-weight:700; } .t-sys { color:var(--sys); font-weight:700; } .t-ui { color:var(--ui); font-weight:700; } .t-sf { color:var(--sf); font-weight:700; }
+    .t-call { color:var(--fn); font-weight:600; } .t-note { color:var(--cm); font-style:italic; } .t-line { color:var(--text2); }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.86rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 12px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .pitfall { border-left:4px solid var(--accent); padding:12px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:11px 16px; margin:14px 0; font-size:.89rem; color:var(--text2); }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:12px 0; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:28px; right:28px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.35rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,.18); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    footer { margin-top:48px; padding-top:18px; border-top:1px solid var(--border); color:var(--text2); font-size:.82rem; }
+    @media (max-width:760px) {
+      body { padding:20px 12px 48px; } h1 { font-size:1.48rem; } .hero { padding:24px 20px; }
+      .toc-grid { grid-template-columns:1fr; } .pipeline { flex-wrap:wrap; } .phase { flex:1 1 44%; } .pipe-arrow { display:none; }
+      .card { padding:17px 18px; } .tree { font-size:.72rem; }
+    }
+  </style>
+</head>
+<body>
+<div id="progress"></div>
+
+<div class="container">
+
+<div class="hero">
+  <div class="kicker">Android Framework · Wallpaper 专题</div>
+  <h1>setBitmap 设壁纸，Framework 发生了什么</h1>
+  <p class="subtitle">第三方 App 调用 <code>WallpaperManager.setBitmap()</code> 之后，Bitmap 如何变成屏幕最底层的那张图 · AOSP 13 源码逐行核实</p>
+  <div class="badges">
+    <span class="badge"><b>Android 13</b> / aosp13</span>
+    <span class="badge">App → system_server → SystemUI → SF</span>
+    <span class="badge">Binder · FileObserver · WMS</span>
+    <span class="badge">行号现查</span>
+  </div>
+  <div class="lead"><strong>先记住一句话：</strong>setBitmap 本质是一个「文件写入协议」。Bitmap 不跨 Binder，App 把 PNG 写进 system_server 给的文件描述符；WPMS 监听到文件写完，裁剪成 wallpaper，再重启 ImageWallpaper 引擎；SystemUI 读图、画到 wallpaper surface，最后由 SurfaceFlinger 合成到 App 窗口下面。</div>
+</div>
+
+<div class="toc">
+  <strong style="color:var(--accent)">目录</strong>
+  <div class="toc-grid">
+    <a href="#overview">一、全景：四个进程，五次交接</a>
+    <a href="#stages">二、五个阶段，逐步拆开</a>
+    <a href="#tree">三、完整代码调用树</a>
+    <a href="#source">四、关键源码切片</a>
+    <a href="#pitfalls">五、最容易误解的五件事</a>
+    <a href="#branches">六、锁屏、动态壁纸与多用户分支</a>
+    <a href="#commands">七、源码速查命令</a>
+    <a href="#next">八、下一步可以扩展什么</a>
+  </div>
+</div>
+
+<h2 id="overview">一、全景：四个进程，五次交接</h2>
+
+<div class="card">
+  <p>先把角色摆清楚。很多人以为「设壁纸」是 App 画了一张图交给系统，其实 App 只负责<strong>把原图编码成 PNG 写进文件</strong>；真正决定壁纸怎么显示的是 system_server 和 SystemUI。</p>
+
+  <div class="pipeline">
+    <div class="phase"><div><span class="pno">01</span><span class="proc">App</span></div><div class="title">编码 + 写文件</div><div class="desc">申请 FD，PNG 压缩进管道，阻塞等首帧</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="phase"><div><span class="pno">02</span><span class="proc">system_server</span></div><div class="title">落盘 + 裁剪</div><div class="desc">WPMS 管文件、状态、FileObserver</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="phase"><div><span class="pno">03</span><span class="proc">SystemUI</span></div><div class="title">读图 + 绘制</div><div class="desc">ImageWallpaper 引擎画到 Surface</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="phase"><div><span class="pno">04</span><span class="proc">SurfaceFlinger</span></div><div class="title">合成</div><div class="desc">壁纸图层垫在所有 App 窗口下面</div></div>
+  </div>
+
+  <table>
+    <tr><th>角色</th><th>进程</th><th>干的事</th></tr>
+    <tr><td><code>WallpaperManager</code></td><td>第三方 App</td><td>API 入口、权限检查、把 Bitmap 压成 PNG 写进 FD</td></tr>
+    <tr><td><code>WallpaperManagerService</code>（WPMS）</td><td>system_server</td><td>管理壁纸文件、裁剪、用户/锁屏状态、绑定壁纸服务</td></tr>
+    <tr><td><code>ImageWallpaper</code></td><td>com.android.systemui</td><td>真正持有 wallpaper surface，读取裁剪图并绘制</td></tr>
+    <tr><td><code>WindowManagerService</code>（WMS）</td><td>system_server</td><td>创建 <code>WallpaperWindowToken</code>，把壁纸窗口挂到 DisplayContent</td></tr>
+    <tr><td><code>SurfaceFlinger</code></td><td>surfaceflinger</td><td>按 Z 序合成 wallpaper / App / SystemUI 图层</td></tr>
+  </table>
+
+  <div class="annotation star3"><span class="tag">关键认知</span> 第三方 App <strong>没有 wallpaper surface</strong>，也不直接和 SurfaceFlinger 打交道。它只把像素写进文件；绘制者是 SystemUI 的 <code>ImageWallpaper</code>。</div>
+</div>
+
+<h2 id="stages">二、五个阶段，逐步拆开</h2>
+
+<div class="step">
+  <span class="no">1</span><h4>App 侧：从 API 到「写文件」</h4>
+  <p><code>setBitmap(bitmap)</code> 先走到三参数重载，默认 <code>which = FLAG_SYSTEM | FLAG_LOCK</code>；再走到带 <code>userId</code> 的五参数实现。它做三件事：校验裁剪矩形、通过 Binder 调 <code>IWallpaperManager.setWallpaper()</code>、拿到可写 FD 后用 <code>Bitmap.compress(PNG, 90, fd)</code> 把图写进去。</p>
+  <div class="where">WallpaperManager.java:1671 → 1704 → 1730 → 1744；IWallpaperManager.aidl:48</div>
+</div>
+
+<div class="step">
+  <span class="no">2</span><h4>system_server：只发 FD，不收 Bitmap</h4>
+  <p><code>WPMS.setWallpaper()</code> 做用户校验、<code>SET_WALLPAPER</code> 权限校验、设备策略校验；然后 <code>updateWallpaperBitmapLocked()</code> 打开 <code>/data/system/users/&lt;uid&gt;/wallpaper_orig</code>，把写端 FD 返回给 App，并记录 <code>imageWallpaperPending</code>、<code>whichPending</code> 和完成回调。</p>
+  <div class="where">WallpaperManagerService.java:2880、2977、2990</div>
+</div>
+
+<div class="step">
+  <span class="no">3</span><h4>文件写完：FileObserver 接手</h4>
+  <p>App 关闭 FD 后，WPMS 里的 <code>WallpaperObserver</code> 收到 <code>CLOSE_WRITE</code>；它调用 <code>generateCrop()</code> 解码 <code>wallpaper_orig</code>，按屏幕尺寸/裁剪提示生成 <code>wallpaper</code>，恢复 SELinux 标签并保存设置。系统壁纸变化时，再触发 <code>bindWallpaperComponentLocked(mImageWallpaper, force=true, ...)</code>。</p>
+  <div class="where">WallpaperManagerService.java:252、314、328</div>
+</div>
+
+<div class="step">
+  <span class="no">4</span><h4>重新绑定：WMS 建 token，Engine 建窗口</h4>
+  <p><code>WallpaperConnection.connectLocked()</code> 先让 WMS 创建 <code>TYPE_WALLPAPER</code> 的 <code>WallpaperWindowToken</code>，再通过 <code>IWallpaperService.attach()</code> 把 token 交给 SystemUI。SystemUI 创建 <code>ImageWallpaper.CanvasEngine</code>，<code>Engine.attach()</code> 调 <code>Session.addToDisplay()</code> 添加 <code>TYPE_WALLPAPER</code> 窗口；<code>relayout()</code> 返回 SurfaceControl。</p>
+  <div class="where">WallpaperManagerService.java:1164、1170、1174；WallpaperService.java:1174、1435、1195；WMS:2807、2829</div>
+</div>
+
+<div class="step">
+  <span class="no">5</span><h4>SystemUI 绘制：首帧完成，App 才返回</h4>
+  <p><code>CanvasEngine</code> 在 surface 创建/重绘时调用 <code>loadWallpaperAndDrawFrameInternal()</code>，通过 <code>WallpaperManager.getBitmapAsUser()</code> 读取 <code>wallpaper</code> 裁剪图，<code>Canvas.drawBitmap()</code> 画到 wallpaper surface，最后 <code>reportEngineShown()</code>。WPMS 收到 <code>engineShown</code> 后执行 <code>mReply.sendResult</code>，App 的 <code>waitForCompletion()</code> 才被唤醒。</p>
+  <div class="where">ImageWallpaper.java:174、207、289、294、346；WallpaperManagerService.java:1557、1564</div>
+</div>
+
+<h2 id="tree">三、完整代码调用树</h2>
+
+<div class="card">
+  <p>下面这棵树按<strong>进程边界</strong>展开，方括号是进程/线程归属，行号是 AOSP 13 源码位置。建议先顺着主线读一遍，再回头看分支。</p>
+  <div class="badges">
+    <span class="badge" style="color:var(--app)">■ App</span>
+    <span class="badge" style="color:var(--sys)">■ system_server</span>
+    <span class="badge" style="color:var(--ui)">■ SystemUI</span>
+    <span class="badge" style="color:var(--sf)">■ SurfaceFlinger</span>
+  </div>
+
+<pre class="tree"><span class="t-app">[第三方 App 进程]</span>
+<span class="t-call">WallpaperManager.setBitmap(bitmap)</span>                         <span class="t-line">// WallpaperManager.java:1671</span>
+└─ <span class="t-call">setBitmap(bitmap, null, true)</span>                              <span class="t-line">// :1672</span>
+   └─ <span class="t-call">setBitmap(..., FLAG_SYSTEM | FLAG_LOCK)</span>                 <span class="t-line">// :1704-1706 默认同时设系统+锁屏</span>
+      └─ <span class="t-call">setBitmap(..., which, userId)</span>                         <span class="t-line">// :1730-1744</span>
+         ├─ <span class="t-call">validateRect(visibleCropHint)</span>
+         └─ <span class="t-call">IWallpaperManager.setWallpaper(...)</span> <span class="t-note">──Binder──▶</span> <span class="t-line">// 只传参数，不传 Bitmap</span>
+
+<span class="t-sys">[system_server · Binder 线程 → WallpaperManagerService]</span>
+            └─ <span class="t-call">setWallpaper(name, callingPackage, cropHint, ...)</span>  <span class="t-line">// WPMS:2880</span>
+               ├─ <span class="t-call">ActivityManager.handleIncomingUser()</span>
+               ├─ <span class="t-call">checkPermission(SET_WALLPAPER)</span>
+               ├─ <span class="t-call">isWallpaperSupported() / isSetWallpaperAllowed()</span>
+               ├─ <span class="t-call">getWallpaperSafeLocked(userId, which)</span>             <span class="t-line">// :3601</span>
+               │  <span class="t-note">// which=SYSTEM|LOCK 时仍选 system WallpaperData</span>
+               └─ <span class="t-call">updateWallpaperBitmapLocked(name, wallpaper, extras)</span> <span class="t-line">// :2977</span>
+                  ├─ <span class="t-note">确保 /data/system/users/&lt;uid&gt;/ 存在</span>
+                  ├─ <span class="t-call">ParcelFileDescriptor.open("wallpaper_orig",
+                  │     CREATE | READ_WRITE | TRUNCATE)</span>          <span class="t-line">// :2990</span>
+                  └─ <span class="t-note">return pfd（写端）—— 经 Binder 回到 App</span>
+
+<span class="t-app">[第三方 App 进程]</span>
+         <span class="t-note">◀── 返回 ParcelFileDescriptor（写端）</span>
+         └─ <span class="t-call">Bitmap.compress(PNG, 90, AutoCloseOutputStream(fd))</span>  <span class="t-line">// :1760-1765</span>
+            ├─ <span class="t-note">PNG 数据写入 wallpaper_orig</span>
+            └─ <span class="t-call">close(fd)</span>
+               └─ <span class="t-call">completion.waitForCompletion()</span>                 <span class="t-line">// 阻塞，直到新壁纸首帧</span>
+                  <span class="t-note">// 这一步不在 Binder 里等，是等 IWallpaperManagerCallback</span>
+
+<span class="t-sys">[system_server · WallpaperObserver 线程]</span>
+         <span class="t-note">FileObserver 监听用户目录，收到 CLOSE_WRITE</span>
+         └─ <span class="t-call">onEvent(CLOSE_WRITE, "wallpaper_orig")</span>              <span class="t-line">// :252-257</span>
+            ├─ <span class="t-call">generateCrop(wallpaper)</span>                          <span class="t-line">// :314</span>
+            │  ├─ <span class="t-note">BitmapFactory 解码 wallpaper_orig</span>
+            │  └─ <span class="t-note">按屏幕/裁剪提示缩放 → 写 "wallpaper"</span>
+            ├─ <span class="t-call">SELinux.restorecon(changedFile)</span>
+            ├─ <span class="t-call">saveSettingsLocked(wallpaper.userId)</span>
+            └─ <span class="t-call">if (sysWallpaperChanged)</span>                        <span class="t-line">// :319</span>
+               └─ <span class="t-call">bindWallpaperComponentLocked(mImageWallpaper,
+                      force=true, ..., callback)</span>                <span class="t-line">// :328</span>
+                  ├─ <span class="t-call">detachWallpaperLocked(mLastWallpaper)</span>
+                  │  └─ <span class="t-call">Context.unbindService(oldConnection)</span>
+                  ├─ <span class="t-call">bindServiceAsUser(Intent(SERVICE_INTERFACE),
+                  │     newConn, BIND_AUTO_CREATE | ...)</span>          <span class="t-line">// :3228</span>
+                  └─ <span class="t-call">WallpaperConnection.onServiceConnected()</span>       <span class="t-line">// :1334</span>
+                     └─ <span class="t-call">attachServiceLocked()</span>                      <span class="t-line">// :3304</span>
+                        └─ <span class="t-call">DisplayConnector.connectLocked()</span>        <span class="t-line">// :1164</span>
+                           ├─ <span class="t-call">WindowManagerInternal.addWindowToken(
+                           │     mToken, TYPE_WALLPAPER, displayId)</span> <span class="t-line">// :1170</span>
+                           │  └─ <span class="t-call">WMS.addWindowToken()</span>             <span class="t-line">// WMS:2807</span>
+                           │     └─ <span class="t-call">new WallpaperWindowToken(...)</span>  <span class="t-line">// :2829</span>
+                           │        └─ <span class="t-call">WallpaperController.addWallpaperToken()</span>
+                           └─ <span class="t-call">IWallpaperService.attach(
+                                 conn, token, TYPE_WALLPAPER, ...)</span> <span class="t-line">// :1174</span>
+                              └─ <span class="t-call">ImageWallpaper.onCreateEngine()</span>
+                                 └─ <span class="t-call">CanvasEngine.attach()</span>
+                                    └─ <span class="t-call">Engine.attach(wrapper)</span>   <span class="t-line">// WallpaperService:1435</span>
+                                       └─ <span class="t-call">Session.addToDisplay(
+                                             mWindow, mLayout.type=TYPE_WALLPAPER)</span> <span class="t-line">// :1174</span>
+                                          └─ <span class="t-call">WMS.addWindow()</span>
+                                             └─ <span class="t-note">WindowState 挂到 WallpaperWindowToken</span>
+                                                └─ <span class="t-call">Session.relayout()</span> <span class="t-line">// :1195</span>
+                                                   └─ <span class="t-note">获得 SurfaceControl / Surface</span>
+
+<span class="t-ui">[SystemUI 进程 · ImageWallpaper.CanvasEngine]</span>
+                                 └─ <span class="t-call">onSurfaceCreated / onSurfaceChanged</span>  <span class="t-line">// ImageWallpaper:174</span>
+                                    └─ <span class="t-call">drawFrame()</span>                        <span class="t-line">// :204-207</span>
+                                       └─ <span class="t-call">loadWallpaperAndDrawFrameInternal()</span> <span class="t-line">// :289</span>
+                                          ├─ <span class="t-call">WallpaperManager.getBitmapAsUser()</span> <span class="t-line">// :294</span>
+                                          │  └─ <span class="t-note">Binder → WPMS.getWallpaperFile()</span>
+                                          │     └─ <span class="t-note">读 /data/system/users/&lt;uid&gt;/wallpaper</span>
+                                          ├─ <span class="t-call">Canvas.drawBitmap(bitmap, ...)</span>  <span class="t-line">// :231</span>
+                                          └─ <span class="t-call">reportEngineShown(false)</span>        <span class="t-line">// :225 / :346</span>
+                                             └─ <span class="t-call">WPMS.engineShown()</span>          <span class="t-line">// :1557</span>
+                                                └─ <span class="t-call">mReply.sendResult()</span>       <span class="t-line">// :1564</span>
+                                                   └─ <span class="t-call">notifyWallpaperChanged()</span> <span class="t-line">// :365</span>
+                                                      └─ <span class="t-note">App 的 WallpaperSetCompletion</span>
+                                                         └─ <span class="t-call">setBitmap() 返回 wallpaperId</span>
+
+<span class="t-sf">[SurfaceFlinger]</span>
+                                 └─ <span class="t-note">合成 ImageWallpaper 的图层</span>
+                                    └─ <span class="t-note">Z 序位于 App / SystemUI 普通窗口之下</span>
+</pre>
+
+  <div class="annotation"><span class="tag">读树技巧</span> 先只看每个进程块的第一行，得到「App 写文件 → WPMS 裁剪 → SystemUI 绘制 → SF 合成」；第二遍再看 <code>bindWallpaperComponentLocked</code> 之后 WMS 和 Surface 的细节。不要从第一行一路抠到底。</div>
+</div>
+
+<h2 id="source">四、关键源码切片</h2>
+
+<div class="card">
+  <p>下面只保留理解链路必需的行，省略参数校验和异常分支。重点看<strong>进程边界在哪里</strong>、<strong>数据形态变了什么</strong>。</p>
+
+  <h3>1. App 侧：三个重载，最后落到「压缩进 FD」</h3>
+  <div class="code-block">
+    <div class="filename">frameworks/base/core/java/android/app/WallpaperManager.java — setBitmap</div>
+<pre><span class="cm">// ① 最常用入口：默认同时设置系统壁纸和锁屏壁纸</span>
+<span class="kw">public void</span> <span class="fn">setBitmap</span>(Bitmap bitmap) <span class="kw">throws</span> IOException {   <span class="cm">// :1671</span>
+    <span class="fn">setBitmap</span>(bitmap, <span class="kw">null</span>, <span class="kw">true</span>);
+}
+
+<span class="cm">// ② 三参数版本：which 不是 SYSTEM，而是 SYSTEM | LOCK</span>
+<span class="kw">public int</span> <span class="fn">setBitmap</span>(Bitmap fullImage, Rect visibleCropHint,
+        <span class="kw">boolean</span> allowBackup) <span class="kw">throws</span> IOException {          <span class="cm">// :1704</span>
+    <span class="kw">return</span> <span class="fn">setBitmap</span>(fullImage, visibleCropHint, allowBackup,
+            FLAG_SYSTEM | FLAG_LOCK);
+}
+
+<span class="cm">// ③ 五参数实现：Binder 只传参数；返回的是写端 FD</span>
+<span class="kw">public int</span> <span class="fn">setBitmap</span>(..., <span class="kw">int</span> which, <span class="kw">int</span> userId)
+        <span class="kw">throws</span> IOException {                                <span class="cm">// :1744</span>
+    <span class="fn">validateRect</span>(visibleCropHint);
+    <span class="kw">final</span> Bundle result = <span class="kw">new</span> Bundle();
+    <span class="kw">final</span> WallpaperSetCompletion completion = <span class="kw">new</span> WallpaperSetCompletion();
+    <span class="kw">try</span> {
+        ParcelFileDescriptor fd = sGlobals.mService.<span class="fn">setWallpaper</span>(<span class="kw">null</span>,
+                mContext.<span class="fn">getOpPackageName</span>(), visibleCropHint, allowBackup,
+                result, which, completion, userId);           <span class="cm">// ★ 不传 Bitmap</span>
+        <span class="kw">if</span> (fd != <span class="kw">null</span>) {
+            FileOutputStream fos = <span class="kw">new</span> ParcelFileDescriptor.AutoCloseOutputStream(fd);
+            fullImage.<span class="fn">compress</span>(Bitmap.CompressFormat.PNG, <span class="num">90</span>, fos); <span class="cm">// ★ PNG 写入管道</span>
+            fos.<span class="fn">close</span>();
+            completion.<span class="fn">waitForCompletion</span>();                    <span class="cm">// ★ 等首帧，不是等写完</span>
+        }
+    } <span class="kw">catch</span> (RemoteException e) { <span class="kw">throw</span> e.<span class="fn">rethrowFromSystemServer</span>(); }
+    <span class="kw">return</span> result.<span class="fn">getInt</span>(EXTRA_NEW_WALLPAPER_ID, <span class="num">0</span>);
+}</pre>
+  </div>
+  <div class="annotation star3"><span class="tag">注意</span> 压缩发生在调用线程，PNG 数据直接写进 Binder 返回的 <code>ParcelFileDescriptor</code>。所以 <code>setBitmap</code> 既可能有 CPU 开销（压缩），也可能有 I/O 等待（写文件）。</div>
+</div>
+
+<div class="card">
+  <h3>2. system_server：先发 FD，再等文件写完</h3>
+  <div class="code-block">
+    <div class="filename">frameworks/base/services/core/java/com/android/server/wallpaper/WallpaperManagerService.java — setWallpaper</div>
+<pre><span class="kw">public</span> ParcelFileDescriptor <span class="fn">setWallpaper</span>(String name, String callingPackage,
+        Rect cropHint, <span class="kw">boolean</span> allowBackup, Bundle extras, <span class="kw">int</span> which,
+        IWallpaperManagerCallback completion, <span class="kw">int</span> userId) {       <span class="cm">// :2880</span>
+    userId = ActivityManager.<span class="fn">handleIncomingUser</span>(...);
+    <span class="fn">checkPermission</span>(android.Manifest.permission.SET_WALLPAPER);
+
+    <span class="kw">if</span> ((which &amp; (FLAG_LOCK | FLAG_SYSTEM)) == <span class="num">0</span>) {
+        <span class="kw">throw new</span> IllegalArgumentException(...);
+    }
+    <span class="kw">if</span> (!<span class="fn">isWallpaperSupported</span>(callingPackage)
+            || !<span class="fn">isSetWallpaperAllowed</span>(callingPackage)) {
+        <span class="kw">return null</span>;                                            <span class="cm">// 设备策略可能直接拒绝</span>
+    }
+
+    <span class="cm">// which=SYSTEM 且当前没有独立锁屏壁纸时，先把系统壁纸迁移成锁屏专用</span>
+    <span class="kw">if</span> (which == FLAG_SYSTEM &amp;&amp; mLockWallpaperMap.<span class="fn">get</span>(userId) == <span class="kw">null</span>) {
+        <span class="fn">migrateSystemToLockWallpaperLocked</span>(userId);
+    }
+
+    wallpaper = <span class="fn">getWallpaperSafeLocked</span>(userId, which);           <span class="cm">// :3601</span>
+    <span class="kw">final long</span> ident = Binder.<span class="fn">clearCallingIdentity</span>();
+    <span class="kw">try</span> {
+        ParcelFileDescriptor pfd =
+                <span class="fn">updateWallpaperBitmapLocked</span>(name, wallpaper, extras); <span class="cm">// :2977</span>
+        <span class="kw">if</span> (pfd != <span class="kw">null</span>) {
+            wallpaper.imageWallpaperPending = <span class="kw">true</span>;
+            wallpaper.whichPending = which;
+            wallpaper.setComplete = completion;                  <span class="cm">// 文件写完后的回调</span>
+            wallpaper.fromForegroundApp = fromForegroundApp;
+        }
+        <span class="kw">return</span> pfd;
+    } <span class="kw">finally</span> { Binder.<span class="fn">restoreCallingIdentity</span>(ident); }
+}</pre>
+  </div>
+  <div class="hint">文件名对应关系：<code>wallpaper_orig</code> 是 App 写入的原图；<code>wallpaper</code> 是 WPMS 生成的裁剪图；锁屏对应 <code>wallpaper_lock_orig</code> / <code>wallpaper_lock</code>。</div>
+</div>
+
+<div class="card">
+  <h3>3. FileObserver：真正的「写入完成」信号</h3>
+  <div class="code-block">
+    <div class="filename">WallpaperManagerService.java — WallpaperObserver.onEvent</div>
+<pre><span class="kw">public void</span> <span class="fn">onEvent</span>(<span class="kw">int</span> event, String path) {                       <span class="cm">// :252</span>
+    <span class="kw">final boolean</span> moved = (event == MOVED_TO);
+    <span class="kw">final boolean</span> written = (event == CLOSE_WRITE || moved);     <span class="cm">// ★ App close(fd) 后触发</span>
+    <span class="kw">final</span> File changedFile = <span class="kw">new</span> File(mWallpaperDir, path);
+
+    <span class="kw">final boolean</span> sysWallpaperChanged = mWallpaperFile.<span class="fn">equals</span>(changedFile);
+    <span class="kw">final boolean</span> lockWallpaperChanged = mWallpaperLockFile.<span class="fn">equals</span>(changedFile);
+
+    <span class="kw">if</span> (written) {
+        <span class="fn">SELinux.restorecon</span>(changedFile);
+        <span class="fn">generateCrop</span>(wallpaper);                                 <span class="cm">// :314 原图 → 裁剪图</span>
+        wallpaper.imageWallpaperPending = <span class="kw">false</span>;
+        <span class="kw">if</span> (sysWallpaperChanged) {
+            IRemoteCallback.Stub callback = <span class="kw">new</span> IRemoteCallback.Stub() {
+                <span class="kw">public void</span> <span class="fn">sendResult</span>(Bundle data) {
+                    <span class="fn">notifyWallpaperChanged</span>(wallpaper);               <span class="cm">// 首帧完成后才回调</span>
+                }
+            };
+            <span class="cm">// 强制重绑，确保 ImageWallpaper 用新文件重新创建引擎</span>
+            <span class="fn">bindWallpaperComponentLocked</span>(mImageWallpaper, <span class="kw">true</span>,
+                    <span class="kw">false</span>, wallpaper, callback);                   <span class="cm">// :328</span>
+        }
+        <span class="kw">if</span> (lockWallpaperChanged
+                || (wallpaper.whichPending &amp; FLAG_LOCK) != <span class="num">0</span>) {
+            <span class="cm">// 处理锁屏专用壁纸的清理 / Keyguard 通知</span>
+        }
+        <span class="fn">saveSettingsLocked</span>(wallpaper.userId);
+    }
+}</pre>
+  </div>
+  <div class="annotation"><span class="tag">为什么用 FileObserver</span> App 通过 FD 写文件，Binder 调用早就返回了；服务端要知道「写完」只能靠文件系统事件。这也解释了为什么写入路径不是一次同步 Binder 调用。</div>
+</div>
+
+<div class="card">
+  <h3>4. 重绑：先建 WallpaperWindowToken，再 attach 引擎</h3>
+  <div class="code-block">
+    <div class="filename">WallpaperManagerService.java — WallpaperConnection.DisplayConnector.connectLocked</div>
+<pre><span class="kw">void</span> <span class="fn">connectLocked</span>(WallpaperConnection connection, WallpaperData wallpaper) { <span class="cm">// :1164</span>
+    <span class="cm">// ① WMS 里先创建 TYPE_WALLPAPER 的 window token</span>
+    mWindowManagerInternal.<span class="fn">addWindowToken</span>(mToken, TYPE_WALLPAPER,
+            mDisplayId, <span class="kw">null</span>);                                  <span class="cm">// :1170</span>
+
+    DisplayData wpdData = <span class="fn">getDisplayDataOrCreate</span>(mDisplayId);
+    <span class="cm">// ② 把 token、尺寸、padding 交给 SystemUI 的 WallpaperService</span>
+    connection.mService.<span class="fn">attach</span>(connection, mToken, TYPE_WALLPAPER,
+            <span class="kw">false</span>, wpdData.mWidth, wpdData.mHeight,
+            wpdData.mPadding, mDisplayId, FLAG_SYSTEM | FLAG_LOCK); <span class="cm">// :1174</span>
+}</pre>
+  </div>
+  <div class="code-block">
+    <div class="filename">frameworks/base/core/java/android/service/wallpaper/WallpaperService.java — Engine.attach / surface</div>
+<pre><span class="kw">void</span> <span class="fn">attach</span>(IWallpaperEngineWrapper wrapper) {                     <span class="cm">// :1435</span>
+    mIWallpaperEngine = wrapper;
+    mCaller = wrapper.mCaller;
+    mWindowToken = wrapper.mWindowToken;                           <span class="cm">// WMS 创建的 token</span>
+    mSession = WindowManagerGlobal.<span class="fn">getWindowSession</span>();
+    mWindow.<span class="fn">setSession</span>(mSession);
+    <span class="cm">// TYPE_WALLPAPER 的 window context，保证资源/主题正确</span>
+    mDisplayContext = <span class="fn">createDisplayContext</span>(mDisplay)
+            .<span class="fn">createWindowContext</span>(TYPE_WALLPAPER, <span class="kw">null</span>);
+
+    mLayout.type = mIWallpaperEngine.mWindowType;                  <span class="cm">// :1166 TYPE_WALLPAPER</span>
+    mLayout.token = mWindowToken;                                 <span class="cm">// :1157</span>
+    mSession.<span class="fn">addToDisplay</span>(mWindow, mLayout, View.VISIBLE, ...);  <span class="cm">// :1174</span>
+    mSession.<span class="fn">relayout</span>(mWindow, mLayout, mWidth, mHeight,
+            View.VISIBLE, <span class="num">0</span>, <span class="num">0</span>, <span class="num">0</span>, mWinFrames, ...,
+            mSurfaceControl, ...);                                <span class="cm">// :1195</span>
+}</pre>
+  </div>
+  <div class="hint">WMS 侧对应：<code>WMS.addWindowToken()</code>（:2807）判断 <code>type == TYPE_WALLPAPER</code> 时 <code>new WallpaperWindowToken(...)</code>（:2829）；token 构造时又会 <code>WallpaperController.addWallpaperToken()</code> 注册到显示内容。</div>
+</div>
+
+<div class="card">
+  <h3>5. ImageWallpaper：从裁剪图到 Surface</h3>
+  <div class="code-block">
+    <div class="filename">frameworks/base/packages/SystemUI/src/com/android/systemui/wallpapers/ImageWallpaper.java</div>
+<pre><span class="cm">// surface 创建/尺寸变化后，Engine 调度重绘</span>
+<span class="kw">public void</span> <span class="fn">onSurfaceChanged</span>(SurfaceHolder holder, <span class="kw">int</span> format,
+        <span class="kw">int</span> width, <span class="kw">int</span> height) {                          <span class="cm">// :174</span>
+    <span class="cm">// CanvasEngine 这里不立即画，交给 drawFrame 的串行队列</span>
+}
+
+<span class="kw">private void</span> <span class="fn">drawFrameSynchronized</span>() {                            <span class="cm">// :207</span>
+    <span class="kw">synchronized</span> (mLock) { <span class="fn">drawFrameInternal</span>(); }
+}
+
+<span class="kw">private void</span> <span class="fn">drawFrameInternal</span>() {                            <span class="cm">// :212</span>
+    <span class="kw">if</span> (!<span class="fn">isBitmapLoaded</span>()) {
+        <span class="fn">loadWallpaperAndDrawFrameInternal</span>();                    <span class="cm">// :221 首次/换图</span>
+    } <span class="kw">else</span> {
+        mBitmapUsages++;
+        <span class="fn">drawFrameOnCanvas</span>(mBitmap);                            <span class="cm">// :224</span>
+        <span class="fn">reportEngineShown</span>(<span class="kw">false</span>);                              <span class="cm">// :225 ★ 首帧完成</span>
+        <span class="fn">unloadBitmapIfNotUsedInternal</span>();
+    }
+}
+
+<span class="kw">private void</span> <span class="fn">loadWallpaperAndDrawFrameInternal</span>() {               <span class="cm">// :289</span>
+    Bitmap bitmap;
+    <span class="kw">try</span> {
+        <span class="cm">// 注意：读的是 WPMS 生成的裁剪图，不是 App 原始 Bitmap</span>
+        bitmap = mWallpaperManager.<span class="fn">getBitmapAsUser</span>(
+                mUserTracker.<span class="fn">getUserId</span>(), <span class="kw">false</span>);               <span class="cm">// :294</span>
+    } <span class="kw">catch</span> (Exception e) {
+        bitmap = <span class="kw">null</span>;
+    }
+    <span class="kw">if</span> (bitmap != <span class="kw">null</span>) {
+        mBitmap = bitmap;
+        <span class="fn">drawFrameOnCanvas</span>(bitmap);
+        <span class="fn">reportEngineShown</span>(<span class="kw">false</span>);                              <span class="cm">// :346</span>
+    }
+}</pre>
+  </div>
+  <div class="annotation"><span class="tag">数据流</span> <code>wallpaper_orig</code>（原图）→ WPMS <code>generateCrop()</code> → <code>wallpaper</code>（裁剪图）→ <code>ImageWallpaper</code> <code>getBitmapAsUser()</code> → <code>Canvas.drawBitmap()</code> → wallpaper surface → SurfaceFlinger。</div>
+</div>
+
+<div class="card">
+  <h3>6. 完成回调：为什么 setBitmap 能等到首帧</h3>
+  <div class="code-block">
+    <div class="filename">WallpaperManagerService.java — WallpaperConnection.engineShown</div>
+<pre><span class="kw">public void</span> <span class="fn">engineShown</span>(IWallpaperEngine engine) {                 <span class="cm">// :1557</span>
+    <span class="kw">synchronized</span> (mLock) {
+        <span class="kw">if</span> (mReply != <span class="kw">null</span>) {
+            mReply.<span class="fn">sendResult</span>(<span class="kw">null</span>);                              <span class="cm">// :1564 唤醒 App</span>
+            mReply = <span class="kw">null</span>;
+        }
+    }
+}</pre>
+  </div>
+  <p>App 侧的 <code>WallpaperSetCompletion</code> 是一个 <code>IWallpaperManagerCallback.Stub</code>，内部用 <code>CountDownLatch</code> 阻塞；<code>engineShown</code> 最终触发它的 <code>onWallpaperChanged()</code>。所以<strong>正常情况下，<code>setBitmap</code> 返回时新壁纸已经画出了第一帧</strong>；如果引擎迟迟不画，<code>reportEngineShown</code> 还有 5 秒延迟兜底。</p>
+</div>
+
+<h2 id="pitfalls">五、最容易误解的五件事</h2>
+
+<div class="pitfall"><span class="tag">误解 1</span> <strong>「Bitmap 通过 Binder 传给 system_server」</strong><br>不对。Binder 只传参数和一个写端 FD；Bitmap 由 App 编码成 PNG 后写进文件。大图不会触发 Binder 事务大小限制。</div>
+
+<div class="pitfall"><span class="tag">误解 2</span> <strong>「文件写完 setBitmap 就返回」</strong><br>不对。文件写完只触发 WPMS 裁剪和重绑；App 还要等 <code>engineShown</code>，也就是新壁纸首帧画完。</div>
+
+<div class="pitfall"><span class="tag">误解 3</span> <strong>「setBitmap 只改系统壁纸」</strong><br>默认 <code>which = FLAG_SYSTEM | FLAG_LOCK</code>。如果之前有独立锁屏壁纸，这条路径会清掉锁屏专用记录，让锁屏回退到系统图；只改锁屏才会走 <code>wallpaper_lock_orig</code> 分支。</div>
+
+<div class="pitfall"><span class="tag">误解 4</span> <strong>「App 自己把图画到屏幕上」</strong><br>不对。App 没有 wallpaper surface。真正绘制的是 SystemUI 的 <code>ImageWallpaper</code>，它通过 <code>WallpaperManager</code> 读裁剪图。</div>
+
+<div class="pitfall"><span class="tag">误解 5</span> <strong>「设置静态图不会影响动态壁纸」</strong><br>会。设置成功后 WPMS 会把壁纸组件重绑到 <code>mImageWallpaper</code>，原来的 live wallpaper 服务会被解绑，静态图接管。</div>
+
+<h2 id="branches">六、锁屏、动态壁纸与多用户分支</h2>
+
+<div class="card">
+  <p>主线是「系统壁纸」，但 <code>which</code> 一改，后面的路径就分叉。把这张表记住，读源码时就不会迷路。</p>
+
+  <table>
+    <tr><th>which</th><th>写入文件</th><th>是否重绑 ImageWallpaper</th><th>锁屏结果</th></tr>
+    <tr><td><code>FLAG_SYSTEM</code></td><td><code>wallpaper_orig</code> → <code>wallpaper</code></td><td>是</td><td>若原本没有独立锁屏图，会把旧系统图迁移成锁屏专用</td></tr>
+    <tr><td><code>FLAG_LOCK</code></td><td><code>wallpaper_lock_orig</code> → <code>wallpaper_lock</code></td><td>否</td><td>只通知 Keyguard，系统壁纸不变</td></tr>
+    <tr><td><code>SYSTEM | LOCK</code>（默认）</td><td><code>wallpaper_orig</code> → <code>wallpaper</code></td><td>是</td><td>清掉独立锁屏记录，锁屏回退到系统图</td></tr>
+  </table>
+
+  <details>
+    <summary>展开：为什么默认路径要「清掉独立锁屏图」？</summary>
+    <div class="ans">默认语义是「这张图同时作为系统壁纸和锁屏壁纸」。如果设备上还留着旧的 <code>mLockWallpaperMap</code>，锁屏会继续显示旧图，和「同时设置」矛盾。所以系统在 <code>whichPending &amp; FLAG_LOCK</code> 成立、但本次并没有写锁屏文件时，会移除锁屏专用记录，让锁屏回退到系统壁纸。</div>
+  </details>
+
+  <details>
+    <summary>展开：动态壁纸是怎么被替换掉的？</summary>
+    <div class="ans"><code>setBitmap</code> 只写静态图文件，不会去调用 live wallpaper 的绘制接口。写完后 WPMS 执行 <code>bindWallpaperComponentLocked(mImageWallpaper, force=true, ...)</code>：先 <code>detachWallpaperLocked()</code> 解绑旧的 <code>WallpaperConnection</code>，再绑定 <code>com.android.systemui/...ImageWallpaper</code>。动态壁纸服务失去连接，静态图引擎接管。</div>
+  </details>
+
+  <details>
+    <summary>展开：多用户 / 多屏时，文件和服务怎么分？</summary>
+    <div class="ans">文件按用户分目录：<code>/data/system/users/&lt;userId&gt;/wallpaper_orig</code>。显示侧由 <code>WallpaperConnection.DisplayConnector</code> 按 <code>displayId</code> 管理：<code>connectLocked()</code> 为每个显示创建 token、attach 一个 engine。一个壁纸服务连接可以对应多个显示引擎，所以平板/折叠屏/外接屏要分别看 <code>DisplayConnector</code>。</div>
+  </details>
+
+  <div class="annotation"><span class="tag">权限提醒</span> <code>SET_WALLPAPER</code> 是 normal 级权限，普通 App 通常能拿到；但 <code>isWallpaperSupported()</code> 和 <code>isSetWallpaperAllowed()</code> 还会受设备管理员、用户限制影响，策略禁止时服务端直接返回 <code>null</code>。</div>
+</div>
+
+<h2 id="commands">七、源码速查命令</h2>
+
+<div class="card">
+  <p>在 WSL 的 AOSP 13 树里直接跑，行号以你本地树为准；本文行号来自 <code>/home/book/aosp13</code> 当前代码。</p>
+  <div class="code-block">
+    <div class="filename">WSL · 常用 grep / sed</div>
+<pre><span class="cm"># API 入口和重载</span>
+grep -n <span class="kw">"public void setBitmap\|public int setBitmap"</span> \
+  frameworks/base/core/java/android/app/WallpaperManager.java
+
+<span class="cm"># WPMS 设置入口、文件写入、裁剪</span>
+grep -n <span class="kw">"setWallpaper\|updateWallpaperBitmapLocked\|generateCrop"</span> \
+  frameworks/base/services/core/java/com/android/server/wallpaper/WallpaperManagerService.java
+
+<span class="cm"># 文件观察者</span>
+sed -n <span class="kw">'219,355p'</span> \
+  frameworks/base/services/core/java/com/android/server/wallpaper/WallpaperManagerService.java
+
+<span class="cm"># 绑定壁纸服务 / 创建 wallpaper token</span>
+grep -n <span class="kw">"bindWallpaperComponentLocked\|addWindowToken\|connectLocked"</span> \
+  frameworks/base/services/core/java/com/android/server/wallpaper/WallpaperManagerService.java
+
+<span class="cm"># WallpaperService 窗口与 Surface</span>
+grep -n <span class="kw">"Engine.attach\|addToDisplay\|relayout"</span> \
+  frameworks/base/core/java/android/service/wallpaper/WallpaperService.java
+
+<span class="cm"># SystemUI 实际绘制</span>
+grep -n <span class="kw">"loadWallpaperAndDrawFrameInternal\|getBitmapAsUser\|reportEngineShown"</span> \
+  frameworks/base/packages/SystemUI/src/com/android/systemui/wallpapers/ImageWallpaper.java
+
+<span class="cm"># WMS 侧 wallpaper token</span>
+grep -n <span class="kw">"TYPE_WALLPAPER\|WallpaperWindowToken"</span> \
+  frameworks/base/services/core/java/com/android/server/wm/WindowManagerService.java</pre>
+  </div>
+  <div class="hint"><code>dumpsys wallpaper</code> 可以直接看当前用户、系统/锁屏壁纸组件、尺寸、文件路径和连接状态，配合源码看非常省事。</div>
+</div>
+
+<h2 id="next">八、下一步可以扩展什么</h2>
+
+<div class="card">
+  <ul>
+    <li><strong>裁剪算法</strong>：<code>WallpaperManagerService.generateCrop()</code>（:601 起）如何根据屏幕宽高、<code>cropHint</code>、<code>inSampleSize</code> 决定缩放和偏移。</li>
+    <li><strong>锁屏链路</strong>：<code>FLAG_LOCK</code> 分支、<code>mLockWallpaperMap</code>、Keyguard 的 <code>mKeyguardListener</code> 如何收到通知。</li>
+    <li><strong>动态壁纸</strong>：<code>WallpaperService.Engine</code> 的 <code>onVisibilityChanged</code>、offsets、zoom、command 如何从桌面/Keyguard 传进来。</li>
+    <li><strong>WMS 图层</strong>：<code>WallpaperWindowToken</code> 在 <code>DisplayContent</code> 里的层级、<code>WallpaperController</code> 如何根据 Keyguard/App 可见性调整。</li>
+    <li><strong>多屏</strong>：<code>DisplayConnector</code> 每个 <code>displayId</code> 一套 token/engine，壁纸尺寸和 padding 如何计算。</li>
+    <li><strong>SurfaceFlinger</strong>：抓一张 <code>dumpsys SurfaceFlinger</code>，找 <code>ImageWallpaper</code> 图层，验证它确实在 App 图层下方。</li>
+  </ul>
+
+  <details>
+    <summary>自测三问（读完再回答）</summary>
+    <div class="ans">
+      <p><strong>1. 为什么 setBitmap 传大图不会触发 Binder 的 TransactionTooLargeException？</strong><br>因为 Bitmap 不进入 Binder 事务；Binder 只传参数和 FD，像素数据由 App 通过文件描述符写入。</p>
+      <p><strong>2. 为什么换壁纸后 ImageWallpaper 的引擎像是「重新创建」了？</strong><br>WPMS 用 <code>force=true</code> 重绑 <code>mImageWallpaper</code>，旧连接被 detach/unbind，新连接 attach 后创建新的 Engine 和 surface。</p>
+      <p><strong>3. 为什么只改锁屏时不需要重绑系统壁纸？</strong><br>FileObserver 只在 <code>sysWallpaperChanged</code> 为 true 时调用 <code>bindWallpaperComponentLocked()</code>；锁屏分支只通知 Keyguard 并完成回调。</p>
+    </div>
+  </details>
+</div>
+
+<footer>
+  <p><strong>setBitmap 设壁纸，Framework 发生了什么</strong> · 基于 AOSP 13（<code>/home/book/aosp13</code>）· 行号随源码树现查</p>
+  <p>核心路径：<code>WallpaperManager</code> → <code>WallpaperManagerService</code> → <code>WallpaperObserver</code> → <code>ImageWallpaper</code> → <code>SurfaceFlinger</code></p>
+  <p style="margin-top:8px;"><a href="index.html">← 返回 Android Framework 学习站</a></p>
+</footer>
+
+</div>
+
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<script>
+(function () {
+  var STORAGE_KEY = 'wp_setbitmap_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = 'auto';
+  try { currentMode = localStorage.getItem(STORAGE_KEY) || 'auto'; } catch (e) {}
+
+  function isDarkTime() {
+    var h = new Date().getHours();
+    return h < 7 || h >= 22;
+  }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动（7:00–22:00 浅色）' : mode === 'light' ? '浅色模式' : '深色模式';
+    btn.setAttribute('aria-label', btn.title);
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    try { localStorage.setItem(STORAGE_KEY, currentMode); } catch (e) {}
+    applyTheme(currentMode);
+  }
+  btn.addEventListener('click', cycleMode);
+  setInterval(function () { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  applyTheme(currentMode);
+
+  var bar = document.getElementById('progress');
+  function updateProgress() {
+    var doc = document.documentElement;
+    var max = doc.scrollHeight - doc.clientHeight;
+    var pct = max > 0 ? (doc.scrollTop / max) * 100 : 0;
+    bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  }
+  window.addEventListener('scroll', updateProgress, { passive: true });
+  window.addEventListener('resize', updateProgress);
+  updateProgress();
+})();
+</script>
+
+</body>
+</html>

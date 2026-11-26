@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>窗口的来路与归途：Activity 启动链与窗口生命周期 — AOSP 12 源码深度分析</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol","Apple Symbols",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .draft-note { border:1px dashed var(--accent); background:var(--tag-bg); border-radius:8px; padding:12px 18px; margin-bottom:24px; font-size:.88rem; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .think .qtag { color:var(--accent3); font-weight:bold; }
+    .analogy { border-left:4px solid var(--accent2); background:var(--bg-card); border:1px solid var(--border); border-left-width:4px; padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .analogy .tag { color:var(--accent2); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:10px 16px; margin:14px 0; font-size:.9rem; color:var(--text2); }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:14px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-size:.82rem; font-weight:bold; margin-right:8px; }
+    .why { color:var(--accent2); font-weight:bold; }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🔄 窗口的来路与归途：Activity 启动链与窗口生命周期</h1>
+<p class="subtitle">06 篇讲了「窗口怎么出生」，本篇把两头补齐：ActivityRecord 从哪来、到哪去 · AOSP 12 源码逐行核实</p>
+<p class="series">📚 Android 窗口层级专题 07（临时稿） | 上承 06 篇窗口诞生 | 主线阶段 2：Activity/Task 与窗口生命周期</p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="draft-note">
+  📝 <strong>临时稿（_draft）</strong>：本文件尚未分配系列编号、未放入正式目录、未更新 index.html。请直接在本文件上审阅修改；改完后由你下发正式落盘命令，再以本文件为唯一准稿并入系列。生成日期 2026-10-18。
+</div>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p1">一、全景：一次 startActivity 的四段旅程</a>
+  <a href="#p2">二、ATMS 入口与 ActivityStarter 决策</a>
+  <a href="#p3">三、ActivityRecord 的诞生：它为何就是 WindowToken</a>
+  <a href="#p4">四、Task 与任务栈</a>
+  <a href="#p5">五、启动窗口：splash 与快照的接力</a>
+  <a href="#p6">六、首帧上屏：isDrawn 翻转</a>
+  <a href="#p7">七、删除：三条路径的差异</a>
+  <a href="#p8">八、源码速查与自测</a>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p1">一、全景：一次 startActivity 的四段旅程</h2>
+
+<div class="card">
+  <p>06 篇结尾留了一个悬念：<code>addWindow</code> 里那个 <code>token</code> 是从哪来的？答案在这里——它来自 <strong>ActivityRecord</strong>，而 ActivityRecord 是 <code>startActivity</code> 一路走来的产物。</p>
+
+  <div class="annotation star3"><span class="tag">一句话</span> 06 篇讲的是「窗口怎么挂上树」（WMS 侧）；本篇讲的是「<strong>是谁、什么时候决定该有一个窗口</strong>」（ATMS 侧）。两者在 <code>ViewRootImpl.setView</code> 这个点上会合。</div>
+
+  <div class="tree">一次 startActivity 的四段旅程
+
+【第一段】决策：App 进程 → system_server
+   App: Activity.startActivity()
+     └─ Instrumentation.execStartActivity()
+          └─ ─── binder ───▶ ATMS.startActivity()                    :1144
+                                └─ ActivityStarter.execute()          :611
+                                     └─ executeRequest()              :811
+                                          └─ startActivityUnchecked() :1548
+                                               └─ startActivityInner()
+                                                    ★ 决定：复用哪个 Task？要不要新建？
+
+【第二段】身份：造出 ActivityRecord
+   ActivityRecord extends WindowToken                     :365
+     ★ 这一步是本篇的核心：ActivityRecord 本身就是窗口树上的一个容器
+     ★ 06 篇的 token 就是它（asActivityRecord() 反查的就是这个对象）
+
+【第三段】落地：新进程起来，Activity 实例被创建
+   系统 → 目标进程
+     └─ ActivityThread.performLaunchActivity()             :3513
+          └─ Activity.attach()  ★ 拿到 ActivityRecord 的 token
+               └─ 走 06 篇的整条链：addView → binder → WMS.addWindow
+
+【第四段】显示：首帧上屏
+   ViewRootImpl.setView()                                  :993
+     └─ relayout → 首帧绘制
+          └─ WindowStateAnimator.commitFinishDrawingLocked() :270
+               └─ isDrawn() 翻转 ← 启动窗口此时才退场</div>
+
+  <h3>四段旅程的"会合点"</h3>
+  <table>
+    <tr><th>阶段</th><th>谁在主导</th><th>产物</th><th>对应篇目</th></tr>
+    <tr><td>① 决策</td><td>ATMS / ActivityStarter</td><td>一个「要启动谁、放到哪个 Task」的决定</td><td>本篇</td></tr>
+    <tr><td>② 身份</td><td>ATMS（<code>startActivityInner</code> 里）</td><td><code>ActivityRecord</code>（= WindowToken）</td><td><strong>本篇 + 06 篇会合</strong></td></tr>
+    <tr><td>③ 落地</td><td>目标 App 进程 + WMS</td><td><code>WindowState</code> 挂上树</td><td><strong>06 篇</strong></td></tr>
+    <tr><td>④ 显示</td><td>App 主线程 + WMS</td><td>首帧画出、<code>isDrawn=true</code></td><td>03 篇 + 本篇</td></tr>
+  </table>
+
+  <div class="analogy">
+    <span class="tag">类比</span> 把一次启动比作<strong>开一家新门店</strong>：<br>
+    ① <strong>决策</strong>——总部批准选址（<code>ActivityStarter</code> 决定放哪个 Task）；<br>
+    ② <strong>身份</strong>——工商登记，拿到营业执照（<code>ActivityRecord</code>，就是 06 篇那张"房本"）；<br>
+    ③ <strong>落地</strong>——装修队进场、把店开起来（窗口挂上树）；<br>
+    ④ <strong>显示</strong>——开门营业、顾客能进（首帧画出，启动画面退场）。
+  </div>
+
+  <div class="hint">🔗 前置：06 篇（窗口怎么上树、token 从哪来）、03 篇（遍历与首帧）。读完本篇，你就把「窗口的一生」完整串起来了。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p2">二、ATMS 入口与 ActivityStarter 决策</h2>
+
+<div class="card">
+  <p>先看系统侧的入口。注意 ATMS 与 WMS <strong>同包同锁</strong>（都在 <code>wm/</code> 目录、共用 <code>mGlobalLock</code>）——这是 API 30 之后的重大变化，也是为什么讲 WMS 时总能顺手看到 AMS 的代码。</p>
+
+  <h3>块 A：ATMS 入口（ActivityTaskManagerService.java:1144 起，裁剪）</h3>
+  <div class="code-block">
+    <div class="filename">ActivityTaskManagerService.java:1144-1200（裁剪）</div>
+    <pre><span class="kw">public final int</span> <span class="fn">startActivity</span>(IApplicationThread caller, String callingPackage,
+        Intent intent, String resolvedType, IBinder resultTo, String resultWho, <span class="kw">int</span> requestCode,
+        <span class="kw">int</span> startFlags, ProfilerInfo profilerInfo, Bundle bOptions, <span class="kw">int</span> userId) {
+    <span class="kw">return</span> <span class="fn">startActivityAsUser</span>(caller, callingPackage, intent, resolvedType, resultTo,
+            resultWho, requestCode, startFlags, profilerInfo, bOptions,
+            userId, <span class="kw">true</span> <span class="cm">/*validateIncomingUser*/</span>);
+    <span class="cm">// ① why 多一层转发：validateIncomingUser 要检查调用方是否有权给这个 userId 启动</span>
+    <span class="cm">//    （多用户/工作资料场景的安全闸）</span>
+}
+
+<span class="kw">private int</span> <span class="fn">startActivityAsUser</span>(...) {
+    <span class="cm">// … 省略：权限校验、mAmInternal.handleIncomingUser、计时埋点</span>
+    <span class="kw">try</span> {
+        <span class="kw">return</span> <span class="kw">new</span> <span class="fn">ActivityStarter</span>(mService, mRootWindowContainer, ...,
+                <span class="kw">new</span> <span class="fn">SafeActivityOptions</span>(bOptions))
+                .<span class="fn">execute</span>();
+        <span class="cm">// ② ★ 每次 startActivity 都 new 一个 ActivityStarter：</span>
+        <span class="cm">//    它是个"一次性的决策器"而非长驻服务——用完即弃，</span>
+        <span class="cm">//    这样决策过程中的临时状态不需要考虑并发保护</span>
+    } <span class="kw">catch</span> (RuntimeException e) {
+        <span class="cm">// … 省略：异常转错误码并打日志</span>
+    }
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：入口做权限与 userId 校验，然后造一个一次性的 <code>ActivityStarter</code> 去执行决策。</p>
+  <p><strong>设计意图</strong>：<span class="why">ActivityStarter 是"一次性决策器"</span>。启动决策需要考虑几十个因素（调用方、launchMode、taskAffinity、flags、当前栈状态…），如果做成有状态的常驻服务，并发与状态清理会非常复杂。做成一次性对象后，<strong>所有中间状态都随对象死亡而消失</strong>，逻辑清爽很多。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>后台启动 Activity 不生效（静默失败）</strong>。<strong>因果</strong>：入口层的 <code>validateIncomingUser</code> 或更下游的 Bal/ABL（Background Activity Launch）检查拒绝——Android 10+ 严格限制后台应用启动 Activity。<strong>怎么查</strong>：<code>dumpsys activity activities</code> 看不到新 AR；开 <code>ActivityTaskManager</code> 相关 log 看有没有 "Background activity launch blocked" 一类字样。</div>
+
+  <h3>块 B：决策执行（ActivityStarter.java:611 / 811 / 1548）</h3>
+  <div class="code-block">
+    <div class="filename">ActivityStarter.java:611、811、1548（裁剪）</div>
+    <pre><span class="kw">int</span> <span class="fn">execute</span>() {
+    <span class="cm">// ① 薄入口：真正的活在 executeRequest</span>
+    <span class="kw">return</span> <span class="fn">executeRequest</span>(mRequest);
+}
+
+<span class="kw">private int</span> <span class="fn">executeRequest</span>(Request request) {
+    <span class="cm">// … 省略：解析 Intent（找到目标 Activity）、包可见性校验、</span>
+    <span class="cm">//   权限检查、ProcessRecord 查询等（811-1170，很长）</span>
+
+    <span class="kw">final</span> ActivityRecord r = <span class="kw">new</span> <span class="fn">ActivityRecord</span>(mService, ...);
+    <span class="cm">// ② ★ ActivityRecord 在这里被创建（注意：早于"决定放哪个 Task"）</span>
+
+    mLastStartActivityResult = <span class="fn">startActivityUnchecked</span>(r, sourceRecord, voiceSession,
+            voiceInteractor, startFlags, <span class="kw">true</span> <span class="cm">/*doResume*/</span>, options, inTask, restrictedBgActivity,
+            intentGrants);
+    <span class="cm">// ③ 进入决策主流程</span>
+    <span class="cm">// … 省略：清理临时状态、上报结果</span>
+}
+
+<span class="kw">private int</span> <span class="fn">startActivityUnchecked</span>(<span class="kw">final</span> ActivityRecord r, ActivityRecord sourceRecord, ...) {
+    <span class="cm">// … 省略：同步/异步决策分支、resultTo 记录、mSupervisor 相关准备（1548-1700）</span>
+    <span class="kw">try</span> {
+        <span class="kw">final int</span> result = <span class="fn">startActivityInner</span>(r, sourceRecord, voiceSession, ...);
+        <span class="cm">// ④ ★★ 核心决策全在这里面：launchMode 怎么算、Task 复不复用、</span>
+        <span class="cm">//    要不要清栈（clearTop）、要不要新建 Task —— 这里决定 ActivityRecord 的归属</span>
+        <span class="kw">return</span> result;
+    } <span class="kw">finally</span> {
+        <span class="cm">// … 省略：收尾与状态复位</span>
+    }
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：解析 Intent 找到目标 → 创建 ActivityRecord → 进入决策主流程决定它归哪个 Task。</p>
+  <p><strong>设计意图</strong>：<span class="why">先造对象、再决定归属</span>。这看起来顺序奇怪（为什么不先决定放哪、再造对象？），但很合理：<strong>决策需要用对象本身的信息</strong>（比如它的 taskAffinity、launchMode、intent flags 都来自这个 AR 的字段）。先造出来当"草稿"，决策过程中随时可能被丢弃（abort）——所以后面才有那句注释「Only do the create here (and defer requestStart) since startActivityInner might abort」。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>launchMode 行为不符合预期</strong>（例如 singleTask 没有复用实例、singleTop 又起了新的）。<strong>因果</strong>：<code>startActivityInner</code> 里的复用判断综合了 launchMode + intent flags（<code>FLAG_ACTIVITY_NEW_TASK</code> 等） + taskAffinity + 当前栈状态，任何一个因素不同结果就不同。常见误用：<strong>忘了 singleTask 还需要 <code>FLAG_ACTIVITY_NEW_TASK</code> 配合</strong>。<strong>怎么查</strong>：<code>dumpsys activity activities</code> 看目标 AR 落在哪个 Task、Task 的 id 是否变了（变=新建了 Task）；再对照 manifest 的 launchMode 与代码里的 flags。</div>
+  <div class="think"><span class="qtag">🧠 思考（单块）</span> 为什么 <code>ActivityStarter</code> 要做成"每次 new"，而不是像 WMS 那样做一个长驻的决策服务？提示：想想决策过程中会产生多少临时状态（<code>mStartActivity</code> / <code>mLaunchTaskBehind</code> / <code>mTargetStack</code> 之类），以及这些状态在并发场景下要花多大代价保护。</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p3">三、ActivityRecord 的诞生：它为何就是 WindowToken</h2>
+
+<div class="card">
+  <p>这是本篇最需要讲透的一点——<strong>它把 06 篇和 AMS 缝合在一起</strong>。</p>
+
+  <h3>块 C：继承链就是答案（ActivityRecord.java:365）</h3>
+  <div class="code-block">
+    <div class="filename">ActivityRecord.java:365 + WindowToken.java:71 + 06 篇的呼应</div>
+    <pre><span class="cm">// ① 这一行就是全部答案：</span>
+<span class="kw">final class</span> <span class="fn">ActivityRecord</span> <span class="kw">extends</span> <span class="fn">WindowToken</span>
+        <span class="kw">implements</span> WindowManagerService.AppFreezeListener {
+
+<span class="cm">// ② 而 WindowToken 又是窗口容器：</span>
+<span class="cm">//    WindowToken extends WindowContainer&lt;WindowState&gt;   (WindowToken.java:71)</span>
+
+<span class="cm">// ③ 所以在窗口树里的位置是：</span>
+<span class="cm">//    DisplayArea.Tokens / TaskDisplayArea</span>
+<span class="cm">//      └─ Task</span>
+<span class="cm">//           └─ ActivityRecord  ← 它是 Task 的子节点，同时是一个 WindowToken</span>
+<span class="cm">//                └─ WindowState  ← 06 篇 addWindow 挂进来的窗口</span>
+<span class="cm">//</span>
+<span class="cm">// ④ 这就是 06 篇里这两个疑问的答案：</span>
+<span class="cm">//    · “token 从哪来？” → 来自 ActivityRecord（系统在 startActivity 时创建）</span>
+<span class="cm">//    · “asActivityRecord() 反查的是什么？” → 就是这个对象</span>
+<span class="cm">//    · “应用窗口为什么不能伪造容器？” → 因为容器必须由系统在 ATMS 里创建</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：用一行继承声明，说明「Activity 在窗口树上的身份就是一个容器」。</p>
+  <p><strong>设计意图</strong>：<span class="why">为什么让 ActivityRecord 直接继承 WindowToken</span>。因为「一个 Activity 的窗口们」天然要共享一份可见性、配置、动画状态——这正是 WindowToken 的职责（06 篇讲过：WindowToken 是窗口树里"一组窗口"的身份单元）。让它继承而不是组合，省掉一层间接，也让所有按 <code>WindowContainer</code> 遍历的逻辑自动覆盖到 Activity。<strong>代价</strong>是耦合：Activity 的生命周期语义与窗口容器语义混在一个类里（这也是这个文件为什么有上万行）。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>Activity 已 onDestroy 但窗口还在 / 报 leaked window</strong>。<strong>因果</strong>：ActivityRecord（容器）与 WindowState（窗口）的回收<strong>不是同时的</strong>——容器可以留着等待动画或状态收敛，而窗口该走自己的删除流程（见第七节）。<strong>怎么查</strong>：<code>dumpsys activity activities</code> 看 AR 是否已从 Task 摘除；<code>dumpsys window windows</code> 看对应 WindowState 是否还在；两者状态不一致时，看谁卡住了。</div>
+
+  <h3>块 D：桌面/系统窗口也是有 token 的容器（呼应 06 篇块 F）</h3>
+  <div class="code-block">
+    <div class="filename">三类 token 的对照（06 篇块 F 的完整版）</div>
+    <pre><span class="cm">// 【应用窗口】token = ActivityRecord.Token（IApplicationToken）</span>
+<span class="cm">//   由 ATMS 在 startActivity 时创建，只能由系统创建 → 块 C 的继承链</span>
+<span class="cm">//   WMS 查到它 → asActivityRecord() 拿到 AR → 有了 Activity 的全部信息</span>
+
+<span class="cm">// 【系统窗口】token = 现场 new WindowToken.Builder(...)</span>
+<span class="cm">//   壁纸 / IME / Toast 等没有 Activity，自带 IBinder 建容器</span>
+<span class="cm">//   06 篇块 F 的 unprivilegedAppCanCreateTokenWith 就是这道闸</span>
+
+<span class="cm">// 【子窗口】token = 父窗口的 IWindow（不是 ActivityRecord！）</span>
+<span class="cm">//   Dialog/Popup 传的是父窗口的 ViewRootImpl.W.asBinder()</span>
+<span class="cm">//   WMS 先用它查 mWindowMap 找到父 WindowState，再绕回父的 mAttrs.token 找 AR</span>
+<span class="cm">//   ——这是 06 篇那个"两路查询"分叉的根本原因</span>
+
+<span class="cm">// 一句话：token 的三种身份，对应"窗口归属"的三种来源：</span>
+<span class="cm">//   有 Activity（应用） / 有主（系统） / 跟着爹（子窗口）</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：把 06 篇的三类 token 与 AMS 侧的角色对应起来。</p>
+  <p><strong>设计意图</strong>：<span class="why">安全边界</span>。应用窗口的 token 必须由系统创建（因为它是 Activity 的身份凭证），这从根上杜绝了「App 伪造一个容器把自己挂到别的 Task 上」。系统窗口可以自建（因为系统本身就是可信的），子窗口只能继承父窗口的（因为它的存在依附于父）。</p>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p4">四、Task 与任务栈</h2>
+
+<div class="card">
+  <p>ActivityRecord 不能凭空挂在树上，它必须属于一个 Task。<code>startActivityInner</code> 的核心工作就是决定「放进哪个 Task」。</p>
+
+  <h3>块 E：Task 是什么（Task.java:252）</h3>
+  <div class="code-block">
+    <div class="filename">Task.java:252 + 树上的位置</div>
+    <pre><span class="kw">class</span> <span class="fn">Task</span> <span class="kw">extends</span> WindowContainer&lt;WindowContainer&gt; {
+<span class="cm">// ① 注意泛型是 WindowContainer 而不是 WindowState ——</span>
+<span class="cm">//    Task 的子节点可以是 ActivityRecord（常见的），</span>
+<span class="cm">//    也可以是另一个 Task（分屏/多窗口时嵌套形成 Task 树）</span>
+
+<span class="cm">// ② 它管的东西：一组 ActivityRecord + 自己的 bounds + windowingMode</span>
+<span class="cm">//    · bounds：这个 Task 占据的屏幕区域（分屏/自由窗口时不是全屏）</span>
+<span class="cm">//    · windowingMode：fullscreen / freeform / pinned / multi-window</span>
+<span class="cm">//    —— 08 篇 computeFrame 里的 windowsAreFloating 就是读这个</span>
+
+<span class="cm">// ③ 树的形状（含分屏）：</span>
+<span class="cm">//    TaskDisplayArea</span>
+<span class="cm">//      ├─ Task (split 左)          ← windowingMode = MULTI_WINDOW</span>
+<span class="cm">//      │    └─ ActivityRecord</span>
+<span class="cm">//      │         └─ WindowState</span>
+<span class="cm">//      └─ Task (split 右)</span>
+<span class="cm">//           └─ ActivityRecord</span>
+<span class="cm">//                └─ WindowState</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：说明 Task 是 ActivityRecord 的上级容器，它自己带 bounds 和 windowingMode。</p>
+  <p><strong>设计意图</strong>：<span class="why">Task 既是"历史记录"又是"几何容器"</span>。作为历史记录，它支撑返回栈（back）和最近任务（recents）；作为几何容器，它决定里面 Activity 的可用区域。这两件事捆在一起是 Android 的历史设计——好处是"一个任务里的页面共享一套几何约束"（分屏时整个任务一起被约束），代价是 Task 类职责偏重。</p>
+
+  <h3>块 F：决策的四个关键输入</h3>
+  <table>
+    <tr><th>输入</th><th>在哪</th><th>作用</th></tr>
+    <tr><td><code>launchMode</code></td><td>manifest / Intent flags</td><td>standard / singleTop / singleTask / singleInstance —— 决定复不复用实例</td></tr>
+    <tr><td><code>taskAffinity</code></td><td>manifest</td><td>决定"愿意和谁待在同一个 Task"</td></tr>
+    <tr><td><strong>Intent flags</strong></td><td>调用方代码</td><td><code>NEW_TASK</code> / <code>CLEAR_TOP</code> / <code>SINGLE_TOP</code> / <code>CLEAR_TASK</code> 等——<strong>优先级高于 manifest</strong></td></tr>
+    <tr><td>当前栈状态</td><td>ATMS 内存</td><td>目标 Task 是否已存在、栈顶是谁、是否在分屏里</td></tr>
+  </table>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>点通知后 Activity 起在了旧的 Task 上 / 返回键行为异常</strong>。<strong>因果</strong>：从通知、Service、广播启动 Activity 时<strong>必须带 <code>FLAG_ACTIVITY_NEW_TASK</code></strong>（因为它们没有 Activity 上下文）。不带要么起不来（抛异常），要么落进一个不符合预期的 Task。<strong>怎么查</strong>：<code>dumpsys activity activities</code> 观察目标 AR 落在哪个 Task、Task 的 affinity 是什么；对照调用处有没有加 NEW_TASK。</div>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 B、块 F）</span> 块 B 里 ActivityRecord 是"先创建、后决定归属"的。如果一个 <code>singleTask</code> 的 Activity 已经存在于栈中，这次 <code>startActivity</code> 新建的那个 AR 会怎样？——这能解释为什么"startActivity 返回成功"但"没有新建 Activity 实例"。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p5">五、启动窗口：splash 与快照的接力</h2>
+
+<div class="card">
+  <p>Activity 决定了，但它的进程还没起来、窗口还没画出来。这几百毫秒里屏幕上显示什么？答案是<strong>启动窗口</strong>（starting window / splash）。</p>
+
+  <h3>块 G：两种启动窗口（StartingSurfaceController.java:46 / 60 / 115）</h3>
+  <div class="code-block">
+    <div class="filename">StartingSurfaceController.java:46-130（裁剪）</div>
+    <pre><span class="kw">public class</span> <span class="fn">StartingSurfaceController</span> {
+    <span class="cm">// ① 它的职责：在"App 窗口还没准备好"的空窗期，先摆一个东西在屏幕上，
+    //    让用户不觉得"点了没反应"</span>
+
+    StartingSurface <span class="fn">createSplashScreenStartingSurface</span>(ActivityRecord activity,
+            String packageName, <span class="kw">int</span> theme, ...) {
+        <span class="cm">// ② 冷启动没有历史画面 → 画一个 splash：</span>
+        <span class="cm">//    用 Activity 的主题（windowBackground / windowSplashScreen* 属性）</span>
+        <span class="cm">//    ——这就是你看到"图标+背景色"那张启动图的来源</span>
+        <span class="cm">// … 省略：实际 surface 构造（转发给 TaskOrganizer / SystemUI）</span>
+    }
+
+    StartingSurface <span class="fn">createTaskSnapshotSurface</span>(ActivityRecord activity,
+            TaskSnapshot taskSnapshot) {
+        <span class="cm">// ③ 热启动/从最近任务回来时 → 直接贴上次退出的快照（task snapshot）：</span>
+        <span class="cm">//    比 splash 更自然，用户看到的是"上次那个画面"</span>
+        <span class="cm">// … 省略：快照尺寸适配、圆角处理</span>
+    }
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：两种启动窗口——冷启动用 splash（主题背景），热启动用快照（上次画面）。</p>
+  <p><strong>设计意图</strong>：<span class="why">启动窗口的本质是"掩盖空窗期"</span>。它不是装饰，是<strong>性能体验的补丁</strong>：App 从进程创建到首帧通常要几百毫秒，这段时间如果屏幕是黑的，用户会以为卡了。Android 用"先画一个占位"把这段时间填上。</p>
+  <div class="hint">📌 <strong>AOSP 12 的重要变化</strong>：启动窗口的实际绘制<strong>已经交给 Shell（SystemUI）</strong>——经 <code>TaskOrganizerController.addStartingWindow()</code>（<code>:550</code>，转发到 <code>:134</code>/<code>:316</code>）。WMS 只负责"决定该有一个启动窗"，不再自己画。这条线索在 09 篇（动画与 Shell 接管）里会展开。</div>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>启动黑屏 / 白屏 / 闪两次</strong>。这三种现象对应三个不同的锅：<br>
+  ① <strong>黑屏</strong>：启动窗口没加上（Shell 侧失败）或主题背景是黑的；<br>
+  ② <strong>白屏</strong>：主题 <code>windowBackground</code> 是白色（默认 Theme.DeviceDefault 常见），而 App 真实背景不是——用户看到"白一下再变"；<br>
+  ③ <strong>闪两次</strong>：启动窗口退场与真实窗口首帧没对齐（启动窗先没了、真窗口还没画；或反之）。<br>
+  <strong>怎么查</strong>：开 <code>cmd window tracing</code>（Winscope）看 starting window 的 surface 何时创建/销毁，与真实窗口首帧的时刻对齐；再查主题的 <code>windowBackground</code> 与 <code>windowSplashScreen*</code> 属性。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p6">六、首帧上屏：isDrawn 翻转</h2>
+
+<div class="card">
+  <p>启动窗口什么时候退场？答案是：<strong>当真实窗口画完第一帧</strong>。这个"画完了"的标记就是 <code>isDrawn</code>。</p>
+
+  <h3>块 H：三个容易混淆的状态方法（WindowState.java）</h3>
+  <div class="code-block">
+    <div class="filename">WindowState.java:2006 / 2091 / 3160 + WindowStateAnimator.java:270</div>
+    <pre><span class="cm">// ① isReadyForDisplay()  :2006</span>
+<span class="cm">//    问"现在能显示了吗"——综合可见性 + 是否已布局 + surface 是否就绪</span>
+<span class="cm">//    它是"能不能上屏"的综合判断，最常用于可见性收敛</span>
+
+<span class="cm">// ② isDrawn()            :2091</span>
+<span class="cm">//    问"画完了吗"——针对"正在等待绘制的窗口"（mDrawState == READY_TO_SHOW</span>
+<span class="cm">//    或 HAS_DRAWN），会额外检查是否有过渡动画在参与</span>
+<span class="cm">//    ★ 启动窗口退场的判据就是它</span>
+
+<span class="cm">// ③ hasDrawn()           :3160</span>
+<span class="cm">//    最严格的一条：mSurfaceController != null && mSurfaceController.hasSurface()</span>
+<span class="cm">//    && mDrawState == HAS_DRAWN —— 纯粹的"surface 上真的有过 buffer"</span>
+
+<span class="cm">// ④ 翻转的那一下（WindowStateAnimator.java:270）：</span>
+<span class="kw">boolean</span> <span class="fn">commitFinishDrawingLocked</span>() {
+    <span class="cm">// … 省略：判断当前 mDrawState</span>
+    <span class="cm">// 把 mDrawState 从 READY_TO_SHOW（已就绪待显）推进到 HAS_DRAWN（已画过）</span>
+    <span class="cm">// ★ 这一行执行后，isDrawn()/hasDrawn() 才会返回 true，</span>
+    <span class="cm">//   随后触发：启动窗口退场、窗口参与者进入转场、hasDrawn 相关的等待放行</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：三个状态方法的层次关系，以及"画完了"这个状态是在哪翻转的。</p>
+  <p><strong>设计意图</strong>：<span class="why">为什么要有三个而不是一个</span>。因为它们回答的是不同问题：<code>isReadyForDisplay</code> 是"能不能显示"（用于可见性决策）、<code>isDrawn</code> 是"这一轮画完没"（用于等相关方）、<code>hasDrawn</code> 是"历史上是否真有过帧"（用于最严格的确认）。排障时必须分清——这也是 06 篇「上树 ≠ 显示」的量化答案。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>启动窗口不消失 / 一直显示 splash</strong>（马老师 P0 项目里的经典题）。<strong>因果</strong>：<code>isDrawn()</code> 一直不翻 true，通常因为 App 主线程卡在 onCreate/onResume 里（同步 IO、大计算），或者首帧渲染被 RenderThread 阻塞。<strong>怎么查</strong>：<code>dumpsys window windows</code> 找该窗口，看 <code>isDrawn=false</code>、<code>mDrawState</code> 的值；再看 App 侧主线程堆栈（<code>adb shell kill -3 &lt;pid&gt;</code> 或 ANR trace）。若 <code>mHasSurface=true</code> 但 <code>isDrawn=false</code>，锅在绘制；<code>mHasSurface=false</code>，锅在 relayout。</div>
+  <div class="think"><span class="qtag">🧠 思考（闭环·需结合：块 G、块 H、09 篇）</span> 启动窗口退场与真实窗口进场，需要精确对齐。如果真实窗口的 <code>isDrawn</code> 翻转得<strong>比</strong>启动窗口退场<strong>晚</strong>，用户看到什么？如果<strong>早</strong>呢？想想为什么 09 篇要讲「转场闸门 <code>AppTransition.isReady()</code> 会等所有参与者 hasDrawn」——它正是为了解决这个对齐问题。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p7">七、删除：三条路径的差异</h2>
+
+<div class="card">
+  <p>这是本篇的重点章——它也是<strong>实践篇 P1 作业的理论基础</strong>（马老师那道原题问的就是：多任务移除 vs 后台 kill，为什么树上的残留不一样）。</p>
+
+  <div class="annotation star3"><span class="tag">先立结论</span> <strong>WindowState / ActivityRecord / Task 三者的生命周期不绑定</strong>。它们各自有独立的删除触发点，这才是"后台 kill 后 AR 还在"这种反直觉现象的根源。</div>
+
+  <h3>块 I：三条删除路径的入口（各文件）</h3>
+  <div class="code-block">
+    <div class="filename">WindowState.java:2362/2418 + ActivityRecord.java:3232/3324 + Task.java:972/3211</div>
+    <pre><span class="cm">// 【路径一：窗口自己的删除】—— 06 篇块 I 的收尾</span>
+<span class="cm">// WindowState.removeIfPossible()            :2418</span>
+<span class="cm">//   ├─ 会先 putInTransition 检查：动画没完就不删（等 09 篇的 callback）</span>
+<span class="cm">//   └─ 条件满足才真正 removeImmediately()  :2362</span>
+<span class="cm">// 注释里那句“Use removeImmediately() instead of removeIfPossible()”提示：</span>
+<span class="cm">// 某些场景（如已经被判死刑）必须立刻删，不能等动画</span>
+
+<span class="cm">// 【路径二：Activity 记录的删除】</span>
+<span class="cm">// ActivityRecord.destroyImmediately(String reason)   :3232  ← 立刻销毁</span>
+<span class="cm">// ActivityRecord.removeFromHistory(String reason)    :3324  ← 从历史里摘除</span>
+<span class="cm">// ★ 注意"销毁"与"摘除"是两件事：destroy 是对象层面，removeFromHistory</span>
+<span class="cm">//   是它在 Task 的历史列表里出列 —— 两者可以不同时发生</span>
+
+<span class="cm">// 【路径三：Task 的删除】</span>
+<span class="cm">// Task.removeIfPossible()   :972   ← 优先（会检查是否还有未结束的 AR）</span>
+<span class="cm">// Task.removeImmediately()  :3211  ← 兜底（强制摘树）</span>
+
+<span class="cm">// 【撤出任务后的清理】</span>
+<span class="cm">// ActivityTaskSupervisor.cleanUpRemovedTaskLocked(task, killProcess, removeFromRecents) :1574</span>
+<span class="cm">// ActivityTaskSupervisor.removeHistoryRecords(WindowProcessController)                  :1930</span>
+<span class="cm">// ★ 这两个是"进程死亡后清理历史"的实际执行者</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：三类对象各有自己的删除入口，而且每种都有"温和删"（removeIfPossible，等条件）与"强制删"（removeImmediately）两条路。</p>
+  <p><strong>设计意图</strong>：<span class="why">温和/强制两套删除是为了兼顾体验与安全</span>。「温和删」尊重动画与状态收敛（用户看不到突兀消失），「强制删」保证系统不会因为某个对象赖着不走而卡死。系统在正常路径用前者，在异常/超时路径用后者兜底。</p>
+
+  <h3>块 J：三种场景下被删的东西不同（P1 作业的答案框架）</h3>
+  <table>
+    <tr><th>场景</th><th>Task</th><th>ActivityRecord</th><th>WindowState</th><th>为什么不同</th></tr>
+    <tr><td><strong>多任务里上划移除</strong></td><td>✅ 移除</td><td>✅ 移除</td><td>✅ 移除</td><td>用户显式操作 → 走完整清理流程（<code>removeTask</code> → <code>cleanUpRemovedTaskLocked</code>），三者一起走</td></tr>
+    <tr><td><strong>后台 kill 进程</strong></td><td>❌ 保留</td><td>❌ 保留</td><td>✅ 移除</td><td>进程死亡只让<strong>窗口</strong>失去宿主（binder 断、surface 回收）；<strong>Task/AR 是"任务历史"</strong>，系统故意保留以便用户还能从最近任务回到它（有些应用会重建进程恢复现场）</td></tr>
+    <tr><td><strong>前台 kill / 正常 finish</strong></td><td>看情况</td><td>✅ 移除</td><td>✅ 移除</td><td>正常 finish 走生命周期收尾；前台被 kill 时窗口随进程一起走，AR 随后被清理</td></tr>
+  </table>
+
+  <div class="annotation"><span class="tag">核心机制</span> 后台 kill 时 <strong>WindowState 掉了但 AR/Task 留着</strong>，是因为：<br>
+  ① <strong>窗口挂在进程上</strong>——进程死了，binder（<code>IWindow</code>）断连，WMS 的 <code>DeathRecipient</code> 被触发（06 篇块 C 讲的那个 <code>linkToDeath</code>），于是 <code>WindowState</code> 被清理；<br>
+  ② <strong>Task/AR 挂在系统上</strong>——它们由 system_server 持有，不随 App 进程死亡而消失。系统把"最近任务列表"当作<strong>用户可见的历史</strong>来维护，进程死了历史还在（这也是最近任务里还能看到那个 App 卡片的机制）。</div>
+
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>判断"真泄漏"还是"设计如此"</strong>（这是 L4 窗口泄漏猎犬项目的第一道判据）。<strong>因果</strong>：后台 kill 后 AR/Task 残留<strong>是设计</strong>（有 <code>cleanUpRemovedTaskLocked</code> 在合适的时机清理），而非泄漏。真泄漏的特征是<strong>"只增不减"</strong>：反复进出同一个 Activity，计数曲线单调上升。<strong>怎么查</strong>：分别统计 <code>dumpsys activity activities</code> 里的 Task/AR 数与 <code>dumpsys window windows</code> 里的 WindowState 数，做进出实验对比两条曲线。</div>
+
+  <div class="think"><span class="qtag">🧠 思考（闭环·需结合：块 C、块 I、块 J）</span> 既然 <code>ActivityRecord extends WindowToken</code>（块 C），而 WindowToken 是窗口的容器——那后台 kill 时 WindowState 被清理了，<strong>这个 ActivityRecord 容器岂不是空的</strong>？这个"空容器"留在树上会不会导致遍历时出问题？想想 06 篇 <code>WindowToken.addWindow()</code> 里那个 <code>if (!mChildren.contains(win))</code> 的存在意义。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p8">八、源码速查与自测</h2>
+
+<div class="card">
+  <h3>完整链路（一次启动到删除）</h3>
+  <div class="tree">① App 发起
+   Instrumentation.execStartActivity()
+     └─ ── binder ──▶ ATMS.startActivity()                  :1144
+                        └─ startActivityAsUser()            :1178
+                             └─ new ActivityStarter().execute()  :611
+
+② 决策
+   ActivityStarter.executeRequest()                        :811
+     ├─ 解析 Intent / 包可见性 / 权限
+     ├─ new ActivityRecord(...)   ★ 身份诞生（早于归属决策）
+     └─ startActivityUnchecked()                           :1548
+          └─ startActivityInner()  ★ 决定 Task 归属
+
+③ 新进程与 Activity 实例
+   系统 → 目标进程
+     └─ ActivityThread.performLaunchActivity()             :3513
+          └─ Activity.attach()  ★ 拿到 ActivityRecord 的 token
+
+④ 窗口上树（06 篇的整条链）
+   ActivityThread.handleResumeActivity()                   :4785
+     └─ WindowManagerGlobal.addView()
+          └─ ViewRootImpl.setView()                        :993
+               └─ binder → WMS.addWindow()  ★ 06 篇
+
+⑤ 首帧上屏
+   relayout → 绘制 → WindowStateAnimator.commitFinishDrawingLocked()  :270
+     └─ mDrawState: READY_TO_SHOW → HAS_DRAWN
+          └─ isDrawn() 翻 true  → 启动窗口退场
+
+⑥ 删除（三条路径，见第七节）
+   多任务移除  → Task.removeIfPossible()          :972  → 三者一起走
+   后台 kill   → 窗口随进程走；AR/Task 保留（设计如此）
+   正常 finish → ActivityRecord.destroyImmediately() :3232
+                  WindowState.removeIfPossible()      :2418
+                      后续清理：ActivityTaskSupervisor.cleanUpRemovedTaskLocked() :1574</div>
+
+  <h3>源码速查（WSL AOSP 12，行号均已 grep 核实）</h3>
+  <div class="code-block">
+    <div class="filename">AMS / 启动链 关键位置</div>
+    <pre><span class="cm"># 系统侧入口与决策</span>
+sed -n '1144,1200p' wm/ActivityTaskManagerService.java   <span class="cm"># startActivity / startActivityAsUser</span>
+sed -n '611,630p'   wm/ActivityStarter.java              <span class="cm"># execute()</span>
+sed -n '811,900p'   wm/ActivityStarter.java              <span class="cm"># executeRequest（ActivityRecord 在此诞生）</span>
+sed -n '1548,1620p' wm/ActivityStarter.java              <span class="cm"># startActivityUnchecked / startActivityInner</span>
+
+<span class="cm"># 身份：AR 就是容器</span>
+sed -n '365,370p'   wm/ActivityRecord.java               <span class="cm"># class ActivityRecord extends WindowToken</span>
+sed -n '71,80p'     wm/WindowToken.java                  <span class="cm"># class WindowToken extends WindowContainer&lt;WindowState&gt;</span>
+sed -n '252,260p'   wm/Task.java                         <span class="cm"># class Task extends WindowContainer</span>
+
+<span class="cm"># 启动窗口</span>
+sed -n '46,70p'     wm/StartingSurfaceController.java    <span class="cm"># 类定义 + createSplashScreenStartingSurface</span>
+sed -n '115,150p'   wm/StartingSurfaceController.java    <span class="cm"># createTaskSnapshotSurface</span>
+sed -n '550,570p'   wm/TaskOrganizerController.java      <span class="cm"># addStartingWindow（12 上交给 Shell）</span>
+
+<span class="cm"># 绘制就绪</span>
+sed -n '2006,2030p' wm/WindowState.java                  <span class="cm"># isReadyForDisplay</span>
+sed -n '2091,2120p' wm/WindowState.java                  <span class="cm"># isDrawn</span>
+sed -n '3160,3180p' wm/WindowState.java                  <span class="cm"># hasDrawn</span>
+sed -n '270,300p'   wm/WindowStateAnimator.java          <span class="cm"># commitFinishDrawingLocked</span>
+
+<span class="cm"># 删除</span>
+sed -n '2362,2400p' wm/WindowState.java                  <span class="cm"># removeImmediately</span>
+sed -n '2418,2460p' wm/WindowState.java                  <span class="cm"># removeIfPossible</span>
+sed -n '3232,3260p' wm/ActivityRecord.java               <span class="cm"># destroyImmediately</span>
+sed -n '3324,3360p' wm/ActivityRecord.java               <span class="cm"># removeFromHistory</span>
+sed -n '972,1000p'  wm/Task.java                         <span class="cm"># removeIfPossible</span>
+sed -n '3211,3240p' wm/Task.java                         <span class="cm"># removeImmediately</span>
+sed -n '1574,1620p' wm/ActivityTaskSupervisor.java       <span class="cm"># cleanUpRemovedTaskLocked</span>
+sed -n '1930,1960p' wm/ActivityTaskSupervisor.java       <span class="cm"># removeHistoryRecords</span>
+
+<span class="cm"># 客户端</span>
+sed -n '3513,3560p' core/java/android/app/ActivityThread.java  <span class="cm"># performLaunchActivity</span>
+sed -n '4785,4830p' core/java/android/app/ActivityThread.java  <span class="cm"># handleResumeActivity</span>
+sed -n '993,1010p'  core/java/android/view/ViewRootImpl.java   <span class="cm"># setView</span>
+
+<span class="cm"># 设备侧观察</span>
+adb shell dumpsys activity activities          <span class="cm"># Task / ActivityRecord 树</span>
+adb shell dumpsys window windows               <span class="cm"># WindowState 树</span>
+adb shell am start -W -n pkg/.Act              <span class="cm"># 看 WaitTime / TotalTime</span>
+adb shell dumpsys activity processes           <span class="cm"># 进程状态</span></pre>
+  </div>
+
+  <h3>🧠 自测：5 个问题</h3>
+
+  <details><summary>1. <code>ActivityRecord</code> 为什么直接继承 <code>WindowToken</code> 而不是组合一个？</summary>
+  <div class="ans">因为「一个 Activity 的窗口们」天然要共享一份<strong>可见性 / 配置 / 动画状态</strong>——这正是 <code>WindowToken</code> 的职责（它是窗口树里"一组窗口"的身份单元）。继承让所有按 <code>WindowContainer</code> 遍历的逻辑自动覆盖到 Activity，省掉一层间接转发。<br>代价是耦合：Activity 的生命周期语义与窗口容器语义混在一个类里（这就是 <code>ActivityRecord.java</code> 上万行的原因）。</div></details>
+
+  <details><summary>2. 为什么后台 kill 进程后，Task 和 ActivityRecord 还在树上，只有 WindowState 没了？</summary>
+  <div class="ans">因为<strong>它们的宿主不同</strong>：<code>WindowState</code> 的宿主是 App 进程（它持有 <code>IWindow</code> 的 binder，进程死了 binder 断连，06 篇学的 <code>linkToDeath</code> 触发清理）；而 <code>Task</code>/<code>ActivityRecord</code> 由 <strong>system_server 持有</strong>，代表"任务历史"，系统故意保留它——这样用户还能在最近任务里看到那个应用，点回去时有机会重建进程恢复现场。清理由 <code>cleanUpRemovedTaskLocked</code> 在合适的时机做。</div></details>
+
+  <details><summary>3. 启动窗口（splash）什么时候退场？如果它一直不退，锅在哪？</summary>
+  <div class="ans">退场时机是<strong>真实窗口的 <code>isDrawn()</code> 翻 true</strong>——即 <code>WindowStateAnimator.commitFinishDrawingLocked()</code> 把 <code>mDrawState</code> 推到 <code>HAS_DRAWN</code>。<br>一直不退通常是这个翻转没发生，排查两个方向：<code>mHasSurface=false</code> → 锅在 relayout（窗口还没拿到 surface，往回查 06/03 篇）；<code>mHasSurface=true</code> 但 <code>isDrawn=false</code> → 锅在绘制（App 主线程或 RenderThread 卡住）。</div></details>
+
+  <details><summary>4. AOSP 12 上启动窗口是谁画的？和 WMS 的关系是什么？</summary>
+  <div class="ans">12 上启动窗口的<strong>实际绘制已经交给 Shell（SystemUI）</strong>：WMS 侧的 <code>StartingSurfaceController</code> 只负责"决定该有一个启动窗"，实际 surface 经 <code>TaskOrganizerController.addStartingWindow()</code>（<code>:550</code> → <code>:134</code>/<code>:316</code>）转发给已注册的 TaskOrganizer。<br>所以"启动窗口出问题"这类 bug，可能要看两个进程：WMS 侧看它有没有被请求、SystemUI 侧看它有没有画出来。这也是 09 篇要讲的 Shell 接管的一部分。</div></details>
+
+  <details><summary>5. 怎么区分"窗口类泄漏"和"设计如此的历史保留"？</summary>
+  <div class="ans">看<strong>趋势而非瞬时值</strong>：<br>
+  · <strong>设计如此</strong>：后台 kill 后 AR/Task 保留，但用户下次进入或系统到阈值时会清理——计数是有界波动的；<br>
+  · <strong>真泄漏</strong>：反复进出同一个 Activity，WindowState/ActivityRecord 计数<strong>单调上升、不回落</strong>。<br>
+  做法：写脚本定期采样两类计数（<code>dumpsys activity activities</code> 与 <code>dumpsys window windows</code>），做进出实验画曲线。<code>WindowManagerGlobal.java:480</code> 那句 "has leaked window" 是客户端侧的兜底报错，可作为交叉验证。</div></details>
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📝 <strong>临时稿</strong>：draft-2026-10-18-ams-launch.html（_draft 目录）</p>
+  <p>基于 AOSP 12 · WSL 路径 <code>/home/book/aosp12/</code> · 行号 2026-10-18 现地核实</p>
+  <p style="margin-top:10px;">
+    <a href="android-window-roadmap.html">🗺️ 学习路线图</a>
+  </p>
+  <p style="margin-top:8px;">正式落盘后续编号、并入系列并更新 index.html 与上下篇链接。</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

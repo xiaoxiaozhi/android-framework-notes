@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Android Framework 学习站 — 窗口层级 · Binder · 路线图 · 实践项目</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --tag-bg: #f0e6d3; --tag-text: #a0522d; --link: #2a5f8f; --h2-border: #ddd8cc;
+      --hover-bg: #e8e4db; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --tag-bg: #3d3020; --tag-text: #d4a05a; --link: #6ab0e0; --h2-border: #333338;
+      --hover-bg: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol","Apple Symbols",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1000px; margin:0 auto; }
+    h1 { font-size:1.8rem; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; margin-bottom:8px; }
+    .subtitle { color:var(--text2); font-size:.9rem; margin-bottom:28px; }
+    h2 { font-size:1.25rem; margin:32px 0 14px; padding-bottom:6px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    p, li { color:var(--text2); margin-bottom:8px; }
+    ul { padding-left:24px; }
+    code { background:var(--code-bg); border-radius:3px; padding:1px 6px; font-family:"SF Mono","Consolas",monospace; font-size:.86em; color:var(--text); }
+    a { color:var(--link); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px 22px; margin-bottom:14px; box-shadow:0 2px 6px rgba(0,0,0,0.04); display:block; color:var(--text); transition:border .2s; }
+    .card:hover { border-color:var(--accent); text-decoration:none; }
+    .card .num { color:var(--accent); font-weight:bold; font-size:1.05rem; }
+    .card .title { font-size:1.03rem; font-weight:600; color:var(--accent3); }
+    .card .desc { color:var(--text2); font-size:.88rem; margin-top:4px; }
+    .tag { display:inline-block; background:var(--tag-bg); color:var(--tag-text); border-radius:3px; padding:0 7px; font-size:.78rem; font-weight:600; margin-left:6px; }
+    .note { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:16px 0; border-radius:6px; font-size:.9rem; color:var(--text2); }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; }
+    #theme-btn:hover { transform:scale(1.1); }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:14px 16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>📚 Android Framework 学习站</h1>
+  <p class="subtitle">窗口层级专题 00–14 · SystemUI 专题 · Binder 专题 · 学习路线图 · 实践项目 —— 基于 AOSP 12（android-12.0.0_r32）源码现地核实</p>
+  <button id="theme-btn" title="切换主题">🌓</button>
+
+  <h2>🗺️ 先看路线：从哪学、学什么</h2>
+
+  <a class="card" href="Android-Framework学习路线图.html">
+    <span class="num">🧭</span> <span class="title">Android Framework 学习路线图（B 赛道专版）</span><span class="tag">总纲</span>
+    <div class="desc">六阶段 + 岗位分布 + 必修清单 + 按目标岗反查。已选定 B（系统框架层）：Binder → AMS → PMS → 图形/输入 → 稳定性与性能 → 方向专项。</div>
+  </a>
+
+  <a class="card" href="Android窗口层级/WMS学习路线图.html">
+    <span class="num">🗺️</span> <span class="title">WMS 系统学习路线图</span><span class="tag">专题内导航</span>
+    <div class="desc">阶段 0–6 划分（工具箱 → 输入 → 生命周期 → 布局/Insets/旋转 → 动画 → IME/壁纸 → 多屏多窗），每站附已核实行号锚点、实战问题与动手实验。</div>
+  </a>
+
+  <a class="card" href="SystemUI/systemui-roadmap.html">
+    <span class="num">📱</span> <span class="title">SystemUI 系统学习路线图</span><span class="tag">新专题</span>
+    <div class="desc">8 个阶段约 180 小时：启动链 → 状态栏/图标 → 通知管线 → Shade/QS → 锁屏 → 导航/手势/Recents → 与 WMS·Shell 交界 → 定制与面试。含 4 个可交付项目与 15 周节奏表。</div>
+  </a>
+
+  <div class="note">
+    <strong>两图关系</strong>：Framework 路线图是总纲；WMS 路线图是它在「三大主服务」上的展开。窗口层级 00–10、13、14 篇 = WMS 路线图的「已完成部分」。
+  </div>
+
+  <h2>🔗 Binder 专题（独立篇）</h2>
+
+  <a class="card" href="android-framework-binder.html">
+    <span class="num">🔗</span> <span class="title">Binder 全链路：一次跨进程调用到底做了什么</span><span class="tag">前置地基</span>
+    <div class="desc">Java → JNI → Native → 驱动的六层链路；一次拷贝的真相、线程池与 oneway、ServiceManager、死亡通知、AIDL 生成物拆解。读懂它，06 篇那行 binder 调用会「变透明」。</div>
+  </a>
+
+  <h2>🧭 ATMS / AMS 专题（独立篇）</h2>
+
+  <a class="card" href="android-framework-atms.html">
+    <span class="num">🧭</span> <span class="title">ATMS 是什么：ActivityTaskManagerService 的职责、结构与四条入口</span><span class="tag">服务本体</span>
+    <div class="desc">它管的是层级而非 UI：三个 Binder 接口的分工、六个字段的服务结构、与 WMS 共享同一棵树同一把锁、startActivity 四段接力与三处边界、task 复用两个方法、删除三条路径、跨屏 reparent 四跳、dumpsys 三段读法、八个坑与六道实践题。</div>
+  </a>
+
+  <a class="card" href="android-framework-ams.html">
+    <span class="num">🧱</span> <span class="title">AMS 是什么：ActivityManagerService 的职责、结构与进程生死</span><span class="tag">服务本体</span>
+    <div class="desc">它管的是进程生存而非界面：三个 Binder 接口的分工、六个字段的服务结构、AMS 与 WMS 为何各持一把锁、进程诞生的五跳（AMS → ProcessList → Process → Zygote）、ProcessRecord/ProcessStateRecord 两组状态、OOM adj 与 lmkd 的边界、Service/广播/Provider 三条组件路径、死亡收尾为何要杀进程组、dumpsys 五段读法、八个坑与三道实践题。</div>
+  </a>
+
+  <h2>🌳 窗口层级专题 00–14</h2>
+
+  <a class="card" href="Android窗口层级/index.html">
+    <span class="num">📖</span> <span class="title">系列导航（卡片墙 · 从这里进）</span><span class="tag">入口</span>
+    <div class="desc">00 DisplayArea 入门 → 01 窗口树全景 → 02 构建算法 → 03 刷新 → 04 像素上屏 → 05 输入分发 → 06 窗口的诞生 → 07 生命周期 → 08 布局/Insets/旋转 → 09 动画与 leash → 10 vsync/Choreographer → 13 画中画 → 14 图层是什么。</div>
+  </a>
+
+  <a class="card" href="Android窗口层级/06-窗口的诞生.html">
+    <span class="num">06</span> <span class="title">窗口的诞生：从 addView 到窗口上树</span><span class="tag">生命周期开篇</span>
+    <div class="desc">App 侧 WindowManagerGlobal#addView → 一次 binder → system_server 准入审查 → WindowState 挂进 WindowContainer 树；含 BadTokenException 完整因果链。</div>
+  </a>
+
+  <a class="card" href="Android窗口层级/07-窗口的来路与归途.html">
+    <span class="num">07</span> <span class="title">窗口的来路与归途：Activity 启动链与窗口生命周期</span><span class="tag">生命周期</span>
+    <div class="desc">补 06 篇的悬念：ActivityRecord 从哪来、到哪去。startActivity → ActivityStarter 决策 → ActivityRecord（= WindowToken）→ 启动窗口 → isDrawn 翻转 → 删除三条路径对比。</div>
+  </a>
+
+  <a class="card" href="Android窗口层级/08-窗口的尺寸与身体.html">
+    <span class="num">08</span> <span class="title">窗口的尺寸与身体：布局、Insets 与旋转</span><span class="tag">布局</span>
+    <div class="desc">03 篇的下半场：每一遍遍历到底算了什么。computeFrame 与 DisplayPolicy、Insets 三件套与控制权、旋转冻结/解冻六条件、配置变更谁重建。</div>
+  </a>
+
+  <a class="card" href="Android窗口层级/09-窗口动画与过渡.html">
+    <span class="num">09</span> <span class="title">窗口动画与过渡：AppTransition 与 leash 缰绳</span><span class="tag">动画</span>
+    <div class="desc">窗口树的第三种改造方式——临时插入 leash 中间层。AppTransition 状态机、SurfaceAnimator、createAnimationLeash 的 reparent、WindowAnimator 每帧推进、Shell 接管与远程动画。</div>
+  </a>
+
+  <h2>🛠️ 实践项目（配套 00–09）</h2>
+
+  <a class="card" href="Android窗口层级/WMS实践项目清单.html">
+    <span class="num">🛠️</span> <span class="title">WMS 实战作业清单（六项目）</span><span class="tag">动手</span>
+    <div class="desc">P0 窗口树可视化器 → P1 窗口消亡三路径（马老师原作业）→ P2 Bug 猎手 → P3 现场抓取器 → P4 Freeform/隐藏系统窗口 → P5 Display 多屏与旋转。含交付物标准与八周排期。</div>
+  </a>
+
+  <a class="card" href="Android窗口层级/WMS原创实践项目.html">
+    <span class="num">🧪</span> <span class="title">WMS 原创实践项目（六个自造实验）</span><span class="tag">自造</span>
+    <div class="desc">用「自己实现 + 实测校验」验证理解：L1 Z 序预言机 → L2 Dump 考古器 → L3 What-if 破坏实验室 → L4 窗口泄漏猎犬 → L5 时序图自动生成器 → L6 输入命中预言机。</div>
+  </a>
+
+  <h2>🧰 交互工具</h2>
+
+  <a class="card" href="SystemUI/wallpaper-blackflash-analyzer.html">
+    <span class="num">🧪</span> <span class="title">Window Dump × 壁纸黑闪分析器</span><span class="tag">排障工具</span>
+    <div class="desc">粘贴 <code>dumpsys window windows</code> + logcat，解析 TYPE_WALLPAPER 窗口的 drawState/Surface/可见性，按时间线关联转场与 ImageWallpaper 重建，输出风险等级、证据和可复制的分析报告。</div>
+  </a>
+
+  <a class="card" href="Android窗口层级/DisplayArea构建算法演示.html">
+    <span class="num">▶️</span> <span class="title">DisplayArea 建树算法模拟器</span><span class="tag">交互演示</span>
+    <div class="desc">步进演示 DisplayAreaPolicyBuilder 的 build() 两趟遍历：Feature 分区、PendingArea 中间树、leaf 挂载。配合 02 篇阅读。</div>
+  </a>
+
+  <a class="card" href="winscope/index.html">
+    <span class="num">🔍</span> <span class="title">Winscope（本地构建版）</span><span class="tag">AOSP 原生工具</span>
+    <div class="desc">AOSP 12 <code>development/tools/winscope</code> 的构建产物：加载 <code>wm_trace.pb</code> / <code>layers_trace.pb</code>，按帧查看窗口层级、Layer 树、Transaction 与转场。需用 <code>start-winscope.ps1</code> 起本地服务，直接双击 <code>index.html</code> 无效。</div>
+  </a>
+
+  <div class="note">
+    <strong>本地服务说明</strong>：本站由 <code>_serve.py</code>（Python 标准库 http.server）在 8090 端口提供，启动时自动把上位路线图同步到本目录。改文章后刷新即可看到，已禁用缓存。
+  </div>
+
+  <p style="margin-top:36px; padding-top:16px; border-top:1px solid var(--border); text-align:center; font-size:.82rem; color:var(--text2);">
+    持续更新中 · 已完成 00–09 篇 + Binder 专题 · 下一篇：10 IME 与壁纸专项
+  </p>
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'afw_portal_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>  <h2>🧩 Activity 启动带学</h2>
+
+  <a class="card" href="学习XXX/Activity启动流程.html">
+    <span class="num">01</span> <span class="title">Activity 启动流程：18 行骨架与两份骨架对账</span><span class="tag">带学</span>
+    <div class="desc">基于 android-13.0.0_r84 现地核实：ATMS 入口 → ActivityStarter 四道门禁 → Task 复用 → TaskFragment 的 pause 闸门与预热 fork → attach 回环 → 首帧；含四个决策点、四块源码走读、3 道自测与 L0 实践题，以及与外部骨架的逐条对账。</div>
+  </a>
+
+

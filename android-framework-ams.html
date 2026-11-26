@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AMS 是什么：ActivityManagerService 的职责、结构与进程生死 — AOSP 12 源码分析</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol","Apple Symbols",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .refmap { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:16px 18px 18px; margin:16px 0; font-size:.86rem; overflow-x:auto; }
+    .refmap .rm-title { color:var(--text2); font-size:.8rem; letter-spacing:.5px; margin-bottom:14px; }
+    .rm-owners { display:flex; gap:12px; flex-wrap:wrap; }
+    .rm-owner { flex:1 1 240px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:9px 12px; text-align:center; }
+    .rm-owner b { display:block; color:var(--accent3); font-weight:600; }
+    .rm-owner code { background:none; padding:0; color:var(--fn); font-size:.8rem; }
+    .rm-merge { text-align:center; color:var(--accent2); font-size:.78rem; margin:10px 0 8px; }
+    .rm-chain { border-left:2px solid var(--border); margin-left:26px; padding-left:24px; }
+    .rm-node { position:relative; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.8rem; padding:5px 0; color:var(--text); }
+    .rm-node::before { content:""; position:absolute; left:-24px; top:50%; width:20px; border-top:2px solid var(--border); }
+    .rm-node.hi { color:var(--accent); font-weight:600; }
+    .rm-node .note { color:var(--text2); font-weight:400; font-size:.76rem; margin-left:8px; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+    .rm-foot { margin-top:12px; padding-top:10px; border-top:1px dashed var(--border); color:var(--text2); font-size:.8rem; }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .think .qtag { color:var(--accent3); font-weight:bold; }
+    .analogy { border-left:4px solid var(--accent2); background:var(--bg-card); border:1px solid var(--border); border-left-width:4px; padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .analogy .tag { color:var(--accent2); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:10px 16px; margin:14px 0; font-size:.9rem; color:var(--text2); }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:14px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-size:.82rem; font-weight:bold; margin-right:8px; }
+    .why { color:var(--accent2); font-weight:bold; }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🧱 AMS 是什么：ActivityManagerService 的职责、结构与进程生死</h1>
+<p class="subtitle">它不是「Activity 管理器」，而是进程与组件生命周期的总账房；与 ATMS 分工，与 WMS 各持一把锁 · AOSP 12 源码逐行核实</p>
+<p class="series">🧩 Android Framework 专题 · AMS 篇 ｜ 基于 <code>android-12.0.0_r32</code> ｜ 配套 ATMS 篇、07 启动链 ｜ <a href="index.html">📚 Framework 学习站</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📖 目录</strong>
+  <a href="#p1">一、它是什么：管「生存」，不管「层级」</a>
+  <a href="#p2">二、服务结构：六个字段撑起全部</a>
+  <a href="#p3">三、锁：AMS 用的是自己那把</a>
+  <a href="#p4">四、进程的诞生：五跳</a>
+  <a href="#p5">五、进程的状态：ProcessRecord 与 ProcessStateRecord</a>
+  <a href="#p6">六、OOM adj：谁先死</a>
+  <a href="#p7">七、Service、Broadcast、Provider 落在哪</a>
+  <a href="#p8">八、死亡与回收</a>
+  <a href="#p9">九、观测：dumpsys 与 am 怎么用</a>
+  <a href="#p10">十、八个坑</a>
+  <a href="#p11">十一、源码速查与实践题</a>
+  <a href="#quiz">🧠 自测：3 个问题</a>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p1">一、它是什么：管「生存」，不管「层级」</h2>
+
+<div class="card">
+  <p><strong>先破一个误解：</strong>AMS 不是「Activity 管理器」。从 Android 10 起，Activity / Task 那部分被拆成了 <a href="android-framework-atms.html">ATMS</a>。AMS 留下的是更底层的一件事：<strong>进程还在不在、能不能被拉起、什么时候该杀。</strong></p>
+
+  <p>两者协作方式一句话：<strong>ATMS 决定「谁活在哪一层」，AMS 决定「那个进程还活着吗」。</strong>ATMS 想启动一个 Activity，先要问 AMS 要进程；AMS 的进程挂了，要通知 ATMS 摘掉它名下的窗口。</p>
+
+  <table>
+    <tr><th>Binder 接口</th><th>实现类</th><th>管什么</th></tr>
+    <tr>
+      <td><code>IActivityManager</code></td>
+      <td><code>ActivityManagerService</code>（<code>am/ActivityManagerService.java:431</code>）</td>
+      <td><strong>进程、Service、广播、ContentProvider、崩溃收尾、内存/OOM</strong></td>
+    </tr>
+    <tr>
+      <td><code>IActivityTaskManager</code></td>
+      <td><code>ActivityTaskManagerService</code>（<code>wm/ActivityTaskManagerService.java:294</code>）</td>
+      <td>Task 树、ActivityRecord、生命周期、启动流程</td>
+    </tr>
+    <tr>
+      <td><code>IWindowManager</code></td>
+      <td><code>WindowManagerService</code>（<code>wm/WindowManagerService.java</code>）</td>
+      <td>Window 树、布局、Surface、输入通道</td>
+    </tr>
+  </table>
+
+  <h3>AMS 的实际职责清单</h3>
+  <ul>
+    <li><strong>进程生命周期</strong>：按需 fork、attach、保活、杀（本节后半全部讲这个）</li>
+    <li><strong>Service</strong>：启动/绑定/前台服务、超时（<code>am/ActiveServices.java:183</code>）</li>
+    <li><strong>Broadcast</strong>：有序/无序分发、超时（<code>am/BroadcastQueue.java:79</code>）</li>
+    <li><strong>ContentProvider</strong>：发布与查询（<code>am/ContentProviderHelper.java:86</code>）</li>
+    <li><strong>崩溃与 ANR 收尾</strong>：弹窗、日志、杀进程（<code>am/AppErrors.java:74</code>）</li>
+    <li><strong>内存与 OOM</strong>：算 adj、通知低内存杀手（<code>am/OomAdjuster.java:125</code>）</li>
+  </ul>
+
+  <div class="annotation star3"><span class="tag">一句话</span> <strong>ATMS 管「层级」，WMS 管「像素」，AMS 管「生死」。</strong>三者都在 system_server 里，但只有 ATMS 与 WMS 共享同一把锁——这一点下一节就讲。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p2">二、服务结构：六个字段撑起全部</h2>
+
+<div class="card">
+  <p>AMS 有一万四千多行，但结构就是六个字段。看懂这六个，其余都是流程。</p>
+
+  <table>
+    <tr><th>字段</th><th>行号</th><th>作用</th></tr>
+    <tr><td><code>mProcessList</code></td><td><code>:746</code></td><td>进程表：名字表、LRU 列表、启动与回收</td></tr>
+    <tr><td><code>mServices</code></td><td><code>:1093</code></td><td>Service 的启动、绑定、前台化</td></tr>
+    <tr><td><code>mBroadcastQueues</code></td><td><code>:621</code></td><td>三个广播队列：前台 / 后台 / 离线</td></tr>
+    <tr><td><code>mProcessStats</code></td><td><code>:758</code></td><td>进程运行时长统计（procstats 数据源）</td></tr>
+    <tr><td><code>mBatteryStatsService</code></td><td><code>:1148</code></td><td>耗电归因，进程级统计</td></tr>
+    <tr><td><code>mActivityTaskManager</code></td><td><code>:1406</code></td><td>ATMS 引用：起进程后要它去启动 Activity</td></tr>
+  </table>
+
+  <p>反向依赖也存在：ATMS 持有 AMS 的内部接口 <code>mAmInternal</code>（<code>wm/ActivityTaskManagerService.java:344</code>，在 <code>:951</code> 通过 <code>LocalServices</code> 注入）。两个服务互为入口，这是它们「分家但没离婚」的代码证据。</p>
+
+  <div class="annotation"><span class="tag">顺带</span>注意 <code>mBroadcastQueues</code> 是<strong>长度为 3 的数组</strong>（<code>:621</code>），不是单个队列。前台广播、后台广播、离线广播各一条，优先级与超时时间都不同——这就是「广播为什么时快时慢」的根源。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p3">三、锁：AMS 用的是自己那把</h2>
+
+<div class="card">
+  <p>这是 AMS 篇最容易搞错、也最值得单独讲的一点。三个服务的锁长这样：</p>
+
+  <table>
+    <tr><th>服务</th><th>锁字段</th><th>实际是什么</th></tr>
+    <tr><td>AMS</td><td><code>mGlobalLock</code>（<code>:569</code>）</td><td><code>ActivityManagerGlobalLock mGlobalLock = ActivityManagerService.this;</code> ——<strong>自己</strong></td></tr>
+    <tr><td>ATMS</td><td><code>mGlobalLock</code>（<code>wm/ActivityTaskManagerService.java:362</code>）</td><td><code>new WindowManagerGlobalLock()</code> ——自己 new 的一个对象</td></tr>
+    <tr><td>WMS</td><td><code>mGlobalLock</code>（<code>wm/WindowManagerService.java:1211</code>）</td><td><code>atm.getGlobalLock()</code> ——<strong>拿 ATMS 那把</strong></td></tr>
+  </table>
+
+  <p>所以准确的说法是：<strong>ATMS 与 WMS 同锁；AMS 独立一把。</strong>AMS 的「锁」是它自己（它 <code>implements ActivityManagerGlobalLock</code>，这个接口在 <code>am/ActivityManagerGlobalLock.java</code> 里是个空标记），这样写只是为了配合锁区域注入工具。</p>
+
+  <h3>为什么这个区别重要</h3>
+  <ul>
+    <li><strong>死锁顺序</strong>：代码里允许「持 AMS 锁 → 调 WMS」，不允许反向。你如果在 WMS 的持锁区里回调 AMS，就有死锁风险。</li>
+    <li><strong>性能隔离</strong>：AMS 处理进程启停很慢（要等 zygote fork），如果它和窗口共锁，整个 UI 都会被拖住。拆锁是 Android 10 拆服务时的核心收益之一。</li>
+    <li><strong>排查线索</strong>：看 systrace / Perfetto 时，<code>monitor contention</code> 里出现 <code>ActivityManagerService</code> 与 <code>WindowManagerGlobalLock</code> 是两个不同的锁对象，别当成一个。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="filename">am/ActivityManagerService.java</div>
+<pre><span class="cm">// :569  AMS 用自己当锁</span>
+final ActivityManagerGlobalLock mGlobalLock = ActivityManagerService.this;</pre>
+  </div>
+
+  <div class="code-block">
+    <div class="filename">wm/WindowManagerService.java</div>
+<pre><span class="cm">// :1211  WMS 取的是 ATMS 的锁实例</span>
+mGlobalLock = atm.getGlobalLock();</pre>
+  </div>
+
+  <div class="annotation star3"><span class="tag">记住</span>「ATMS 和 WMS 同一把锁」成立；「AMS 和 WMS 同一把锁」<strong>不成立</strong>。这两句话差一个字，排查方向差一整天。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p4">四、进程的诞生：五跳</h2>
+
+<div class="card">
+  <p>一个 app 进程从「不存在」到「跑起来」，主线只有五跳。每一跳的职责都很清楚：</p>
+
+  <div class="tree">AMS.startProcessLocked()                     am/ActivityManagerService.java:2682
+ └─ mProcessList.startProcessLocked()        :2686  → am/ProcessList.java:2441
+     └─ startProcessLocked(ProcessRecord…)   am/ProcessList.java:1787
+         └─ Process.start()                  core/java/android/os/Process.java:657
+             └─ ZygoteProcess.startViaZygote()   core/java/android/os/ZygoteProcess.java:626
+                 └─ socket 请求 zygote fork → 新进程执行 ActivityThread.main()</div>
+
+  <p>fork 出来只是「进程有了」，还没有组件。新进程的第一件事是回连 AMS：</p>
+
+  <div class="tree">ActivityThread.main()
+ └─ attachApplication()  → binder
+     └─ AMS.attachApplicationLocked()        am/ActivityManagerService.java:4275
+         ├─ 绑定 ApplicationThread
+         ├─ 建 ProcessRecord 的 binder 关系
+         └─ 通知 ATMS：可以启动 Activity 了</div>
+
+  <h3>每跳各自负责什么</h3>
+  <table>
+    <tr><th>跳</th><th>负责</th><th>失败会怎样</th></tr>
+    <tr><td>AMS <code>:2682</code></td><td>判断要不要起、起哪个进程名、是否复用已有进程</td><td>返回 null，调用方拿到 <code>ProcessRecord</code> 为空</td></tr>
+    <tr><td>ProcessList <code>:2441</code> / <code>:1787</code></td><td>进程名查重、OOM adj 计算、HostingRecord 记录</td><td>进程重复启动或启动被拒</td></tr>
+    <tr><td><code>Process.start()</code> <code>:657</code></td><td>把启动参数序列化，交给 zygote</td><td>抛 <code>ZygoteStartFailedEx</code></td></tr>
+    <tr><td><code>startViaZygote()</code> <code>:626</code></td><td>通过 socket 发 fork 请求，读回 pid</td><td>超时、fork 失败</td></tr>
+    <tr><td><code>attachApplicationLocked()</code> <code>:4275</code></td><td>建立双向 binder、初始化进程状态、交给 ATMS</td><td>新进程起来但没界面（典型现象：白屏/闪退）</td></tr>
+  </table>
+
+  <div class="annotation"><span class="tag">现象对齐</span>「点应用图标，图标闪一下没了」通常是第 1–2 跳失败（进程没起来）；「白屏很久才出界面」是第 5 跳之后的事——进程起来了，但 Activity 没启动完。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p5">五、进程的状态：ProcessRecord 与 ProcessStateRecord</h2>
+
+<div class="card">
+  <p>AMS 用一个对象代表一个进程：<code>ProcessRecord</code>（<code>am/ProcessRecord.java:69</code>）。它自己不存状态，状态在 <code>ProcessStateRecord</code>（<code>am/ProcessStateRecord.java:43</code>）里：</p>
+
+  <div class="code-block">
+    <div class="filename">am/ProcessRecord.java</div>
+<pre><span class="cm">// :511  进程状态被拆成独立对象</span>
+mState = new ProcessStateRecord(<span class="kw">this</span>);</pre>
+  </div>
+
+  <p>为什么要拆？因为「进程状态」和「进程身份」的生命周期不同：<code>ProcessRecord</code> 可能被复用，而状态需要独立重置与统计。</p>
+
+  <h3>两组容易混的状态</h3>
+  <table>
+    <tr><th>概念</th><th>取值示例</th><th>决定什么</th></tr>
+    <tr><td><code>PROCESS_STATE_*</code></td><td>TOP、FOREGROUND_SERVICE、SERVICE、CACHED</td><td>系统怎么看待这个进程（统计、限制、广播投递）</td></tr>
+    <tr><td><code>IMPORTANCE_*</code> / adj</td><td>FOREGROUND、VISIBLE、SERVICE、CACHED</td><td>内存紧张时谁先被杀（下一节）</td></tr>
+  </table>
+
+  <p>两者相关但不是一回事：一个进程可以是 <code>PROCESS_STATE_SERVICE</code> 却拿 <code>VISIBLE</code> 的 adj——比如它还有一个可见的悬浮窗。<strong>看内存问题看 adj，看调度与限制看 procState。</strong></p>
+
+  <div class="annotation"><span class="tag">判据</span><code>adb shell dumpsys activity processes | grep -A3 "ProcessRecord"</code> 里同时能看到 <code>oom:</code> 与 <code>procState=</code> 两个值，对比着看就能判断这次是被「状态限制」还是被「内存压力」影响。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p6">六、OOM adj：谁先死</h2>
+
+<div class="card">
+  <p>AMS 不管「杀谁」，它只负责<strong>给每个进程打分</strong>；真正动手的是 lmkd（低内存杀手，独立进程）与内核。打分逻辑在 <code>OomAdjuster</code>（<code>am/OomAdjuster.java:125</code>）。</p>
+
+  <div class="tree">触发点（进程状态变化 / 组件增删 / 内存压力）
+ └─ OomAdjuster.updateOomAdjLocked()          am/OomAdjuster.java:531
+     ├─ computeOomAdjLSP()                     :1499   逐进程算基准 adj
+     ├─ 向上累加依赖（bindService、provider 引用）
+     └─ applyOomAdjLSP()                      写回 ProcessRecord、通知 lmkd</div>
+
+  <h3>adj 的粗粒度顺序（从高到低）</h3>
+  <table>
+    <tr><th>adj</th><th>典型进程</th><th>被杀可能性</th></tr>
+    <tr><td><code>NATIVE</code> / <code>SYSTEM</code></td><td>init、zygote、system_server</td><td>几乎不杀</td></tr>
+    <tr><td><code>PERSISTENT</code></td><td>persistent 应用</td><td>极低</td></tr>
+    <tr><td><code>FOREGROUND</code></td><td>当前前台 app</td><td>低</td></tr>
+    <tr><td><code>VISIBLE</code> / <code>PERCEPTIBLE</code></td><td>可见但非前台、播放音乐</td><td>中</td></tr>
+    <tr><td><code>SERVICE</code></td><td>后台服务</td><td>较高</td></tr>
+    <tr><td><code>CACHED</code></td><td>后台缓存进程</td><td>最高</td></tr>
+  </table>
+
+  <p>关键细节：<strong>adj 不是只按「有没有 Activity」算</strong>。它还有「依赖传导」——如果你 bind 了一个高 adj 的服务，你的 adj 会被拉高。这就是「为什么我的后台进程没被杀」和「为什么它莫名其妙被杀了」的同一个答案。</p>
+
+  <div class="annotation star3"><span class="tag">别搞混</span>AMS 决定的是 <strong>adj 数值</strong>；杀进程的决策在 lmkd 与内核内存回收里。所以「内存不足」不是 AMS 报的，AMS 只是把分数交出去。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p7">七、Service、Broadcast、Provider 落在哪</h2>
+
+<div class="card">
+  <p>三大组件在 AMS 里各有专属模块，但它们是<strong>同一个前提</strong>的消费者：进程必须先存在。</p>
+
+  <table>
+    <tr><th>组件</th><th>模块</th><th>入口</th></tr>
+    <tr><td>Service</td><td><code>am/ActiveServices.java:183</code></td><td><code>startServiceLocked()</code> <code>:612</code>，启动实现在 <code>bringUpServiceLocked()</code>（调用点 <code>:934</code>）</td></tr>
+    <tr><td>Broadcast</td><td><code>am/BroadcastQueue.java:79</code></td><td>分发主循环 <code>processNextBroadcast()</code> <code>:985</code>；投递入口在 AMS <code>:13562</code></td></tr>
+    <tr><td>ContentProvider</td><td><code>am/ContentProviderHelper.java:86</code></td><td>Provider 发布与查询</td></tr>
+  </table>
+
+  <h3>Service 的真实路径</h3>
+  <div class="tree">Context.startService()
+ └─ binder → AMS.startService()  →  ActiveServices.startServiceLocked()   am/ActiveServices.java:612
+     ├─ 进程不在？→ AMS.startProcessLocked()（回到第四节）
+     └─ 进程在  → bringUpServiceLocked()（调用点 :934）
+         └─ 回调 app：onCreate → onStartCommand</div>
+
+  <h3>Broadcast 的真实路径</h3>
+  <div class="tree">sendBroadcast()
+ └─ binder → AMS.broadcastIntent()            am/ActivityManagerService.java:13562
+     ├─ 解析目标（静态/动态接收者）
+     ├─ 入队（前台 / 后台 / 离线三条队列）
+     └─ BroadcastQueue.processNextBroadcast()  am/BroadcastQueue.java:985
+         ├─ 有序广播：等上一个 receiver 返回
+         └─ 无序广播：并行投递</div>
+
+  <p>这两条链都回答同一个问题：<strong>为什么后台的 Service 启动慢、广播延迟大？</strong>因为每一步都要先确保进程存在，而进程存在要走 zygote fork——那是百毫秒级的事。</p>
+
+  <div class="annotation"><span class="tag">判据</span><code>adb shell dumpsys activity services | grep -A3 &lt;pkg&gt;</code> 看 <code>app=ProcessRecord</code> 是否为空；<code>adb shell dumpsys activity broadcasts</code> 看队列里积压了多少条。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p8">八、死亡与回收</h2>
+
+<div class="card">
+  <p>进程死亡有四种来源，收尾都汇到一处：</p>
+
+  <table>
+    <tr><th>来源</th><th>触发</th><th>收尾</th></tr>
+    <tr><td>用户主动</td><td>最近任务滑掉 / <code>am force-stop</code></td><td>杀进程组</td></tr>
+    <tr><td>崩溃</td><td>未捕获异常</td><td><code>AppErrors</code>（<code>am/AppErrors.java:74</code>）弹窗 + 记录 + 杀</td></tr>
+    <tr><td>内存回收</td><td>lmkd 按 adj 选择</td><td>binder 死亡通知 → AMS 收尾</td></tr>
+    <tr><td>系统重启</td><td>reboot / system_server 崩溃</td><td>整体重建</td></tr>
+  </table>
+
+  <div class="tree">进程死亡
+ └─ binder 死亡通知（linkToDeath）
+     └─ AMS.cleanUpApplicationRecordLocked()      am/ActivityManagerService.java:3015
+         ├─ 清理 ProcessRecord / 统计
+         ├─ 通知 AMS 内部：Service、Provider、广播
+         ├─ 通知 ATMS：摘 ActivityRecord
+         └─ 通知 WMS：摘窗口（否则就是你看到过的「幽灵窗口」）
+              └─ Process.killProcessGroup()       core/java/os/Process.java:1319（杀进程组，含子进程）</div>
+
+  <p>为什么必须杀<strong>进程组</strong>而不是单个 pid？因为 app 可能 fork 子进程（WebView、渲染线程在独立进程时、厂商 SDK）。只杀主 pid 会留下孤儿，表现为「应用退了但内存没释放、CPU 还在跑」。</p>
+
+  <div class="annotation star3"><span class="tag">典型 Bug</span>Activity 已经销毁，但屏幕上还有它的画面——通常是「ATMS 收尾了、WMS 没收到」。此时 <code>dumpsys window</code> 里那个窗口的 <code>mOwnerUid</code> 对应的进程已经不存在，属于泄漏窗口。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p9">九、观测：dumpsys 与 am 怎么用</h2>
+
+<div class="card">
+  <p>AMS 相关的输出全在 <code>dumpsys activity</code> 下，但分成几段，先认段再读：</p>
+
+  <table>
+    <tr><th>命令</th><th>看什么</th><th>典型线索</th></tr>
+    <tr><td><code>dumpsys activity processes</code></td><td>进程表、adj、procState、LRU 顺序</td><td>进程为什么被杀、为什么保活</td></tr>
+    <tr><td><code>dumpsys activity services</code></td><td>ServiceRecord、绑定关系、前台服务</td><td>服务起不来、泄漏</td></tr>
+    <tr><td><code>dumpsys activity broadcasts</code></td><td>三条队列的积压与超时</td><td>广播延迟、ANR</td></tr>
+    <tr><td><code>dumpsys activity providers</code></td><td>Provider 发布状态</td><td>启动时 provider 初始化慢</td></tr>
+    <tr><td><code>dumpsys meminfo &lt;pkg&gt;</code></td><td>PSS、Dalvik/Native 分布</td><td>内存占用</td></tr>
+    <tr><td><code>dumpsys procstats --hours 3</code></td><td>进程运行时长统计（<code>mProcessStats</code>）</td><td>后台被杀的频率</td></tr>
+  </table>
+
+  <h3>三个实用命令</h3>
+  <div class="code-block">
+    <div class="filename">shell</div>
+<pre><span class="cm"># 1. 谁的 adj 最高（最不容易被杀）</span>
+adb shell dumpsys activity processes | grep -E "^ +\\*|oom:" | head -40
+
+<span class="cm"># 2. 某进程为什么被杀：看 procState 与 lastActivityTime</span>
+adb shell dumpsys activity processes | grep -A8 "com.example.framworkcontent"
+
+<span class="cm"># 3. 前台服务是否真的在前台</span>
+adb shell dumpsys activity services | grep -i "isForeground\|fgRequired"</pre>
+  </div>
+
+  <div class="annotation"><span class="tag">和 ATMS 的分界</span><code>dumpsys activity activities</code> 是 ATMS/WMCore 的段，<code>dumpsys activity processes</code> 才是 AMS 的段。两段在同一个输出里，看错段就会得出「进程没了但 Activity 还在」这种自相矛盾的结论。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p10">十、八个坑</h2>
+
+<div class="card">
+  <table>
+    <tr><th>#</th><th>坑</th><th>正确认识</th></tr>
+    <tr><td>1</td><td>把 AMS 当 Activity 管理器</td><td>Activity/Task 归 ATMS（<code>wm/ActivityTaskManagerService.java:294</code>），AMS 管进程</td></tr>
+    <tr><td>2</td><td>以为 AMS 与 WMS 同一把锁</td><td>AMS 用自己（<code>:569</code>），WMS 用 ATMS 的（<code>wm/WindowManagerService.java:1211</code>）</td></tr>
+    <tr><td>3</td><td>以为 <code>startService</code> 会同步拉起进程</td><td>缺进程时要走 zygote fork，异步且百毫秒级</td></tr>
+    <tr><td>4</td><td>把有序广播当普通广播用</td><td>有序广播要等前一个 receiver 返回，会串行排队</td></tr>
+    <tr><td>5</td><td>以为 AMS 决定杀谁</td><td>AMS 只算 adj，动手的是 lmkd 与内核</td></tr>
+    <tr><td>6</td><td>用 <code>dumpsys activity</code> 的 Activity 段查进程</td><td>进程在 <code>processes</code> 段，两段别混</td></tr>
+    <tr><td>7</td><td>只按 procState 判断存活优先级</td><td>内存回收看 adj，不是 procState</td></tr>
+    <tr><td>8</td><td>在 AMS 持锁区做耗时操作</td><td>AMS 锁被大量路径依赖，持锁 IO 会拖慢整机</td></tr>
+  </table>
+
+  <div class="annotation star3"><span class="tag">记住第 2 条</span>锁的区别不是学术细节：它决定了你排查死锁时该看哪个锁对象，也决定了「为什么改 AMS 会比改 WMS 更容易卡整机」。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p11">十一、源码速查与实践题</h2>
+
+<div class="card">
+  <h3>源码速查</h3>
+  <table>
+    <tr><th>你想知道</th><th>去哪里看</th></tr>
+    <tr><td>AMS 类本身</td><td><code>am/ActivityManagerService.java:431</code></td></tr>
+    <tr><td>AMS 的锁</td><td><code>:569</code>；标记接口 <code>am/ActivityManagerGlobalLock.java</code></td></tr>
+    <tr><td>进程表</td><td><code>:746</code> → <code>am/ProcessList.java:165</code></td></tr>
+    <tr><td>起进程</td><td><code>:2682</code> → <code>:2686</code> → <code>am/ProcessList.java:2441</code> / <code>:1787</code></td></tr>
+    <tr><td>fork 落地</td><td><code>core/java/android/os/Process.java:657</code>、<code>ZygoteProcess.java:626</code></td></tr>
+    <tr><td>进程回连</td><td><code>am/ActivityManagerService.java:4275</code></td></tr>
+    <tr><td>进程状态</td><td><code>am/ProcessRecord.java:69</code>、<code>:511</code>、<code>am/ProcessStateRecord.java:43</code></td></tr>
+    <tr><td>adj 计算</td><td><code>am/OomAdjuster.java:125</code>、<code>:531</code>、<code>:1499</code></td></tr>
+    <tr><td>Service 启动</td><td><code>am/ActiveServices.java:183</code>、<code>:612</code></td></tr>
+    <tr><td>广播分发</td><td><code>am/BroadcastQueue.java:79</code>、<code>:985</code>；入口 <code>:13562</code></td></tr>
+    <tr><td>死亡收尾</td><td><code>am/ActivityManagerService.java:3015</code>；<code>am/AppErrors.java:74</code></td></tr>
+  </table>
+
+  <h3>三个实践题（不需要编译 framework）</h3>
+  <ol>
+    <li><strong>观测五跳</strong>：<code>am start</code> 起一个冷启动 app，同时抓 logcat（<code>Start proc</code>、<code>attachApplication</code>）与 <code>dumpsys activity processes</code> 的两次快照，把五跳对上时间。判据：能说出「哪一跳花了多少毫秒」。</li>
+    <li><strong>adj 实验</strong>：同一 app，分别在前台、退到后台、再 bind 一个前台服务，三次抓 <code>dumpsys activity processes</code> 里该进程的 <code>oom:</code> 值。判据：三次 adj 单调递减，且能解释每一次变化的触发者。</li>
+    <li><strong>广播队列实验</strong>：发一条有序广播与一条无序广播，各注册两个接收者（一个 sleep 2 秒），比较到达时间。判据：有序广播第二个 receiver 明显延迟，无序广播并行。</li>
+  </ol>
+
+  <div class="hint">📌 这三题的价值在于「可判定」：每题都有一个能写下来对比的数字或时间戳。做完你就有了三条属于 AMS 的实测结论，而不是三条记忆。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="quiz">🧠 自测：3 个问题</h2>
+
+<div class="card">
+  <div class="think"><span class="qtag">Q1</span> 用户说「应用退了，但任务管理器里还有它的进程」。你先看 AMS 的哪一段？</div>
+  <details><summary>看看答案</summary><div class="ans">看 <code>dumpsys activity processes</code>，找这个进程的 <code>oom:</code> 与 <code>procState=</code>。如果 adj 是 <code>CACHED</code>，说明这是<strong>正常缓存</strong>不是泄漏；如果还有 <code>ServiceRecord</code> 或 provider 引用（去 <code>dumpsys activity services</code> 查），那才是真的被绑住了。</div></details>
+
+  <div class="think"><span class="qtag">Q2</span> 为什么 AMS 与 WMS 不共用一把锁？</div>
+  <details><summary>看看答案</summary><div class="ans">因为 AMS 的路径里有阻塞操作（等 zygote fork、等进程回连），和窗口共锁会把这些延迟传导给整个 UI。ATMS 与 WMS 共锁（<code>wm/WindowManagerService.java:1211</code> 取 ATMS 的锁）是因为它们操作同一棵 <code>RootWindowContainer</code>（<code>wm/ActivityTaskManagerService.java:976</code>），必须原子。</div></details>
+
+  <div class="think"><span class="qtag">Q3</span> 「后台服务里的定时任务越来越不准」，最可能是哪三个 AMS 机制在起作用？</div>
+  <details><summary>看看答案</summary><div class="ans">① 进程被降级到 <code>CACHED</code> 后更容易被回收（adj 上升）；② 广播队列积压导致唤醒延迟（<code>am/BroadcastQueue.java:985</code>）；③ Doze/standby 限制了唤醒窗口。三者叠加，表现为「有时准、有时差几分钟」，而不是「完全不准」。</div></details>
+
+  <div class="hint">📌 三题分别考：读 dump 的段、理解锁的边界、把机制与现象对上。第三题是面试高频。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>🧩 Android Framework 专题 | <strong>AMS 是什么：ActivityManagerService 的职责、结构与进程生死</strong></p>
+  <p>基于 AOSP 12（android-12.0.0_r32）· WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实</p>
+  <p style="margin-top:10px;"><a href="android-framework-atms.html">← ATMS 篇（层级与生命周期）</a> &nbsp;|&nbsp; <strong>AMS 篇 ← 你在这</strong> &nbsp;|&nbsp; <a href="android-framework-binder.html">Binder 篇 →</a></p>
+  <p style="margin-top:8px;"><a href="index.html">📚 Framework 学习站</a> &nbsp;|&nbsp; <a href="Android-Framework学习路线图.html">🧭 Framework 路线图</a> &nbsp;|&nbsp; <a href="Android窗口层级/index.html">🌳 窗口层级系列</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📌 说明：本篇锚点全部在 AOSP 12 树上核实；ATMS 篇当前以 AOSP 13 为基线，两篇行号不可混用。</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'afw_ams_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌗' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

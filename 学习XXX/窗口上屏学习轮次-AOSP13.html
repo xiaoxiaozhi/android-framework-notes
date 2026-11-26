@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>窗口上屏 —— 从 vsync 到 SurfaceFlinger · AOSP 13 源码分析</title>
+<style>:root{
+    --paper:#faf8f5; --card:#fffdfa; --ink:#211f1c; --ink2:#57514a; --muted:#8a8279;
+    --line:#e7e1d7; --line-soft:#f0ebe2;
+    --accent:#b4551f; --accent-soft:#f6e9df; --teal:#2f6f5e; --teal-soft:#e3efe9;
+    --gold:#a9791f; --gold-soft:#f7efdc;
+    --code-bg:#f4efe6; --code-line:#e6dfd2;
+    --shadow:0 1px 2px rgba(33,31,28,.05), 0 10px 30px -18px rgba(33,31,28,.35);
+    --serif:"Noto Serif SC","Source Han Serif SC","Songti SC",Georgia,serif;
+    --sans:"Inter","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    --mono:"JetBrains Mono","Cascadia Code",Consolas,monospace;
+  }
+  html[data-theme="dark"]{
+    --paper:#1a1a1e; --card:#212126; --ink:#e9e4dc; --ink2:#b8afa2; --muted:#847b6f;
+    --line:#2f2d31; --line-soft:#26242a;
+    --accent:#e08a5a; --accent-soft:#2e2420; --teal:#7fc0ab; --teal-soft:#1f2b28;
+    --gold:#d6a45c; --gold-soft:#2b2519;
+    --code-bg:#15151a; --code-line:#2b2930;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 16px 40px -24px rgba(0,0,0,.8);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.8 var(--sans);
+    -webkit-font-smoothing:antialiased;transition:background .35s,color .35s}
+  ::selection{background:color-mix(in srgb, var(--accent) 45%, var(--card));color:var(--ink)}
+  #progress{position:fixed;top:0;left:0;height:2px;width:0;background:var(--accent);z-index:60;
+    transition:width .1s linear}
+  .shell{max-width:1120px;margin:0 auto;padding:0 24px}
+
+  /* ---------- hero ---------- */
+  .hero{padding:72px 0 40px;position:relative;overflow:hidden}
+  .hero::before{content:"";position:absolute;inset:-40% -10% auto -10%;height:520px;
+    background:radial-gradient(60% 70% at 30% 20%,var(--accent-soft),transparent 65%),
+               radial-gradient(50% 60% at 85% 10%,var(--teal-soft),transparent 60%);
+    opacity:.9;filter:blur(6px);pointer-events:none}
+  .kicker{font:600 12.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 18px}
+  h1{font:600 clamp(30px,4.2vw,46px)/1.22 var(--serif);margin:0 0 16px;letter-spacing:-.01em}
+  h1 .thin{color:var(--muted);font-weight:400}
+  .lede{font-size:17.5px;color:var(--ink2);max-width:760px;margin:0 0 26px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font:500 13px/1 var(--sans);color:var(--ink2);background:var(--card);
+    border:1px solid var(--line);border-radius:999px;padding:8px 13px;box-shadow:var(--shadow)}
+  .chip b{color:var(--ink);font-weight:600}
+  .chip.ok{color:var(--teal);border-color:color-mix(in srgb,var(--teal) 35%,var(--line))}
+
+  /* ---------- sticky nav ---------- */
+  .nav{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--paper) 86%,transparent);
+    backdrop-filter:blur(14px);border-bottom:1px solid var(--line-soft)}
+  .nav-inner{display:flex;gap:6px;overflow-x:auto;padding:10px 24px;max-width:1120px;margin:0 auto;
+    scrollbar-width:none}
+  .nav-inner::-webkit-scrollbar{display:none}
+  .nav a{flex:0 0 auto;font-size:13.5px;color:var(--ink2);text-decoration:none;padding:6px 11px;
+    border-radius:8px;white-space:nowrap}
+  .nav a:hover{background:var(--card);color:var(--ink)}
+  .nav a.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+
+  /* ---------- sections ---------- */
+  main{padding:8px 0 40px}
+  section{padding:56px 0 8px;scroll-margin-top:64px}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+  .sec-num{font:600 13px/1 var(--mono);color:var(--accent);border:1px solid var(--line);
+    background:var(--card);border-radius:999px;padding:7px 11px;box-shadow:var(--shadow)}
+  h2{font:600 clamp(22px,2.6vw,29px)/1.3 var(--serif);margin:0;letter-spacing:-.01em}
+  .sec-sub{color:var(--muted);font-size:14px;margin:2px 0 26px;padding-left:2px}
+  h3{font:600 17px/1.5 var(--serif);margin:34px 0 10px}
+  p{margin:0 0 14px;color:var(--ink)}
+  a{color:var(--accent)}
+
+  /* ---------- tree / code ---------- */
+  .codeblock{position:relative;margin:18px 0 22px;border:1px solid var(--line);border-radius:14px;
+    background:var(--card);box-shadow:var(--shadow);overflow:hidden}
+  .cb-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line-soft);
+    background:linear-gradient(180deg,var(--card),color-mix(in srgb,var(--card) 70%,var(--paper)))}
+  .dots{display:flex;gap:5px}
+  .dots i{width:9px;height:9px;border-radius:50%;background:var(--line);display:block}
+  .dots i:first-child{background:color-mix(in srgb,var(--accent) 60%,var(--line))}
+  .cb-name{font:500 12.5px/1 var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .copy{margin-left:auto;font:500 12px/1 var(--sans);color:var(--muted);background:transparent;
+    border:1px solid var(--line);border-radius:7px;padding:6px 9px;cursor:pointer}
+  .copy:hover{color:var(--ink);border-color:var(--muted)}
+  pre{margin:0;padding:18px 16px;overflow-x:auto;background:var(--code-bg);
+    font:12.6px/1.85 var(--mono);color:var(--ink);tab-size:2}
+  pre.tree{font-size:11.8px;line-height:1.8;white-space:pre-wrap;overflow-wrap:break-word}
+  .ln{display:block;padding:0 6px;border-radius:5px}
+  .ln:hover{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+  .an{color:var(--accent);font-weight:600}
+  .an2{color:var(--teal);font-weight:600}
+  .dim{color:var(--muted)}
+  .ann{color:var(--gold)}
+  .cm{color:var(--muted);font-style:italic}
+  .kw{color:var(--accent)}
+  .fn{color:var(--teal)}
+
+  /* ---------- cards ---------- */
+  .grid{display:grid;gap:14px}
+  @media(min-width:860px){.grid.two{grid-template-columns:1fr 1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;
+    box-shadow:var(--shadow)}
+  .card h4{margin:0 0 8px;font:600 15.5px/1.5 var(--sans)}
+  .card p:last-child{margin-bottom:0}
+  .card .idx{font:600 11.5px/1 var(--mono);color:var(--muted);letter-spacing:.08em}
+
+  /* ---------- annotations ---------- */
+  .note{border-left:3px solid var(--teal);background:var(--teal-soft);padding:14px 18px;
+    border-radius:0 12px 12px 0;margin:18px 0;color:var(--ink)}
+  .note.star3{border-left-color:var(--gold);background:var(--gold-soft)}
+  .note.explain{border-left-color:var(--accent);background:var(--accent-soft)}
+  .note.explain .tag{color:var(--accent)}
+  .note .tag{font:600 11px/1 var(--mono);letter-spacing:.1em;color:var(--gold);
+    display:block;margin-bottom:6px}
+  .note p:last-child{margin-bottom:0}
+  .note p{line-height:1.95}
+  .note.explain p{font-size:15.5px}
+  .note.explain .tag{font-size:11.5px;letter-spacing:.12em}
+  .note .lead{margin-bottom:6px}
+  .steps{margin:2px 0 4px}
+  .step{display:grid;grid-template-columns:26px 1fr;gap:8px;padding:9px 0;
+    border-bottom:1px dashed color-mix(in srgb,var(--line) 80%,transparent)}
+  .step:last-child{border-bottom:0}
+  .step .n{color:var(--accent);font-weight:700;line-height:1.9}
+  .step b{color:var(--ink)}
+  .note .sum{margin:6px 0 0;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--line) 80%,transparent);
+    color:var(--ink2)}
+
+  /* ---------- Q list ---------- */
+  ol.q{counter-reset:q;list-style:none;padding:0;margin:8px 0 0}
+  ol.q li{counter-increment:q;position:relative;padding:16px 18px 16px 58px;margin:0 0 12px;
+    background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+  ol.q li::before{content:"Q" counter(q);position:absolute;left:18px;top:16px;
+    font:600 13px/1.6 var(--mono);color:var(--accent)}
+
+  /* ---------- read method ---------- */
+  .method{display:grid;gap:0;border:1px solid var(--line);border-radius:16px;overflow:hidden;
+    background:var(--card);box-shadow:var(--shadow)}
+  .method .row{display:grid;grid-template-columns:150px 1fr;gap:16px;padding:16px 20px;
+    border-bottom:1px solid var(--line-soft)}
+  .method .row:last-child{border-bottom:0}
+  .method .k{font:600 13px/1.8 var(--mono);color:var(--muted)}
+  .method .v{color:var(--ink)}
+  @media(max-width:640px){.method .row{grid-template-columns:1fr;gap:4px}}
+
+  /* ---------- table ---------- */
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+    background:var(--card);margin:16px 0}
+  table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:560px}
+  th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  th{font:600 12px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+    background:color-mix(in srgb,var(--card) 60%,var(--paper))}
+  tr:last-child td{border-bottom:0}
+  td code,p code,li code{font:12.5px/1.5 var(--mono);background:var(--code-bg);border:1px solid var(--line-soft);
+    border-radius:5px;padding:1px 5px}
+  td b{color:var(--accent)}
+
+  /* ---------- L0 task ---------- */
+  .task{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:0;
+    overflow:hidden;box-shadow:var(--shadow);margin:16px 0}
+  .task-h{padding:16px 20px;border-bottom:1px solid var(--line-soft);display:flex;gap:10px;align-items:baseline}
+  .task-h .no{font:600 12px/1 var(--mono);color:var(--accent)}
+  .task-h h4{margin:0;font:600 16px/1.5 var(--sans)}
+  .task .kv{display:grid;grid-template-columns:74px 1fr}
+  .task .kv>div{padding:11px 20px;border-bottom:1px solid var(--line-soft);font-size:14.5px}
+  .task .kv>div:nth-child(odd){color:var(--muted);font:500 13px/1.7 var(--mono)}
+  .task .kv>div:nth-last-child(-n+2){border-bottom:0}
+  .task .kv>div code{word-break:break-all}
+
+  /* ---------- footer ---------- */
+  footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 64px;color:var(--muted);
+    font-size:13.5px}
+  footer b{color:var(--ink2)}
+
+  /* ---------- theme button ---------- */
+  #themeBtn{position:fixed;right:22px;bottom:22px;z-index:70;display:flex;align-items:center;gap:8px;
+    background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;
+    padding:10px 15px;font:500 13px/1 var(--sans);cursor:pointer;box-shadow:var(--shadow)}
+  #themeBtn:hover{border-color:var(--muted)}
+  #themeBtn .tip{color:var(--muted);font-size:12px}
+  @media(max-width:640px){
+    .hero{padding:52px 0 28px}
+    pre{font-size:11.4px}
+    .method .row{padding:14px 16px}
+  }
+  @media print{#themeBtn,.nav,#progress,.copy{display:none}}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<header class="hero">
+  <div class="shell">
+    <p class="kicker">AOSP 13 · WindowManager / 渲染 · 学习轮次 01</p>
+    <h1>窗口上屏<br><span class="thin">从 vsync 到 SurfaceFlinger 的一帧</span></h1>
+    <p class="lede">一次 vsync 只负责放行；app 先同步 binder 进 WMS 拿到 frame 和 Surface，再 measure / layout / draw，最后用 <code>finishDrawing</code> 交卷。WMS 的 placement 是另一条事件驱动的循环，relayout 只是强制插队一次。</p>
+    <div class="meta">
+      <span class="chip">模式 <b>A</b> · 骨架 + 3 问</span>
+      <span class="chip">基线 <b>android-13.0.0_r84</b></span>
+      <span class="chip ok">16 行锚点已 grep 核实</span>
+      <span class="chip">形状校验 <b>PASS</b></span>
+      <span class="chip">阅读 <b>约 12 分钟</b></span>
+    </div>
+  </div>
+</header>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="#s1" class="on">① 骨架</a>
+    <a href="#s2">② 决策点</a>
+    <a href="#s3">③ 三个问题</a>
+    <a href="#s4">骨架阅读法</a>
+    <a href="#s5">L0 判据题</a>
+    <a href="#s6">白话对照</a>
+    <a href="#s7">12→13 漂移</a>
+  </div>
+</nav>
+
+<main class="shell">
+<section id="s1">
+  <div class="sec-head"><span class="sec-num">01</span><h2>骨架</h2></div>
+  <p class="sec-sub">16 行，含分支。`→` 是产出/流向，`←` 是状态改变，右侧是 AOSP 13 的行号。</p>
+
+  <div class="note explain">
+    <span class="tag">五段白话 · 先建立地图</span>
+    <p class="lead">骨架不是调用深度图，而是“一帧要做的五件事”。先按这五段记，再看下面的方法名。</p>
+    <div class="steps">
+      <div class="step"><span class="n">①</span><div><b>节拍</b>：vsync 到了，<code>Choreographer</code> 把排队的 traversal 交给 <code>ViewRootImpl</code>。</div></div>
+      <div class="step"><span class="n">②</span><div><b>决策</b>：<code>ViewRootImpl#performTraversals</code> 在 <code>:3069</code> 判断这帧要不要改几何；不要就不跨进程，继续按需 measure/layout/draw；要就先 relayout 再 measure/layout/draw。</div></div>
+      <div class="step"><span class="n">③</span><div><b>要画布</b>：<code>ViewRootImpl#relayoutWindow</code> 同步 binder 进 <code>Session#relayout</code>，再到 <code>WindowManagerService#relayoutWindow</code>；WMS 用 <code>DisplayPolicy#layoutWindowLw</code> 算 frame（insets 作输入），用 <code>createSurfaceControl</code> 确保 SurfaceControl，再回给 app。</div></div>
+      <div class="step"><span class="n">④</span><div><b>画与交卷</b>：app 拿到 frame + SurfaceControl 后 measure/layout/draw，画进 buffer；通过 <code>ViewRootImpl#reportDrawFinished</code>/SurfaceSyncer 交回 <code>WindowManagerService#finishDrawingWindow</code>。</div></div>
+      <div class="step"><span class="n">⑤</span><div><b>上屏</b>：<code>WindowSurfacePlacer#performSurfacePlacement</code> 再跑一次 placement，<code>DisplayContent#applySurfaceChangesTransaction</code> 把 transaction 交给 SF；SF 在下一个 vsync 合成。</div></div>
+    </div>
+    <p class="sum"><b>一句话</b>：Choreographer 把 traversal 交给 ViewRootImpl；ViewRootImpl 把窗口参数交给 WMS；WMS 把 frame + 画布交回 app；app 把 buffer 交回 WMS；WMS 把 transaction 交给 SF。</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th style="width:13%">阶段</th><th style="width:34%">app 主线程 / RenderThread</th><th style="width:38%">system_server (WMS)</th><th>SurfaceFlinger</th></tr></thead>
+      <tbody>
+        <tr><td><b>① 节拍</b></td><td><b>主线程</b>：<code>Choreographer.FrameDisplayEventReceiver</code>#onVsync<br>→ <code>ViewRootImpl</code>#doTraversal</td><td></td><td></td></tr>
+        <tr><td><b>② 决策</b></td><td><b>主线程</b>：<code>ViewRootImpl</code>#performTraversals<br><span class="an">ViewRootImpl.java:3069</span><br>这帧要改几何吗？</td><td></td><td></td></tr>
+        <tr><td><b>③ 要画布</b></td><td><b>主线程</b>：<code>ViewRootImpl</code>#relayoutWindow<br><b>──binder──►</b><br>↩ outFrames + SurfaceControl</td><td><code>Session</code>#relayout<br>→ <code>WindowManagerService</code>#relayoutWindow<br>→ #createSurfaceControl<br>&nbsp;&nbsp;→ <code>WindowStateAnimator</code>#createSurfaceLocked<br>&nbsp;&nbsp;→ new <code>WindowSurfaceController</code><br>&nbsp;&nbsp;→ <code>SurfaceControl.Builder</code>#build → mSurfaceControl<br><span class="an">mDrawState: NO_SURFACE → DRAW_PENDING</span><br>→ #performSurfacePlacement<br>&nbsp;&nbsp;→ layoutWindowLw → frame<br>→ #relayoutVisibleWindow / #getSurfaceControl<br>→ #fillClientWindowFramesAndConfiguration → out</td><td></td></tr>
+        <tr><td><b>④ 画与交卷</b></td><td><b>主线程</b>：<code>performMeasure</code> / <code>performLayout</code> / <code>performDraw</code><br>→ <code>ThreadedRenderer.draw</code> → RenderThread<br><b>RenderThread（app 进程内线程，不是服务）</b>：画 buffer；<code>SurfaceSyncer</code> 同步<br><b>主线程</b>：<code>ViewRootImpl</code>#reportDrawFinished</td><td><code>WindowManagerService</code>#finishDrawingWindow<br>→ <code>WindowState</code>#finishDrawing<br><span class="an">mDrawState:</span><br><span class="an">DRAW_PENDING → COMMIT_DRAW_PENDING</span><br>→ <code>WindowSurfacePlacer</code>#requestTraversal</td><td></td></tr>
+        <tr><td></td><td colspan="3" style="text-align:center;color:var(--accent);font-size:12px;padding:7px 10px;border-top:1px dashed var(--line)">──binder → WMS──► <code>ViewRootImpl#reportDrawFinished</code> 交给 <code>WindowManagerService#finishDrawingWindow</code></td></tr>
+        <tr><td><b>⑤ 上屏</b></td><td></td><td><code>WindowSurfacePlacer</code>#performSurfacePlacement<br>→ <code>DisplayContent</code>#applySurfaceChangesTransaction<br><span class="an">commitFinishDrawingLocked:</span><br><span class="an">COMMIT_DRAW_PENDING → READY_TO_SHOW</span><br><span class="an">performShowLocked:</span><br><span class="an">READY_TO_SHOW → HAS_DRAWN</span><br>→ transaction</td><td><code>SurfaceFlinger</code> 下个 vsync 合成</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">mDrawState 只在这些点变，未标注的节点不改。只有 <code>createSurfaceLocked</code> 新建 Surface 时才会走 <code>NO_SURFACE → DRAW_PENDING</code>；resize/旋转等待重画时，<code>updateResizingWindowIfNeeded</code> 也可能把状态置回 <code>DRAW_PENDING</code>（<code>WindowState.java:2190</code>）。</p>
+
+  <p class="sum"><b>别混继承</b>：<code>WindowSurfaceController</code> 不是 <code>SurfaceControl</code> 的子类；<code>SurfaceControl</code> 本身是 <code>final</code>。它是 WMS 的包装器，字段 <code>mSurfaceControl</code> 持有 <code>SurfaceControl</code>，负责 position/matrix/alpha/crop 等操作。</p>
+
+  <div class="codeblock">
+    <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span>
+      <span class="cb-name">vsync → ViewRootImpl → WMS.relayoutWindow → draw → finishDrawing → SF</span>
+      <button class="copy" type="button">复制</button></div>
+<pre class="tree"><span class="ln">Vsync <span class="an">→</span> Choreographer.FrameDisplayEventReceiver.onVsync() <span class="an">→</span> post <span class="an">→</span> doFrame() <span class="an">→</span> CALLBACK_TRAVERSAL   <span class="an">Choreographer.java:1172/:742/:832</span></span>
+<span class="ln"> └─ ViewRootImpl.doTraversal() <span class="an">←</span> 清 mTraversalScheduled、拆 sync barrier          <span class="an">ViewRootImpl.java:2362</span></span>
+<span class="ln">   └─ performTraversals() <span class="an">←</span> 一帧总入口                                             <span class="an">ViewRootImpl.java:2806</span></span>
+<span class="ln">     ├─ 纯 invalidate 帧 <span class="an">→</span> 不跨进程，继续 measure/layout/draw                     <span class="an">ViewRootImpl.java:3069/:3423/:3459/:3687</span></span>
+<span class="ln">     └─ 首帧/尺寸/可见性/参数/强制 <span class="an">→</span> relayoutWindow()                             <span class="an">ViewRootImpl.java:3069/:3106</span></span>
+<span class="ln">       └─ mWindowSession.relayout() <span class="an">→</span> binder 跨进程 <span class="an">→</span> Session.relayout() <span class="an">→</span> app 线程阻塞  <span class="an">ViewRootImpl.java:8275</span></span>
+<span class="ln">         └─ WMS.relayoutWindow() <span class="an">←</span> 锁内处理这次请求                              <span class="an">WindowManagerService.java:2278</span></span>
+<span class="ln">             ├─ shouldRelayout 时 createSurfaceControl() <span class="an">→</span> 确保 SurfaceControl 存在  <span class="an">WindowManagerService.java:2481/:2717</span></span>
+<span class="ln">             ├─ performSurfacePlacement(true) <span class="an">←</span> 强制量窗口、摆位置                  <span class="an">WindowManagerService.java:2495</span></span>
+<span class="ln">             └─ fillClientWindowFrames…() <span class="an">→</span> 回填 outFrames/Configuration（insets 另 set）  <span class="an">WindowManagerService.java:2590/:2597</span></span>
+<span class="ln">               ↩ relayout 返回 app <span class="an">→</span> 按需 performMeasure() <span class="an">→</span> performLayout() <span class="an">→</span> createSyncIfNeeded() <span class="an">→</span> performDraw()  <span class="an">ViewRootImpl.java:3423/:3459/:3658/:3687</span></span>
+<span class="ln">                 └─ SurfaceSyncer 同步完成 <span class="an">→</span> 合并 transaction <span class="an">→</span> reportDrawFinished(seqId)  <span class="an">ViewRootImpl.java:3726/:4379</span></span>
+<span class="ln">                   └─ mWindowSession.finishDrawing() <span class="an">→</span> 告诉 WMS 这帧画完           <span class="an">ViewRootImpl.java:4385</span></span>
+<span class="ln">                     └─ WMS.finishDrawingWindow() <span class="an">→</span> win.finishDrawing() 收尾       <span class="an">WindowManagerService.java:2760/:2772</span></span>
+<span class="ln">                       └─ requestTraversal() <span class="an">→</span> animationHandler 异步排 placement   <span class="an">WindowManagerService.java:2778 / WindowSurfacePlacer.java:225</span></span>
+<span class="ln">                         └─ performSurfacePlacement() <span class="an">→</span> applySurfaceChangesTransaction <span class="an">→</span> SF（下个 vsync）  <span class="an">WindowSurfacePlacer.java:177 / DisplayContent.java:4823</span></span></pre>
+  </div>
+
+  <div class="note explain">
+    <span class="tag">骨架解说 · 这段在讲什么</span>
+    <p class="lead">这条链回答一个问题：一次 vsync 之后，一个窗口怎样从“要更新”变成屏幕上的像素。分六段看：</p>
+    <div class="steps">
+      <div class="step"><span class="n">①</span><div><b>vsync 只是放行</b>：<code>Choreographer</code> 在 <code>doFrame</code> 里执行已排队的 <code>CALLBACK_TRAVERSAL</code>，它不决定窗口多大，只决定“这一帧什么时候开始”。</div></div>
+      <div class="step"><span class="n">②</span><div><b>先判要不要 relayout</b>：<code>performTraversals</code> 用 <code>mFirst || windowShouldResize || viewVisibilityChanged || params != null || mForceNextWindowRelayout</code> 分流；纯 invalidate 不跨进程。</div></div>
+      <div class="step"><span class="n">③</span><div><b>relayout 是同步 binder</b>：app 线程在 <code>mWindowSession.relayout</code> 阻塞，system_server 的 WMS 接手这次请求。</div></div>
+      <div class="step"><span class="n">④</span><div><b>WMS 在 relayout 内强制 placement</b>：先 <code>createSurfaceControl</code> 确保 SurfaceControl 存在（已有 controller 就复用），再 <code>performSurfacePlacement(true)</code> 算 frame（insets 作输入），<code>fillClientWindowFrames</code> 把结果回填到 out 参数，然后 relayout 同步返回 app。</div></div>
+      <div class="step"><span class="n">⑤</span><div><b>app 拿到 frame+Surface 才画</b>：measure → layout → draw；像素由 RenderThread（或软件绘制）产生。</div></div>
+      <div class="step"><span class="n">⑥</span><div><b>画完要交卷</b>：<code>reportDrawFinished(seqId)</code> → <code>finishDrawing</code> 回到 WMS；WMS 再 <code>requestTraversal</code>，把 transaction 交给 SF，在下一个 vsync 合成。</div></div>
+    </div>
+    <p class="sum"><b>一句话</b>：WMS 只负责“量窗口、摆位置、发画布”，像素是 app 画的；但这两段被一次同步 binder 绑在同一帧里。</p>
+  </div>
+
+  <div class="note">
+    <p><b>基线</b>：AOSP 13（<code>android-13.0.0_r84</code>，<code>/home/book/aosp13</code>）。16 行全部现地 <code>grep</code> 核实；本轮锁 13，不使用 12 的行号。<b>未核实</b>：软件绘制路径下 <code>reportDrawFinished</code> 是否走同一 <code>seqId</code> 对账（本轮只核硬件路径）。</p>
+  </div>
+</section>
+
+<section id="s2">
+  <div class="sec-head"><span class="sec-num">02</span><h2>决策点</h2></div>
+  <p class="sec-sub">五处“这里必须做一个选择”的位置，也是排障时最先该看的地方。</p>
+
+  <div class="grid two">
+    <div class="card">
+      <div class="idx">DECISION 01</div>
+      <h4>这帧要不要跨进程</h4>
+      <p>守卫 <code>mFirst || windowShouldResize || viewVisibilityChanged || params != null || mForceNextWindowRelayout</code>（<span class="an">ViewRootImpl.java:3069</span>）——不满足就只 measure/layout/draw，不碰 WMS。</p>
+    </div>
+    <div class="card">
+      <div class="idx">DECISION 02</div>
+      <h4>relayout 内要不要立刻算几何</h4>
+      <p><code>performSurfacePlacement(true /* force */)</code>（<span class="an">WindowManagerService.java:2495</span>）——客户端马上要 out 值，不能等异步 placement；这一行是“relayout 才能返回 frame”的关键。</p>
+    </div>
+    <div class="card">
+      <div class="idx">DECISION 03</div>
+      <h4>画布什么时候新建</h4>
+      <p><code>createSurfaceControl(...)</code>（<span class="an">WindowManagerService.java:2481</span> → <span class="an">:2717</span>）——<code>mSurfaceController == null</code> 才新建，否则直接复用；尺寸变化不在这个分支重建。</p>
+    </div>
+    <div class="card">
+      <div class="idx">DECISION 04</div>
+      <h4>什么时候算“画完”</h4>
+      <p><code>reportDrawFinished(seqId)</code>（<span class="an">ViewRootImpl.java:4379</span>）——要等 RenderThread 的 frame complete 回调合并 transaction，不是一个 <code>performDraw</code> 返回就算完。</p>
+    </div>
+    <div class="card">
+      <div class="idx">DECISION 05</div>
+      <h4>WMS 什么时候交给 SF</h4>
+      <p><code>finishDrawingWindow</code> 里 <code>requestTraversal()</code>（<span class="an">WindowManagerService.java:2778</span>）——不是立刻 commit，而是排一次 placement，和其他窗口变化一起提交。</p>
+    </div>
+    <div class="card">
+      <div class="idx">CONTEXT</div>
+      <h4>一句话记住这条链</h4>
+      <p>vsync 是节拍器，不是开工命令；<code>relayout</code> 是 app 帧里的同步插曲，<code>performSurfacePlacement</code> 才是 WMS 自己的循环。</p>
+    </div>
+  </div>
+</section>
+
+<section id="s3">
+  <div class="sec-head"><span class="sec-num">03</span><h2>我要你答的 3 个问题</h2></div>
+  <p class="sec-sub">三个真实排障场景，不考“某行是什么”；每问 ≤5 句 + 判据命令。</p>
+
+  <ol class="q">
+    <li><b>白屏</b>：Activity 的窗口已经在 <code>dumpsys window windows</code> 里、<code>Frames:</code> 也有尺寸，但内容一直白。用 <code>adb shell dumpsys window windows | grep -E "Window\{|mHasSurface|mDrawState|Frames:"</code> 抓一次，怎么用 <code>mHasSurface</code> 和 <code>mDrawState</code> 区分「WMS 没建/没给 SurfaceControl」「app 没画完」「画完没交卷」三种情况？分别该看哪一行？
+      <details style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px">
+        <summary style="cursor:pointer;color:var(--accent);font-weight:600;font-size:13px">参考答案 · 白屏判读顺序（点开）</summary>
+        <div style="margin-top:8px;font-size:13px;line-height:1.75">
+          <p><b>先纠正</b>：<code>mHasSurface</code> / <code>mDrawState</code> 都是 WMS 侧字段；WMS 建的是 <code>SurfaceControl</code>，<code>ViewRootImpl</code> 才用它建 app 侧 <code>Surface</code>。所以「WMS 没建 Surface」应说成「WMS 没建/没给 SurfaceControl」。</p>
+          <pre style="margin:8px 0 10px">com.android.server.wm.WindowStateAnimator
+  └─ 每个 WindowState 持有一个 mWinAnimator
+       WindowState.java:647  final WindowStateAnimator mWinAnimator;</pre>
+          <ul>
+            <li><code>mHasSurface=false</code> + <code>mDrawState=NO_SURFACE</code>：WMS 没建/没给 SurfaceControl；<code>Frames:</code> 仍可能有尺寸，几何和画布是两条线。</li>
+            <li><code>mHasSurface=true</code> + <code>DRAW_PENDING</code>：layer 有了，但 WMS 还没收到 <code>finishDrawing</code>；可能是「没画完」，也可能是「画完没交卷」，仅凭 WMS dump 分不出，要看 app 的 <code>dumpsys gfxinfo</code> 或 trace 里有没有 <code>draw</code> / <code>reportDrawFinished</code>。</li>
+            <li><code>mHasSurface=true</code> + <code>COMMIT_DRAW_PENDING</code> 或 <code>READY_TO_SHOW</code>：已经交卷，WMS 还没 commit / show。</li>
+            <li><code>mHasSurface=true</code> + <code>HAS_DRAWN</code>：已上屏；白屏去查 app 内容 / buffer，不是 Surface 创建。</li>
+          </ul>
+          <p><b>看哪几行</b>：<code>mHasSurface=...</code> → <code>mDrawState=...</code> → <code>Frames: ... frame=...</code>。状态顺序是 <code>NO_SURFACE → DRAW_PENDING → COMMIT_DRAW_PENDING → READY_TO_SHOW → HAS_DRAWN</code>；A13 的 dump 没有 <code>mFrame=</code>，看 <code>Frames:</code> 行。</p>
+        </div>
+      </details>
+    </li>
+    <li><b>滑动掉帧</b>：列表滚动掉帧，但 perfetto / atrace 里几乎没有 <code>relayoutWindow</code> 切片。这正常吗？如果拿 <code>relayoutWindow</code> 次数当滑动流畅度指标，会漏掉哪一类帧？给出 <code>atrace -t 5 view wm | grep -E "relayoutWindow|performTraversals|draw"</code> 的过滤命令和对应守卫。</li>
+    <li><b>旋转/分屏黑边</b>：旋转或分屏后窗口比例不对、出现黑边。<code>dumpsys window windows</code> 里看哪两个字段能区分「WMS 的 frame 没更新」和「app 还没往新 Surface 画完」？给出判断顺序和下一步该抓的 trace。</li>
+  </ol>
+</section>
+<section id="s4">
+  <div class="sec-head"><span class="sec-num">04</span><h2>骨架阅读法</h2></div>
+  <p class="sec-sub">先按“黑盒契约”读，再读这五行；骨架才从“方法名清单”变成一条能讲的故事。</p>
+
+  <div class="note">
+    <span class="tag">黑盒读法 · 别按调用链硬追</span>
+    <p class="lead">Android 上屏难在跨进程、多线程、dispatcher 和异步；完整调用链不是学习路线，是调试工具。先记六个黑盒的契约，只有输入/输出对不上时才展开内部。</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th style="width:12%">层</th><th style="width:24%">黑盒</th><th>输入 → 输出</th><th style="width:28%">出问题先看</th></tr></thead>
+        <tbody>
+          <tr><td>app</td><td><code>ViewRootImpl#performTraversals</code></td><td>vsync / params / visibility → 要不要 relayout</td><td><code>ViewRootImpl.java:3069</code></td></tr>
+          <tr><td>WMS</td><td><code>WindowManagerService#relayoutWindow</code></td><td>params / size / visibility → frame + SurfaceControl</td><td><code>shouldRelayout</code> / <code>mHasSurface</code></td></tr>
+          <tr><td>app</td><td><code>ViewRootImpl#performDraw</code></td><td>frame + Surface → buffer</td><td><code>mDrawState</code> / RenderThread</td></tr>
+          <tr><td>app→WMS</td><td><code>ViewRootImpl#reportDrawFinished</code></td><td>seq + transaction → WMS 知道画完</td><td><code>seqId</code> / <code>finishDrawing</code></td></tr>
+          <tr><td>WMS</td><td><code>WindowSurfacePlacer#performSurfacePlacement</code></td><td>窗口树 → transaction</td><td><code>mDeferDepth</code> / <code>mInLayout</code></td></tr>
+          <tr><td>SF</td><td>SurfaceFlinger 合成</td><td>transaction → 像素</td><td><code>dumpsys SurfaceFlinger</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sum"><b>展开规则</b>：白屏先看 <code>mHasSurface</code>/<code>mDrawState</code>；黑边先看 <code>outFrames</code>/<code>SurfaceControl</code>；掉帧先看 <code>relayoutWindow</code>/placement 的 trace 切片。输入/输出都对，就别展开内部。</p>
+    <p><b>层级</b>：L0 症状 → L1 六个黑盒 → L2 输入/输出/一个关键方法 → L3 契约失败才展开。</p>
+  </div>
+
+  <div class="method">
+    <div class="row"><div class="k">一句话定位</div><div class="v">把 vsync 变成屏幕上的一帧；终点是 WMS 拿到 <code>finishDrawing</code> 并把 transaction 交给 SF。</div></div>
+    <div class="row"><div class="k">三个接力边界</div><div class="v"><b>同线程直调</b>：<span class="an">ViewRootImpl.java:2806</span> → <span class="an">:3106</span>；<b>跨进程</b>：<span class="an">ViewRootImpl.java:8275</span> → <span class="an">WindowManagerService.java:2278</span>；<b>持锁区</b>：<span class="an">WindowManagerService.java:2278</span>–<span class="an">:2590</span>。</div></div>
+    <div class="row"><div class="k">最小验证命令</div><div class="v"><code>cd /home/book/aosp13 &amp;&amp; grep -n "performSurfacePlacement(true /\* force \*/)" frameworks/base/services/core/java/com/android/server/wm/WindowManagerService.java</code> —— 应得 <b>2495</b>。</div></div>
+    <div class="row"><div class="k">最贵的一行</div><div class="v"><b>WindowManagerService.java:2495</b> <code>performSurfacePlacement(true)</code>：relayout 里强制 placement，frame/insets/Surface 都在这之后才定。</div></div>
+    <div class="row"><div class="k">可追问的名字</div><div class="v"><code>relayoutWindow</code>（什么时候必须走）、<code>performSurfacePlacement</code>（谁触发、为什么 force）、<code>reportDrawFinished</code>（seqId 怎么对账）。</div></div>
+  </div>
+
+  <h3>关键代码（截取，中文注释）</h3>
+
+  <div class="codeblock">
+    <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span>
+      <span class="cb-name">ViewRootImpl.java:3069-3106 — 先判要不要 relayout</span>
+      <button class="copy" type="button">复制</button></div>
+<pre><span class="kw">if</span> (mFirst || windowShouldResize || viewVisibilityChanged || params != <span class="kw">null</span>
+        || mForceNextWindowRelayout) {                       <span class="cm">// 几何/可见性/参数变了才跨进程</span>
+    <span class="dim">// … 省略：窗口动画、insets 同步、Surface 替换等分支</span>
+    relayoutResult = relayoutWindow(params, viewVisibility, insetsPending);
+}                                                            <span class="cm">// 纯 invalidate 帧不进这里</span></pre>
+  </div>
+
+  <div class="codeblock">
+    <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span>
+      <span class="cb-name">WindowManagerService.java:2493-2590 — relayout 里强制布局并回填 frame</span>
+      <button class="copy" type="button">复制</button></div>
+<pre><span class="cm">// We may be deferring layout passes at the moment, but since the client is interested</span>
+<span class="cm">// in the new out values right now we need to force a layout.</span>
+mWindowPlacerLocked.performSurfacePlacement(<span class="kw">true</span> <span class="cm">/* force */</span>);
+
+<span class="dim">// … 省略：可见性/动画/输入窗口更新</span>
+
+<span class="kw">if</span> (outFrames != <span class="kw">null</span> &amp;&amp; outMergedConfiguration != <span class="kw">null</span>) {
+    win.fillClientWindowFramesAndConfiguration(outFrames, outMergedConfiguration,
+            <span class="kw">false</span> <span class="cm">/* useLatestConfig */</span>, shouldRelayout);
+}                                                            <span class="cm">// 这里才把 frame 交给 app</span></pre>
+  </div>
+
+  <div class="codeblock">
+    <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span>
+      <span class="cb-name">WindowManagerService.java:2774-2778 — 画完只排一次 placement</span>
+      <button class="copy" type="button">复制</button></div>
+<pre>win.setDisplayLayoutNeeded();
+mWindowPlacerLocked.requestTraversal();                       <span class="cm">// 不是立刻 commit，排一次 placement</span></pre>
+  </div>
+
+  <div class="codeblock">
+    <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span>
+      <span class="cb-name">ViewRootImpl.java:4379-4385 — finishDrawing 带 seqId 交卷</span>
+      <button class="copy" type="button">复制</button></div>
+<pre><span class="kw">private void</span> reportDrawFinished(<span class="kw">int</span> seqId) {
+    <span class="dim">// … 省略：DEBUG_BLAST 日志</span>
+    <span class="kw">try</span> {
+        mWindowSession.finishDrawing(mWindow, mSurfaceChangedTransaction, seqId);
+    } <span class="kw">catch</span> (RemoteException e) {                            <span class="cm">// 跨进程失败也要把事务落地</span>
+        mSurfaceChangedTransaction.apply();
+    }
+}</pre>
+  </div>
+</section>
+
+<section id="s5">
+  <div class="sec-head"><span class="sec-num">05</span><h2>L0 判据题</h2></div>
+  <p class="sec-sub">零编译，≤15 分钟。判据是一条能 grep 出确定行号的命令，不是“观察一下”。</p>
+
+  <div class="task">
+    <div class="task-h"><span class="no">TASK 01</span><h4>relayout 不是每帧都走，WMS 在 relayout 内强制布局</h4></div>
+    <div class="kv">
+      <div>触发</div><div><code>cd /home/book/aosp13/frameworks/base &amp;&amp; grep -n "mFirst || windowShouldResize" core/java/android/view/ViewRootImpl.java &amp;&amp; grep -n "performSurfacePlacement(true /\* force \*/)" services/core/java/com/android/server/wm/WindowManagerService.java &amp;&amp; grep -n "reportDrawFinished" core/java/android/view/ViewRootImpl.java</code></div>
+      <div>判据</div><div>分别命中 <b>3069</b>、<b>2495</b>、<b>3726 / 4379</b>；<code>sed -n '3069,3071p'</code> 能看到 <code>|| mForceNextWindowRelayout</code>。</div>
+      <div>锚点</div><div><span class="an">ViewRootImpl.java:3069</span> · <span class="an">WindowManagerService.java:2495</span> · <span class="an">ViewRootImpl.java:3726</span></div>
+      <div>产出</div><div>“relayout 只在几何/可见性/参数变化时走；WMS 在 relayout 内强制 placement；finishDrawing 由 draw 后的 SurfaceSyncer 完成回调触发。”</div>
+    </div>
+  </div>
+</section>
+
+<section id="s6">
+  <div class="sec-head"><span class="sec-num">06</span><h2>白话对照</h2></div>
+  <p class="sec-sub">读不懂代码时先看这一列。</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th style="width:34%">代码</th><th>白话</th></tr></thead>
+      <tbody>
+        <tr><td><code>vsync</code></td><td>屏幕的鼓点；告诉 app “下一帧可以开始了”，但不规定这一帧要做什么。</td></tr>
+        <tr><td><code>Choreographer</code></td><td>app 主线程的节拍器：把 input / animation / traversal / commit 排进同一个 vsync。</td></tr>
+        <tr><td><code>performTraversals</code></td><td>一帧的总调度：先决定要不要 relayout，再 measure / layout / draw。</td></tr>
+        <tr><td><code>relayoutWindow</code></td><td>向 WMS 要“窗口多大、放哪、画布在哪”；同步阻塞，拿到才继续。</td></tr>
+        <tr><td><code>SurfaceControl</code></td><td>WMS 发给 app 的画布句柄；app 往它对应的 buffer 里画。</td></tr>
+        <tr><td><code>performSurfacePlacement</code></td><td>WMS 的布局/摆位循环：算 frame、层级、动画，最后生成 transaction。</td></tr>
+        <tr><td><code>finishDrawing</code></td><td>app 交卷：告诉 WMS “这一帧画完了”，并带上 buffer 的 transaction。</td></tr>
+        <tr><td><code>transaction</code></td><td>一组 Surface 变更的原子提交；SF 在下一个 vsync 应用并合成。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note star3">
+    <span class="tag">✦ ✦ ✦ 三个误读点</span>
+    <p>① “vsync 来了 WMS 就开始画”——错，vsync 只放行 app 的 traversal，WMS 不订阅 vsync。② “relayoutWindow 每帧都走”——错，守卫在 <span class="an">ViewRootImpl.java:3069</span>。③ “finishDrawing 在 performDraw 里同步调用”——不准确，硬件路径要等 RenderThread 的 frame complete 回调。</p>
+  </div>
+</section>
+
+<section id="s7">
+  <div class="sec-head"><span class="sec-num">07</span><h2>12 → 13 行号漂移</h2></div>
+  <p class="sec-sub">两套行号不许混用。这条链不只是行号下移：13 的 finishDrawing 多了 seqId。</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>位置</th><th>AOSP 12</th><th>AOSP 13</th></tr></thead>
+      <tbody>
+        <tr><td><code>Choreographer.doFrame</code></td><td>701</td><td><b>742</b></td></tr>
+        <tr><td><code>doCallbacks(CALLBACK_TRAVERSAL)</code></td><td>780</td><td><b>832</b></td></tr>
+        <tr><td><code>ViewRootImpl.performTraversals</code></td><td>2510</td><td><b>2806</b></td></tr>
+        <tr><td><code>ViewRootImpl</code> relayout 调用点</td><td>2823</td><td><b>3106</b></td></tr>
+        <tr><td><code>mWindowSession.relayout</code></td><td>7777</td><td><b>8275</b></td></tr>
+        <tr><td><code>WMS.relayoutWindow</code></td><td>2210</td><td><b>2278</b></td></tr>
+        <tr><td><code>performSurfacePlacement(true)</code></td><td>2386</td><td><b>2495</b></td></tr>
+        <tr><td><code>fillClientWindowFramesAndConfiguration</code></td><td>2488</td><td><b>2590</b></td></tr>
+        <tr><td><code>reportDrawFinished</code></td><td>3976（无参）</td><td><b>4379</b>（<code>int seqId</code>）</td></tr>
+        <tr><td><code>mWindowSession.finishDrawing</code></td><td>3982（2 参）</td><td><b>4385</b>（3 参）</td></tr>
+        <tr><td><code>WMS.finishDrawingWindow</code></td><td>2640</td><td><b>2760</b></td></tr>
+        <tr><td><code>requestTraversal</code></td><td>2654</td><td><b>2778</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>结论：<b>12→13 这条链没有增删参与者</b>，但 <code>finishDrawing</code> / <code>reportDrawFinished</code> 的签名变了（引入 <code>seqId</code> 做 BLAST 帧对账）。所以别只按“行号整体下移”记，跨版本看方法签名比看行号可靠。</p>
+</section>
+
+<footer>
+  <div class="shell" style="padding:0">
+    <p><b>下一步</b>：答完 ③ 的三问（每问 ≤5 句 + 锚点），挑对不上的那条下钻，再把结论回填 <code>D:\workspace\FramworkContent\LAB.md</code>。</p>
+    <p>配套材料：<code>学习XXX\窗口上屏\round-01.md</code> · <code>walkthrough-01.md</code> · <code>evidence-01.md</code>　|　生成于 2026-11-22 · AOSP 13 基线</p>
+  </div>
+</footer>
+</main>
+
+<button id="themeBtn" type="button" title="自动 → 浅色 → 深色">
+  <span class="ic">🌓</span><span class="tx">自动</span>
+</button>
+
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+  var KEY = "ws-round-theme-mode";      /* auto | light | dark */
+  var modes = ["auto","light","dark"];
+  var icon  = {auto:"🌓", light:"☀️", dark:"🌙"};
+  var label = {auto:"自动", light:"浅色", dark:"深色"};
+  var btn = document.getElementById("themeBtn");
+
+  function isNight(d){ var h = d.getHours(); return h >= 22 || h < 7; }
+  function resolve(mode){ return mode === "auto" ? (isNight(new Date()) ? "dark" : "light") : mode; }
+  function apply(mode){
+    root.setAttribute("data-theme", resolve(mode));
+    btn.querySelector(".ic").textContent = icon[mode];
+    btn.querySelector(".tx").textContent = label[mode];
+  }
+  function saved(){ try { return localStorage.getItem(KEY) || "auto"; } catch(e){ return "auto"; } }
+
+  var mode = saved();
+  apply(mode);
+
+  btn.addEventListener("click", function(){
+    mode = modes[(modes.indexOf(mode) + 1) % modes.length];
+    apply(mode);
+    try { localStorage.setItem(KEY, mode); } catch(e){}
+  });
+
+  setInterval(function(){ if (mode === "auto") apply(mode); }, 60000);
+
+  var bar = document.getElementById("progress");
+  function onScroll(){
+    var h = document.documentElement;
+    var max = h.scrollHeight - h.clientHeight;
+    bar.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + "%";
+  }
+  document.addEventListener("scroll", onScroll, {passive:true});
+  onScroll();
+
+  var links = [].slice.call(document.querySelectorAll(".nav a"));
+  var secs = links.map(function(a){ return document.querySelector(a.getAttribute("href")); });
+  function highlight(){
+    var y = window.scrollY + 120, current = 0;
+    secs.forEach(function(s, i){ if (s && s.offsetTop <= y) current = i; });
+    links.forEach(function(a, i){ a.classList.toggle("on", i === current); });
+  }
+  document.addEventListener("scroll", highlight, {passive:true});
+  highlight();
+
+  [].forEach.call(document.querySelectorAll(".copy"), function(b){
+    b.addEventListener("click", function(){
+      var pre = b.closest(".codeblock").querySelector("pre");
+      var text = pre.textContent;
+      var done = function(){ b.textContent = "已复制"; setTimeout(function(){ b.textContent = "复制"; }, 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); } catch(e){}
+        document.body.removeChild(ta); done();
+      }
+    });
+  });
+
+  window.__WS_READY__ = true;
+  root.setAttribute("data-ready", "1");
+})();
+</script>
+</body>
+</html>

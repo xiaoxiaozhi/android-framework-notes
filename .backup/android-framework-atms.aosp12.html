@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ATMS 是什么：ActivityTaskManagerService 的职责、结构与四条入口 — AOSP 12 源码分析</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol","Apple Symbols",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .refmap { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:16px 18px 18px; margin:16px 0; font-size:.86rem; overflow-x:auto; }
+    .refmap .rm-title { color:var(--text2); font-size:.8rem; letter-spacing:.5px; margin-bottom:14px; }
+    .rm-owners { display:flex; gap:12px; flex-wrap:wrap; }
+    .rm-owner { flex:1 1 240px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:9px 12px; text-align:center; }
+    .rm-owner b { display:block; color:var(--accent3); font-weight:600; }
+    .rm-owner code { background:none; padding:0; color:var(--fn); font-size:.8rem; }
+    .rm-merge { text-align:center; color:var(--accent2); font-size:.78rem; margin:10px 0 8px; }
+    .rm-chain { border-left:2px solid var(--border); margin-left:26px; padding-left:24px; }
+    .rm-node { position:relative; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.8rem; padding:5px 0; color:var(--text); }
+    .rm-node::before { content:""; position:absolute; left:-24px; top:50%; width:20px; border-top:2px solid var(--border); }
+    .rm-node.hi { color:var(--accent); font-weight:600; }
+    .rm-node .note { color:var(--text2); font-weight:400; font-size:.76rem; margin-left:8px; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+    .rm-foot { margin-top:12px; padding-top:10px; border-top:1px dashed var(--border); color:var(--text2); font-size:.8rem; }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .think .qtag { color:var(--accent3); font-weight:bold; }
+    .analogy { border-left:4px solid var(--accent2); background:var(--bg-card); border:1px solid var(--border); border-left-width:4px; padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .analogy .tag { color:var(--accent2); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:10px 16px; margin:14px 0; font-size:.9rem; color:var(--text2); }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:14px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-size:.82rem; font-weight:bold; margin-right:8px; }
+    .why { color:var(--accent2); font-weight:bold; }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🧭 ATMS 是什么：ActivityTaskManagerService 的职责、结构与四条入口</h1>
+<p class="subtitle">它不是「Activity 管理器」，而是 Task / Activity 层级的权威；和 WMS 共享同一棵树、同一把锁 · AOSP 12 源码逐行核实</p>
+<p class="series">🧩 Android Framework 专题 · ATMS 篇 ｜ 基于 <code>android-12.0.0_r32</code> ｜ 配合 07 窗口的来路与归途 ｜ <a href="Android窗口层级/index.html">🌳 窗口层级系列</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📖 目录</strong>
+  <a href="#p1">一、它是什么：三个 Binder 接口，别再混着叫</a>
+  <a href="#p2">二、服务结构：六个字段撑起全部</a>
+  <a href="#p3">三、它不拥有树，但持有同一棵树</a>
+  <a href="#p3b">三·补、DisplayArea 是什么（忘了看这里）</a>
+  <a href="#p4">四、一次 startActivity 的 ATMS 路径</a>
+  <a href="#p5">五、task 复用：两个方法决定一切</a>
+  <a href="#p6">六、生命周期后半场：删除的三条路径</a>
+  <a href="#p7">七、第四条入口：把 task 搬到另一块屏</a>
+  <a href="#p8">八、观测：dumpsys activity 三段怎么读</a>
+  <a href="#p9">九、八个坑（含和 WM Shell 的边界）</a>
+  <a href="#p10">十、源码速查与实践题</a>
+  <a href="#quiz">🧠 自测：3 个问题</a>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p1">一、它是什么：三个 Binder 接口，别再混着叫</h2>
+
+<div class="card">
+  <p><strong>先破一个误解：</strong>ATMS 不是「Activity 管理器」。它管的是<strong>层级</strong>——谁在哪个 Task 里、Task 在哪个 DisplayArea、Activity 该走哪一段生命周期。<strong>单个 Activity 里的 UI 状态，它一概不管。</strong></p>
+
+  <p>系统里同时存在三个 Binder 接口，各管一块，名字很像，混起来就会得出错误结论：</p>
+
+  <table>
+    <tr><th>Binder 接口</th><th>实现类</th><th>管什么</th><th>app 侧怎么拿</th></tr>
+    <tr>
+      <td><code>IActivityManager</code></td>
+      <td><code>ActivityManagerService</code>（<code>am/ActivityManagerService.java:431</code>）</td>
+      <td>进程、Service、广播、内存/OOM、权限</td>
+      <td><code>ActivityManager.getService()</code></td>
+    </tr>
+    <tr>
+      <td><code>IActivityTaskManager</code></td>
+      <td><code>ActivityTaskManagerService</code>（<code>wm/ActivityTaskManagerService.java:294</code>）</td>
+      <td><strong>Task 树、ActivityRecord、生命周期、启动流程</strong></td>
+      <td><code>ActivityTaskManager.getService()</code>（<code>core/java/android/app/ActivityTaskManager.java:155</code>）</td>
+    </tr>
+    <tr>
+      <td><code>IActivityClientController</code></td>
+      <td><code>ActivityClientController</code>（<code>wm/ActivityClientController.java:85</code>）</td>
+      <td>反方向：系统 → app 的回调（如生命周期回调、<code>onMovedToDisplay</code>）</td>
+      <td>不对外，system_server 内部持有</td>
+    </tr>
+  </table>
+
+  <div class="annotation star3"><span class="tag">一句话</span> <strong>ATMS 决定「谁活着、排第几」，WMS 决定「长什么样、在哪里」，AMS 决定「进程还在不在」。</strong>三条 Binder 接口，三个不同的客户端入口，用错入口就会在错误的服务里找半天。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p2">二、服务结构：六个字段撑起全部</h2>
+
+<div class="card">
+  <p>ATMS 这个类有四千多行，但真正撑起结构的只有六个字段。看懂这六个，剩下的都是流程。</p>
+
+  <table>
+    <tr><th>字段</th><th>行号</th><th>作用</th></tr>
+    <tr><td><code>mGlobalLock</code></td><td><code>:362</code></td><td>全局锁，<strong>WMS 用的是同一把</strong>（<code>WindowManagerGlobalLock</code>，定义在 <code>wm/WindowManagerGlobalLock.java</code>）</td></tr>
+    <tr><td><code>mTaskSupervisor</code></td><td><code>:371</code></td><td>生命周期调度：启动、超时、空闲、ANR</td></tr>
+    <tr><td><code>mActivityClientController</code></td><td><code>:372</code></td><td>系统 → app 回调的出口</td></tr>
+    <tr><td><code>mRootWindowContainer</code></td><td><code>:373</code></td><td>整棵 Task / DisplayArea 树的根</td></tr>
+    <tr><td><code>mWindowManager</code></td><td><code>:374</code></td><td>WMS 引用，直接操作窗口层</td></tr>
+    <tr><td><code>mAmInternal</code></td><td><code>:344</code></td><td>AMS 的内部接口（要杀进程、查 uid 时用）</td></tr>
+  </table>
+
+  <p>外加一个容易被忽略的观察者：</p>
+
+  <div class="code-block">
+    <div class="filename">wm/ActivityTaskManagerService.java</div>
+<pre>456:  private TaskChangeNotificationController mTaskChangeNotificationController;</pre>
+  </div>
+
+  <p>它负责把「task 变了」这件事广播出去——最近任务列表、Launcher、无障碍服务都从这里收到通知。<strong>这也是为什么「最近任务不刷新」有时不在 Launcher 的问题里</strong>：通知没发出去，或者发出去没人接。</p>
+</div>
+
+<div class="analogy"><span class="tag">类比</span>把 ATMS 想成<strong>大楼的宿管</strong>：手里有一本花名册（Task 树）、一支笔（锁）、一部对讲机（回调）、一个通知板（TaskChangeNotification）。他不装修房间（那是 WMS），也不雇人（那是 AMS），他管的是「谁住哪间、什么时候搬、搬走要登记」。</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p3">三、它不拥有树，但持有同一棵树</h2>
+
+<div class="card">
+  <p>这是理解 ATMS 最关键的一步，也是最多人搞错的地方：<strong>RootWindowContainer 是 WMS 创建的，ATMS 只是引用了同一个对象。</strong></p>
+
+  <div class="code-block">
+    <div class="filename">wm/WindowManagerService.java</div>
+<pre>683:  RootWindowContainer mRoot;
+1249: mRoot = new RootWindowContainer(this);      <span class="cm">// 树在这里诞生</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="filename">wm/ActivityTaskManagerService.java</div>
+<pre>373:  RootWindowContainer mRootWindowContainer;
+976:  mRootWindowContainer = wm.mRoot;            <span class="cm">// 不是 new，是引用</span></pre>
+  </div>
+
+  <div class="refmap">
+    <div class="rm-title">对象引用关系（同一个进程，同一个对象）</div>
+    <div class="rm-owners">
+      <div class="rm-owner"><b>WindowManagerService</b><code>mRoot</code></div>
+      <div class="rm-owner"><b>ActivityTaskManagerService</b><code>mRootWindowContainer</code></div>
+    </div>
+    <div class="rm-merge">↓ 两个字段指向同一个地址 ↓</div>
+    <div class="rm-chain">
+      <div class="rm-node hi">RootWindowContainer<span class="note">唯一实例，树的根</span></div>
+      <div class="rm-node">DisplayContent<span class="note">一块屏幕</span></div>
+      <div class="rm-node">DisplayArea<span class="note">屏幕内的分区／层</span></div>
+      <div class="rm-node">Task<span class="note">任务栈，ATMS 真正操作的单位</span></div>
+      <div class="rm-node">ActivityRecord<span class="note">一个 Activity 的记录</span></div>
+      <div class="rm-node">WindowState<span class="note">WMS 管</span></div>
+    </div>
+    <div class="rm-foot">共享：同一个对象 + 同一把锁（mGlobalLock）</div>
+  </div>
+
+  <p>这个设计带来三个直接后果，每一个都能解释一类现象：</p>
+
+  <h4>后果一：Task 变了，WMS 立刻知道，不需要跨进程同步</h4>
+  <p>因为根本就是同一个对象。你在 ATMS 里把 task 的 parent 换掉，下一行代码 WMS 就能读到新的层级——没有 IPC、没有回调、没有延迟。</p>
+
+  <h4>后果二：同一时刻只能有一个人改它</h4>
+  <p>所以两边的 <strong>Binder 入口</strong>（ATMS 的 <code>startActivity</code>、WMS 的 <code>addWindow</code> / <code>relayoutWindow</code>）进来第一件事都是抢同一把锁：ATMS 一路走到 <code>ActivityStarter.execute()</code>，开头就是 <code>synchronized (mService.mGlobalLock)</code>（<code>ActivityStarter.java:619</code>）；WMS 的 <code>addWindow</code>（<code>WindowManagerService.java:1477</code>）、<code>relayoutWindow</code>（<code>:2221</code>）也一样。</p>
+  <p>而且这把锁的归属恰好和树相反：<strong>锁是 ATMS 建的，WMS 来取用</strong>——<code>mGlobalLock = new WindowManagerGlobalLock()</code>（<code>ActivityTaskManagerService.java:362</code>），WMS 构造时执行 <code>mGlobalLock = atm.getGlobalLock()</code>（<code>WindowManagerService.java:1211</code>）。这也是为什么「ATMS 里的 bug 会让整机卡住」——它拿的是 WMS 也要用的那把锁。</p>
+
+  <h4>后果三：dumpsys 的两个投影</h4>
+  <p><code>dumpsys activity activities</code> 和 <code>dumpsys window</code> 看到的是同一份数据的两个视图：前者按 Task 组织，后者按 Window 组织。<strong>对着两份 dump 找同一条记录，比读代码快。</strong></p>
+
+  <div class="pitfall"><span class="tag">坑</span>别在 WMS 里找「Activity 有没有启动」的答案。WMS 只看到 <code>WindowState</code>，它不知道这个窗口对应哪个 <code>ActivityRecord</code> 的生命周期阶段——那个信息只在 ATMS 侧。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p3b">三·补、DisplayArea 是什么（忘了看这里）</h2>
+
+<div class="card">
+  <p><strong>一句话：</strong>DisplayArea 是「一块屏幕上的一个分区／层」，是个纯容器——<strong>不放 Activity、不画任何东西，只决定谁在谁上面</strong>。</p>
+  <p>ATMS 的代码里会看到它，只是因为 Task 必须挂在某个 DisplayArea 下面。但 ATMS 真正打交道的是它的子类 <code>TaskDisplayArea</code>：<code>dc.getDefaultTaskDisplayArea()</code>（<code>DisplayContent.java:2807</code>）拿到的是「这块屏上默认放 Task 的那个区域」。</p>
+
+  <div class="tree">DisplayContent（一块屏）
+  └─ RootDisplayArea  [RootDisplayArea.java:40]
+       └─ DisplayArea（各 Feature 层，由 DisplayAreaPolicyBuilder 建）
+            ├─ HideDisplayCutout     挖孔／刘海区
+            ├─ WindowedMagnification 放大镜
+            ├─ OneHanded             单手模式
+            ├─ Tokens                直接挂 WindowToken 的层 [DisplayArea.java:542]
+            └─ TaskDisplayArea       放 Task                 [TaskDisplayArea.java:78]
+                 └─ Task → ActivityRecord → WindowState</div>
+
+  <ul>
+    <li><strong>它和 Task 是同一套树里的兄弟：</strong><code>DisplayArea extends WindowContainer</code>（<code>DisplayArea.java:68</code>），和 Task / ActivityRecord / WindowState 共用一棵树，所以<strong>树序就是 z 序</strong>。</li>
+    <li><strong>Task 是「内容」，DisplayArea 是「位置」：</strong>Task 里有 Activity、能被用户切走；DisplayArea 没有 Activity 概念，只是屏幕上的一个区域。</li>
+    <li><strong>层是显式声明的：</strong>每个 DisplayArea 带一个 <code>mFeatureId</code>（<code>:72</code>），由 <code>DisplayAreaPolicyBuilder</code> 按 Feature 建层——放大镜、挖孔隐藏、单手模式这类「整层」特性可以自己插进来，而不用改 WMS 的主逻辑（Android 10 之前这些是在层级计算里写死的 if/else）。</li>
+  </ul>
+
+  <div class="pitfall"><span class="tag">记法</span>看到 <code>DisplayArea</code> 就问一句「它是不是 <code>TaskDisplayArea</code>」：是，就往里放 Task（<code>task.reparent(tda, true)</code>）；不是，那是窗口层／特性层，ATMS 一般不直接碰。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p4">四、一次 startActivity 的 ATMS 路径</h2>
+
+<div class="card">
+  <p>完整链条已经在 <a href="Android窗口层级/07-窗口的来路与归途.html">07 窗口的来路与归途</a> 里逐段拆过，这里只保留<strong>四段接力</strong>，重点标出三处「接力边界」——这三处最容易读着读着就断了。</p>
+
+  <div class="tree">① 同线程直接调用
+Activity.startActivity()
+  └─ Instrumentation.execStartActivity()
+       └─ ActivityTaskManager.getService().startActivity(...)      [ActivityTaskManager.java:155]
+
+② binder 跨进程（system_server）
+       └─ ActivityTaskManagerService.startActivity()               [ActivityTaskManagerService.java:1144]
+            └─ ActivityStarter.execute()                           [wm/ActivityStarter.java:611]
+                 └─ executeRequest()                               [wm/ActivityStarter.java:811]
+                      ├─ computeLaunchingTaskFlags()               [定义 :2390，调用 :1678]
+                      ├─ getReusableTask()                         [定义 :2509，调用 :1684]
+                      └─ ActivityTaskSupervisor.realStartActivityLocked()  [ActivityTaskSupervisor.java:713]
+
+③ binder 回到 app 进程（launch）
+       └─ ApplicationThread.scheduleLaunchActivity()
+            └─ ActivityThread.performLaunchActivity()
+                 └─ Activity.onCreate() / onStart() / onResume()
+
+④ 首帧回执
+       └─ ActivityThread.handleResumeActivity()
+            └─ reportFullyDrawn / onEnterAnimationComplete</div>
+
+  <div class="annotation star3"><span class="tag">关键</span><code>startActivity()</code> 的返回值<strong>不是「已启动」</strong>，只是「已受理」或「已拒绝」。真正的启动发生在 ② 之后、③ 里面的异步过程。所以「返回 true 但 Activity 没起来」是正常现象，不是 bug。</div>
+
+  <h3>三处接力边界</h3>
+
+  <table>
+    <tr><th>边界</th><th>位置</th><th>读栈时要注意什么</th></tr>
+    <tr><td>app → system_server</td><td><code>ATMS.startActivity()</code> <code>:1144</code></td><td>跨进程，参数被 parcel 序列化；调用方线程被挂起等结果</td></tr>
+    <tr><td>决策 → 真正启动</td><td><code>ActivityStarter.execute()</code> <code>:611</code> → <code>:811</code></td><td><strong>同一线程</strong>，别以为是异步；决策失败就在这里 return</td></tr>
+    <tr><td>system_server → app</td><td><code>realStartActivityLocked()</code> <code>:713</code></td><td><code>oneway</code> 回调，不等 app 回应；所以 ATMS 侧看不到启动耗时</td></tr>
+  </table>
+
+  <div class="pitfall"><span class="tag">坑</span>在 <code>executeRequest()</code> 里打断点，会发现它跑在 <code>binder:&lt;pid&gt;_N</code> 线程上，不是主线程也不是 <code>android.anim</code>。这是 ATMS 的常态：每个 binder 线程都可能在处理启动请求，所以任何跨请求的状态都不能放在成员变量里。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p5">五、task 复用：两个方法决定一切</h2>
+
+<div class="card">
+  <p>「为什么我第二次启动又新建了一个任务」「为什么点了通知回到了老任务」——这类问题的答案永远在这两个方法之间：</p>
+
+  <div class="code-block">
+    <div class="filename">wm/ActivityStarter.java</div>
+<pre>2390:  private void computeLaunchingTaskFlags() { ... }   <span class="cm">// 算：该不该新 task</span>
+2509:  private Task getReusableTask() { ... }             <span class="cm">// 拿：能复用哪个 task</span></pre>
+  </div>
+
+  <p>决定结果的只有三个变量：</p>
+
+  <table>
+    <tr><th>变量</th><th>来源</th><th>影响</th></tr>
+    <tr><td>launch flags</td><td>Intent / ActivityOptions</td><td><code>NEW_TASK</code> 允许新建、<code>CLEAR_TOP</code> 清理上方、<code>SINGLE_TOP</code> 复用栈顶</td></tr>
+    <tr><td><code>taskAffinity</code></td><td>manifest 或 <code>setTaskAffinity</code></td><td>决定「哪个 task 属于我」，是复用匹配的主键</td></tr>
+    <tr><td><code>documentLaunchMode</code></td><td>manifest</td><td>允许同一 Activity 多实例（每个实例一个 task）</td></tr>
+  </table>
+
+  <div class="code-block">
+    <div class="filename">wm/ActivityStarter.java</div>
+<pre>2293:  ... || r.info.documentLaunchMode == DOCUMENT_LAUNCH_ALWAYS) {
+2721:  switch (r.info.documentLaunchMode) {
+2722:      case ActivityInfo.DOCUMENT_LAUNCH_NONE:
+2724:      case ActivityInfo.DOCUMENT_LAUNCH_INTO_EXISTING:</pre>
+  </div>
+
+  <h3>三个常见组合的实际效果</h3>
+
+  <table>
+    <tr><th>配置</th><th>连起三次的结果</th><th>最近任务</th></tr>
+    <tr><td>默认（无 flag）</td><td>同一个 task，Activity 被复用或压栈</td><td>1 张卡</td></tr>
+    <tr><td><code>NEW_TASK</code> + 不同 affinity</td><td>每个 affinity 一个 task</td><td>2–3 张卡</td></tr>
+    <tr><td><code>documentLaunchMode="always"</code></td><td>每次一个独立 task、独立实例</td><td>3 张卡</td></tr>
+  </table>
+
+  <div class="annotation"><span class="tag">验证</span><code>adb shell dumpsys activity activities | grep -n "Task{\|taskAffinity\|realActivity"</code> —— 先看 taskId 变没变，再看 affinity 是否相同。两个信息一对照，就知道走的是复用还是新建。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p6">六、生命周期后半场：删除的三条路径</h2>
+
+<div class="card">
+  <p>启动讲得多，删除讲得少，但面试和排障都在这半边。<code>ActivityRecord</code> 消失有三条完全不同的路径：</p>
+
+  <div class="code-block">
+    <div class="filename">wm/ActivityRecord.java</div>
+<pre>3161:  boolean destroyIfPossible(String reason) { ... }   <span class="cm">// 正常销毁</span>
+3324:  void removeFromHistory(String reason) { ... }      <span class="cm">// 从记录里摘掉</span></pre>
+  </div>
+
+  <table>
+    <tr><th>路径</th><th>入口</th><th>onPause/onStop/onDestroy</th><th>典型场景</th></tr>
+    <tr><td><strong>finish</strong></td><td>app 调 <code>finish()</code> → <code>destroyIfPossible()</code> <code>:3161</code></td><td>都会回调</td><td>用户点返回、代码主动结束</td></tr>
+    <tr><td><strong>系统回收</strong></td><td><code>removeFromHistory()</code> <code>:3324</code></td><td>可能只走 onStop，onDestroy 不一定</td><td>任务被清理、进程被回收前</td></tr>
+    <tr><td><strong>force-stop</strong></td><td>AMS 直接杀进程</td><td><strong>全部不执行</strong></td><td><code>am force-stop</code>、设置里强行停止</td></tr>
+  </table>
+
+  <div class="pitfall"><span class="tag">坑</span>第三条是经典陷阱题。很多人答「force-stop 会走 onDestroy」——不会。<strong>进程都没了，谁来执行回调？</strong>所以任何「退出时保存数据」的逻辑都不能依赖 onDestroy，要放在 onPause/onStop。</div>
+
+  <p>顺带说清楚一个常被问到的点：<strong>Activity 被系统回收后重建，不是「重新启动」</strong>。它走的是 <code>ActivityThread</code> 里的恢复流程，<code>savedInstanceState</code> 从 <code>ActivityClientRecord</code> 里来，不经过 <code>ActivityStarter</code>。所以在这种场景下你打启动链的断点，是打不到的。</p>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p7">七、第四条入口：把 task 搬到另一块屏</h2>
+
+<div class="card">
+  <p>ATMS 的常驻入口有三个（start / finish / moveTaskToFront），<strong>第四个是你要自己加的</strong>：把 task 移到另一块屏。它最能说明 ATMS 的职责边界，因为一条链上同时踩到了 Task 树、配置变更、app 回调。</p>
+
+  <h3>先明确一件事：移的是 task，不是 window</h3>
+
+  <p><code>WindowState</code> 的 parent 链固定在某个 <code>DisplayContent</code> 内，单个窗口不能跨屏。<strong>能跨屏的最小单位是 Task。</strong>这就是为什么所有跨屏方案最后都落到 <code>Task.reparent</code>。</p>
+
+  <div class="tree">四跳（AOSP 12 已核）
+
+1  按 id 找 task
+   RootWindowContainer.anyTaskForId(int)                 [RootWindowContainer.java:3443]
+
+2  找目标屏的默认区域
+   RootWindowContainer.getDisplayContent(int)            [RootWindowContainer.java:1410]
+     └─ DisplayContent.getDefaultTaskDisplayArea()       [DisplayContent.java:2807]
+
+3  换 parent（跨 DisplayContent）
+   Task.reparent(TaskDisplayArea, boolean onTop)         [wm/Task.java:7620]
+     └─ WindowContainer.reparent(WindowContainer, int)   [WindowContainer.java:352]
+
+4  配置变更下发到 app
+   ActivityRecord.ensureActivityConfiguration()          [ActivityRecord.java:7950]
+     └─ scheduleActivityMovedToDisplay()                 [定义 :1183，调用 :8051]
+          └─ Activity.onMovedToDisplay(int, Configuration) [Activity.java:2996]</div>
+
+  <h3>四跳里最容易被忽略的是第 4 跳</h3>
+
+  <p>很多人做完第 3 跳就以为完事了：<code>dumpsys</code> 里 displayId 确实变了，界面却还是旧尺寸或者直接黑掉。原因是<strong>第 4 跳没走完</strong>：</p>
+
+  <ul>
+    <li><code>onMovedToDisplay()</code> 只在 display 变化时回调，不是每次配置变更都调</li>
+    <li>如果 activity 没声明对应的 <code>configChanges</code>，走的是 <strong>重建</strong>（<code>onCreate</code> 再来一次），不是 <code>onMovedToDisplay</code></li>
+    <li>重建会丢状态，除非你实现了 <code>savedInstanceState</code> 或用了 <code>ViewModel</code></li>
+  </ul>
+
+  <div class="code-block">
+    <div class="filename">最小实现（未编译，示意）</div>
+<pre><span class="cm">// 放在 ActivityManagerShellCommand 或任意系统服务里</span>
+Task task = mAtm.mRootWindowContainer.anyTaskForId(taskId);              <span class="cm">// :3443</span>
+DisplayContent dc = mAtm.mRootWindowContainer.getDisplayContent(displayId); <span class="cm">// :1410</span>
+TaskDisplayArea tda = dc.getDefaultTaskDisplayArea();                    <span class="cm">// :2807</span>
+task.reparent(tda, <span class="kw">true</span>);                                                 <span class="cm">// :7620</span></pre>
+  </div>
+
+  <div class="annotation"><span class="tag">实验前提</span>没有双屏设备也能练：<code>adb shell settings put global overlay_display_devices "1280x720/213"</code>。这个 setting 由 <code>OverlayDisplayAdapter</code> 监听（<code>services/core/java/com/android/server/display/OverlayDisplayAdapter.java:58</code> 注释、<code>:159</code> 监听），立刻多出一块虚拟屏。</div>
+
+  <div class="pitfall"><span class="tag">坑</span>跨屏之后输入焦点不会自动跟过去。每块屏有自己的 input port 与焦点窗口，移动完要主动请求焦点，否则「窗口在那儿，点不动」。这一条在 <a href="Android窗口层级/05-输入分发与窗口命中.html">05 输入分发与窗口命中</a> 里有完整机制。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p8">八、观测：dumpsys activity 三段怎么读</h2>
+
+<div class="card">
+  <p>ATMS 的 dump 命令是常量定义的，知道常量就知道全部子命令：</p>
+
+  <div class="code-block">
+    <div class="filename">wm/ActivityTaskManagerService.java</div>
+<pre>317:  public static final String DUMP_ACTIVITIES_CMD = "activities";
+319:  public static final String DUMP_LASTANR_CMD  = "lastanr";
+323:  public static final String DUMP_RECENTS_CMD  = "recents";
+5964:  if (DUMP_ACTIVITIES_CMD.equals(cmd) ...)             <span class="cm">// 分发入口</span>
+3829:  mRootWindowContainer.dumpActivities(...)             <span class="cm">// 实际打印</span></pre>
+  </div>
+
+  <h3>三个子命令各自看什么</h3>
+
+  <table>
+    <tr><th>命令</th><th>看什么</th><th>典型用途</th></tr>
+    <tr><td><code>dumpsys activity activities</code></td><td>Task 树 + 每个 ActivityRecord 的状态（resumed/paused/stopped）、bounds、displayId</td><td>「它在哪个 task」「有没有被重建」</td></tr>
+    <tr><td><code>dumpsys activity lastanr</code></td><td>最近一次 ANR 的现场快照</td><td>「谁没响应」「当时焦点在哪」</td></tr>
+    <tr><td><code>dumpsys activity recents</code></td><td>最近任务的数据（不是界面）</td><td>「为什么最近任务少了一条」</td></tr>
+  </table>
+
+  <h3>读的顺序（别从头读）</h3>
+
+  <div class="step"><span class="no">1</span><strong>先定位 Task</strong>：<code>grep -n "Task{"</code> 拿行号，再看这一段里的 <code>taskId</code>、<code>affinity</code>、<code>displayId</code>。</div>
+  <div class="step"><span class="no">2</span><strong>再找 ActivityRecord</strong>：<code>grep -n "ActivityRecord{"</code>，看它挂在哪个 Task 下面缩进。</div>
+  <div class="step"><span class="no">3</span><strong>最后看状态字</strong>：<code>mResumed</code>、<code>mVisible</code>、<code>nowVisible</code>、<code>mState=</code>。状态和你想的不一样，这才是线索。</div>
+
+  <div class="pitfall"><span class="tag">坑</span><code>dumpsys activity</code> 里混着<strong>两个服务</strong>的内容：<code>ACTIVITY MANAGER</code> 段来自 ATMS / WMCore，后面的进程与服务列表来自 AMS。看到「进程」「ServiceRecord」就说明已经进入 AMS 的段，别再拿它判断 Task 关系。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p9">九、八个坑（含和 WM Shell 的边界）</h2>
+
+<div class="card">
+  <table>
+    <tr><th>#</th><th>坑</th><th>正确认识</th></tr>
+    <tr><td>1</td><td>把 ATMS 当成「Activity 管理器」</td><td>它管层级与生命周期，不管 Activity 内部的 UI 状态</td></tr>
+    <tr><td>2</td><td>以为 ATMS 拥有窗口树</td><td>树由 WMS 创建（<code>WindowManagerService.java:1249</code>），ATMS 只是持有同一对象（<code>:976</code>）</td></tr>
+    <tr><td>3</td><td>把 <code>startActivity</code> 返回值当结果</td><td>返回值只表示受理/拒绝，真正启动在异步链里</td></tr>
+    <tr><td>4</td><td>指望 force-stop 走 <code>onDestroy</code></td><td>进程被杀，回调不执行；收尾逻辑放 onPause/onStop</td></tr>
+    <tr><td>5</td><td>在 WMS 里找「能不能进分屏」</td><td>门禁在 ATMS（<code>ActivityClientController.java:661</code> → ATMS），摆放在 WM Shell</td></tr>
+    <tr><td>6</td><td>把 WM Shell 当成 SystemUI 的功能</td><td>它编译进 SystemUI APK、跑在 systemui 进程，但是独立 library（<code>frameworks/base/libs/WindowManager/Shell</code>），是 ATMS/WMS 的<strong>客户端</strong>，不是下属模块</td></tr>
+    <tr><td>7</td><td>认为配置变更一定会重建</td><td>声明全了 <code>configChanges</code> 就不重建；跨屏是否回调 <code>onMovedToDisplay</code> 取决于 display 是否真的变了</td></tr>
+    <tr><td>8</td><td>在 ATMS 里放跨请求的成员状态</td><td>binder 线程池并发处理请求，成员变量会被并发访问；状态必须挂在 <code>ActivityRecord</code> / <code>Task</code> 上</td></tr>
+  </table>
+
+  <div class="annotation star3"><span class="tag">记住第 6 条</span>「代码跑在 systemui 进程」≠「SystemUI 的功能」。判断归属永远看<strong>状态所有者</strong>：task 的 <code>windowingMode</code> 归 WMCore，leash 与 bounds 归 Shell，菜单窗口归 Shell 自己 addView 出来的 overlay。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p10">十、源码速查与实践题</h2>
+
+<div class="card">
+  <h3>源码速查</h3>
+  <table>
+    <tr><th>你想知道</th><th>去哪里看</th></tr>
+    <tr><td>ATMS 类本身</td><td><code>wm/ActivityTaskManagerService.java:294</code></td></tr>
+    <tr><td>全局锁</td><td><code>:362</code>；类定义 <code>wm/WindowManagerGlobalLock.java</code></td></tr>
+    <tr><td>树的根从哪来</td><td><code>:373</code>、<code>:976</code>、<code>WindowManagerService.java:1249</code></td></tr>
+    <tr><td>启动入口</td><td><code>:1144</code></td></tr>
+    <tr><td>task 复用决策</td><td><code>wm/ActivityStarter.java:2390</code>、<code>:2509</code></td></tr>
+    <tr><td>文档模式多实例</td><td><code>wm/ActivityStarter.java:2293</code>、<code>:2721</code></td></tr>
+    <tr><td>销毁两路径</td><td><code>ActivityRecord.java:3161</code>、<code>:3324</code></td></tr>
+    <tr><td>跨屏 reparent</td><td><code>wm/Task.java:7620</code> → <code>WindowContainer.java:352</code></td></tr>
+    <tr><td>跨屏配置回调</td><td><code>ActivityRecord.java:7950</code>、<code>:8051</code>、<code>Activity.java:2996</code></td></tr>
+    <tr><td>dump 子命令</td><td><code>:317</code>、<code>:319</code>、<code>:323</code>、<code>:5964</code></td></tr>
+  </table>
+
+  <h3>实践题（按编译成本分级）</h3>
+
+  <table>
+    <tr><th>#</th><th>题目</th><th>要编译吗</th><th>判据</th></tr>
+    <tr><td>A1</td><td>还原一次启动的 task 决策</td><td>否</td><td><code>am start -W</code> + <code>dumpsys activity activities</code> 里 taskId 是否新增</td></tr>
+    <tr><td>A2</td><td>单实例 vs 多实例（<code>documentLaunchMode</code>）</td><td>否</td><td>连起三次后 task 数量（<code>grep -c "Task{"</code>）</td></tr>
+    <tr><td>A3</td><td>删除三条路径对比</td><td>否</td><td>finish / force-stop / 回收 三种情况下 onDestroy 是否执行</td></tr>
+    <tr><td>A4</td><td>让一次启动失败</td><td>是（services）</td><td><code>am start</code> 报错 + 无新 task + logcat 无 launch</td></tr>
+    <tr><td>A5</td><td>加 <code>cmd activity task-move</code></td><td>是（services）</td><td>task 的 displayId 变化</td></tr>
+    <tr><td>A6</td><td>ATMS 侧启动耗时打点</td><td>是（services）</td><td><code>execute→executeRequest</code> 耗时 ÷ <code>TotalTime</code></td></tr>
+  </table>
+
+  <div class="hint">📌 编译只需 <code>m services</code>（几分钟），不要整树编。产物 <code>out/target/product/&lt;target&gt;/system/framework/services.jar</code>，<code>adb root &amp;&amp; adb remount</code> 后 push 再重启。A1–A3 完全不用编译，今天就能做。</div>
+
+  <h3>A5 的最小骨架</h3>
+  <div class="code-block">
+    <div class="filename">am/ActivityManagerShellCommand.java（加子命令处：:300 case "task" / :2723 runTask）</div>
+<pre><span class="cm">// task-move &lt;taskId&gt; &lt;displayId&gt;</span>
+Task task = mAtm.mRootWindowContainer.anyTaskForId(taskId);
+<span class="kw">if</span> (task == <span class="kw">null</span>) { pw.println(<span class="cm">"no such task"</span>); <span class="kw">return</span> 1; }
+DisplayContent dc = mAtm.mRootWindowContainer.getDisplayContent(displayId);
+<span class="kw">if</span> (dc == <span class="kw">null</span>) { pw.println(<span class="cm">"no such display"</span>); <span class="kw">return</span> 1; }
+task.reparent(dc.getDefaultTaskDisplayArea(), <span class="kw">true</span>);
+pw.println(<span class="cm">"moved task "</span> + taskId + <span class="cm">" to display "</span> + displayId);</pre>
+  </div>
+
+  <div class="annotation"><span class="tag">为什么这题值得做</span>它同时踩到四件事：Task 树寻址、跨 DisplayContent 的 reparent、配置变更下发、输入焦点重建。做完这一个，ATMS 的主干就通了。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="quiz">🧠 自测：3 个问题</h2>
+
+<div class="card">
+  <div class="think"><span class="qtag">Q1</span> ATMS 和 WMS 是两个服务，为什么修改 task 的 parent 之后，WMS 立刻就能看到？</div>
+  <details><summary>看看答案</summary><div class="ans">因为 <code>RootWindowContainer</code> 只有<strong>一个实例</strong>：WMS 在 <code>WindowManagerService.java:1249</code> 创建它，ATMS 在 <code>ActivityTaskManagerService.java:976</code> 直接引用 <code>wm.mRoot</code>。同一个进程、同一个对象、同一把锁（<code>mGlobalLock</code>，<code>:362</code>），所以不存在「同步延迟」这回事。</div></details>
+
+  <div class="think"><span class="qtag">Q2</span> 用户报告「点了通知，回到的是旧页面，不是通知对应的页面」。你先看哪两个方法？</div>
+  <details><summary>看看答案</summary><div class="ans">先看 <code>computeLaunchingTaskFlags()</code>（<code>wm/ActivityStarter.java:2390</code>）和 <code>getReusableTask()</code>（<code>:2509</code>）。前者决定意图里该不该 <code>NEW_TASK</code>，后者决定按 affinity 匹配到了哪个现存 task。绝大多数「回错页面」都是 PendingIntent 的 flags 与 taskAffinity 组合问题，而不是 Activity 生命周期问题。</div></details>
+
+  <div class="think"><span class="qtag">Q3</span> 你把 task 移到另一块屏，<code>dumpsys</code> 显示 displayId 已变，但界面还是旧尺寸。最可能漏了哪一跳？</div>
+  <details><summary>看看答案</summary><div class="ans">漏了第 4 跳：配置变更下发。看 <code>ActivityRecord.ensureActivityConfiguration()</code>（<code>:7950</code>）有没有走到 <code>scheduleActivityMovedToDisplay()</code>（<code>:8051</code>）。如果 activity 的 <code>configChanges</code> 没覆盖屏幕相关位，走的是<strong>重建</strong>而不是 <code>onMovedToDisplay()</code>（<code>Activity.java:2996</code>）；如果覆盖了但界面没刷新，检查 app 是否在回调里重新读取了新的 Configuration。</div></details>
+
+  <div class="hint">📌 这三题能不能一次答对，是「ATMS 学没学通」的直接判据：Q1 考共享结构，Q2 考决策入口，Q3 考生命周期与配置变更的耦合。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>🧩 Android Framework 专题 | <strong>ATMS 是什么：ActivityTaskManagerService 的职责、结构与四条入口</strong></p>
+  <p>基于 AOSP 12（android-12.0.0_r32）· WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实</p>
+  <p style="margin-top:10px;"><strong>ATMS 篇（独立专题）← 你在这</strong> &nbsp;|&nbsp; <a href="Android窗口层级/07-窗口的来路与归途.html">07 窗口的来路与归途 →</a></p>
+  <p style="margin-top:8px;"><a href="Android窗口层级/index.html">🌳 窗口层级系列</a> &nbsp;|&nbsp; <a href="Android窗口层级/WMS学习路线图.html">🗺️ WMS 学习路线图</a> &nbsp;|&nbsp; <a href="Android-Framework学习路线图.html">🧭 Framework 路线图</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📌 下一篇预告：12 多显示与多窗口（跨屏 reparent 的完整版）。</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌗' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

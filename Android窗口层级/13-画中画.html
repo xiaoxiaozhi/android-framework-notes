@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>画中画 PiP：一次跨 ATMS / WMCore / WM Shell 的窗口模式迁移（WMS 学习 13）</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol","Apple Symbols",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .think .qtag { color:var(--accent3); font-weight:bold; }
+    .analogy { border-left:4px solid var(--accent2); background:var(--bg-card); border:1px solid var(--border); border-left-width:4px; padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .analogy .tag { color:var(--accent2); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:10px 16px; margin:14px 0; font-size:.9rem; color:var(--text2); }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:14px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-size:.82rem; font-weight:bold; margin-right:8px; }
+    .why { color:var(--accent2); font-weight:bold; }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🎬 画中画 PiP：一次跨 ATMS / WMCore / WM Shell 的窗口模式迁移</h1>
+<p class="subtitle">从 <code>Activity.enterPictureInPictureMode()</code> 到 pinned root task、leash 动画与 <code>onPictureInPictureModeChanged</code>：一条跨四个模块的事件流 · AOSP 12 源码逐行核实</p>
+<p class="series">🎬 Android 窗口层级专题 13（专题补篇）｜ 基于 <code>android-12.0.0_r32</code> ｜ 关联：<a href="09-窗口动画与过渡.html">09 窗口动画与 leash</a>、12 多窗口（待写）</p>
+<p class="series">🧭 配套深读：<a href="../android-framework-atms.html">ATMS 是什么 —— PiP 门禁为什么在 ATMS 而不在 WMS</a></p>
+<button id="theme-btn" title="切换主题">🌗</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p1">一、全景与归属：PiP 到底属于谁</a>
+  <a href="#p2">二、方法逐个看</a>
+  <a href="#p3">三、第 1–3 跳：从 API 到 ATMS</a>
+  <a href="#p4">四、第 4 跳：RootWindowContainer 搬 Task</a>
+  <a href="#p5">五、第 5–6 跳：Shell 接管与小窗动画</a>
+  <a href="#p6">六、第 7 跳：配置变更与回调</a>
+  <a href="#p7">七、稳态闭环与退出</a>
+  <a href="#p8">八、排障与源码速查</a>
+  <a href="#quiz">🧠 自测：3 个问题</a>
+</div>
+
+<div class="lead">
+  <p>视频 App 按下 Home 键缩成右下角的小窗，看起来只是“窗口变小了”。实际发生的事要重得多：system_server 把这个 Activity 从原来的 Task 里<strong>摘出来</strong>，塞进一个新建或复用的 pinned root task；SystemUI 进程里的 WM Shell 接管一条 SurfaceControl leash，把小窗从全屏矩形缩到目标 bounds；最后再通过一次跨进程的配置变更，把“你已经进入 PiP”这个消息送回 App 主线程。<strong>入口和状态机在 ATMS，Task 与窗口模式在 WMCore/WMS，动画与菜单在 WM Shell，API 在 android.app</strong>——四层各有 owner。本文按事件流走一遍：<code>Activity.enterPictureInPictureMode()</code> → <code>ActivityClientController</code> → <code>ActivityTaskManagerService</code> → <code>RootWindowContainer</code> → <code>PipTransition</code> / <code>PipTaskOrganizer</code> → <code>onPictureInPictureModeChanged()</code>。读懂这条链，才能解释“API 返回 true 但没变小”“多 Activity 的 App 进 PiP 后下面的页面露出来”“旧 PiP 为什么先消失”这些现场问题。</p>
+</div>
+
+<h2 id="p1">一、全景与归属：PiP 到底属于谁</h2>
+
+<div class="card">
+  <p><strong>先破一个常见误解：</strong>PiP 不是 WMS 的一个子模块，也不是 SystemUI 的专属功能。它是 Android 的一种<strong>窗口模式</strong>，代码横跨四个地方；判断归属不要看“代码跑在哪个进程”，要看<strong>状态的所有者是谁</strong>。</p>
+  <table>
+    <tr><th>层</th><th>进程</th><th>核心类</th><th>负责什么</th></tr>
+    <tr><td>API</td><td>App</td><td><code>Activity</code>、<code>ActivityClient</code></td><td>参数检查、token、乐观状态、binder 调用</td></tr>
+    <tr><td>ATMS</td><td>system_server</td><td><code>ActivityClientController</code>、<code>ActivityTaskManagerService</code>、<code>ActivityRecord</code></td><td>token→ActivityRecord、AppOps/Keyguard/LockTask 门禁、何时搬、pause 顺序</td></tr>
+    <tr><td>WMCore / WMS</td><td>system_server</td><td><code>RootWindowContainer</code>、<code>Task</code>、<code>TaskDisplayArea</code>、<code>WindowState</code></td><td>Task 迁移、<code>WINDOWING_MODE_PINNED</code>、布局与窗口组织</td></tr>
+    <tr><td>WM Shell</td><td><strong>SystemUI</strong></td><td><code>Pip</code>、<code>PipTransition</code>、<code>PipTaskOrganizer</code>、<code>PipBoundsAlgorithm</code>、<code>PipMenuController</code></td><td>目标 bounds、leash 动画、PiP 菜单、贴边吸附</td></tr>
+    <tr><td>图形</td><td>SurfaceFlinger</td><td><code>SurfaceControl</code>、<code>Transaction</code></td><td>合成、裁剪、圆角</td></tr>
+  </table>
+
+  <div class="tree">进程与调用边界
+
+App 进程
+└─ Activity#enterPictureInPictureMode()                 [Activity.java:2897]
+   └─ ActivityClient#enterPictureInPictureMode()          [ActivityClient.java:296]
+      └─ binder: IActivityClientController               [IActivityClientController.aidl:87]
+         │
+system_server
+         └─ ActivityClientController#enterPictureInPictureMode() [ActivityClientController.java:661]
+            └─ ActivityTaskManagerService#enterPictureInPictureMode() [ActivityTaskManagerService.java:3365]
+               └─ RootWindowContainer#moveActivityToPinnedRootTask() [RootWindowContainer.java:2105]
+                  └─ TransitionController#requestTransitionIfNeeded(TRANSIT_CHANGE) [TransitionController.java:161]
+                     │
+SystemUI 进程（WM Shell）
+                     └─ PipTransition#startAnimation()      [PipTransition.java:69]
+                        └─ PipTaskOrganizer#onTaskAppeared() [PipTaskOrganizer.java:513]  // 拿到 leash</div>
+
+  <div class="annotation star3"><span class="tag">一句话</span> <strong>WMS 提供容器与窗口模式，ATMS 决定“能不能进”，Shell 负责“怎么动”。</strong>把 PiP 说成“SystemUI 的功能”，会漏掉 ATMS 的状态机和 WMCore 的 Task 迁移；说成“WMS 的子模块”，又会漏掉 SystemUI 里的全部动画与菜单。</div>
+  <p><strong>再拆一层：小窗里的三块东西，归属各不相同。</strong>上面表里写着“WM Shell 的进程 = SystemUI”，很容易又被读成“PiP 是 SystemUI 画出来的”。实际小窗里叠着三样东西：</p>
+  <table>
+    <tr><th>位置</th><th>是什么</th><th>归属与锚点</th></tr>
+    <tr>
+      <td>小窗里的画面</td>
+      <td>app 自己的 task surface，只是被搬进 <code>WINDOWING_MODE_PINNED</code> 的容器继续渲染 —— 不是 SystemUI 截屏后塞进自家窗口</td>
+      <td>app 进程。所以 <code>dumpsys window</code> 里它仍是一个应用窗口，只多出 <code>windowingMode=pinned</code></td>
+    </tr>
+    <tr>
+      <td>缩放 / 边界 / 动画 / 手势</td>
+      <td><code>PipTaskOrganizer</code> 拿到这个 task 的 leash，做 relayout、动画与贴边吸附</td>
+      <td>WM Shell。它是独立 library（<code>frameworks/base/libs/WindowManager/Shell</code>），只是被编译进 SystemUI APK、跑在 systemui 进程里</td>
+    </tr>
+    <tr>
+      <td>关闭 / 全屏那个菜单</td>
+      <td>一个 <code>TYPE_APPLICATION_OVERLAY</code> + <code>PRIVATE_FLAG_TRUSTED_OVERLAY</code> 的 overlay 窗口，内容由 <code>PipMenuView extends FrameLayout</code> 渲染</td>
+      <td>WM Shell。窗口参数 <code>PipMenuController.java:99</code>、:102；菜单视图 <code>phone/PipMenuView.java:74</code>；靠 <code>attach(SurfaceControl leash)</code>（<code>PipMenuController.java:48</code>）挂到 PiP 的 leash 上，随小窗一起动</td>
+    </tr>
+  </table>
+
+  <p>因此“跑在 systemui 进程”≠“SystemUI 的功能”：<code>WMShell.java:106</code> 只是在构造时注入 <code>Optional&lt;Pip&gt;</code>，<code>:167</code> 调 <code>initPip()</code>（定义在 <code>:174</code>）把菜单入口接上，真正干活的是 shell 库里的 <code>Pip</code> 实现。判断归属依旧看<strong>状态所有者</strong>：task 的 <code>windowingMode</code> 是 WMCore 的状态，leash 与 bounds 是 Shell 的状态，菜单窗口是 Shell 自己 addView 出来的 overlay。</p>
+
+  <div class="annotation"><span class="tag">顺手验证</span>进 PiP 后跑 <code>dumpsys window windows | grep -i -A3 windowingmode</code>，能看到那个窗口带 app 包名且 <code>windowingMode=pinned</code>；本工程 <code>FramworkContent</code> 的「进入画中画」按钮就是这条链的最小复现。</div>
+
+</div>
+
+<h2 id="p2">二、方法逐个看</h2>
+
+<div class="card">
+  <table>
+    <tr><th>方法 / 类</th><th>谁调它</th><th>作用</th><th>下一步</th></tr>
+    <tr><td><code>Activity#enterPictureInPictureMode()</code><br><code>Activity.java:2897</code></td><td>App</td><td>特性位/参数/生命周期检查，发起 binder</td><td><a href="#p3-1">块A</a></td></tr>
+    <tr><td><code>ActivityClient#enterPictureInPictureMode()</code><br><code>ActivityClient.java:296</code></td><td>Activity</td><td>转发 <code>IActivityClientController</code></td><td><a href="#p3-1">块A</a></td></tr>
+    <tr><td><code>ActivityClientController#enterPictureInPictureMode()</code><br><code>ActivityClientController.java:661</code></td><td>binder 线程</td><td>持 <code>mGlobalLock</code>，token→ActivityRecord，参数硬校验</td><td><a href="#p3-2">块B</a></td></tr>
+    <tr><td><code>ActivityRecord#checkEnterPictureInPictureState()</code><br><code>ActivityRecord.java:2663</code></td><td>ATMS</td><td>五道门：特性/AppOps/VR/锁任务/状态机</td><td><a href="#p3-3">块C</a></td></tr>
+    <tr><td><code>ActivityTaskManagerService#enterPictureInPictureMode()</code><br><code>ActivityTaskManagerService.java:3365</code></td><td>ActivityClientController</td><td>决策、锁屏延迟、投递 <code>enterPipRunnable</code></td><td><a href="#p3-3">块C</a></td></tr>
+    <tr><td><code>RootWindowContainer#moveActivityToPinnedRootTask()</code><br><code>RootWindowContainer.java:2105</code></td><td>ATMS</td><td>建/复用 Task、reparent、切 pinned</td><td><a href="#p4-1">块D</a></td></tr>
+    <tr><td><code>Task#dismissPip()</code><br><code>wm/Task.java:7507</code></td><td>RWC / 退出路径</td><td>旧 PiP 退出、恢复窗口模式</td><td><a href="#p4-1">块D</a></td></tr>
+    <tr><td><code>PipTransition#startAnimation()</code><br><code>PipTransition.java:69</code></td><td>Shell Transitions</td><td>从 <code>TransitionInfo</code> 里挑出 pinned change</td><td><a href="#p5-1">块E</a></td></tr>
+    <tr><td><code>PipTaskOrganizer#onTaskAppeared()</code><br><code>PipTaskOrganizer.java:513</code></td><td>WMS / TaskOrganizer</td><td>保存 leash，建立 PiP 状态</td><td><a href="#p5-2">块F</a></td></tr>
+    <tr><td>配置下传后的 PiP 调度<br><code>ActivityRecord.java:7758</code></td><td>WMCore</td><td>清 <code>mWaitForEnteringPinnedMode</code>，调度回调</td><td><a href="#p6-1">块G</a></td></tr>
+    <tr><td><code>ActivityThread#handleWindowingModeChangeIfNeeded()</code><br><code>ActivityThread.java:5965</code></td><td>App 主线程</td><td>比较新旧窗口模式，派发 PiP 回调</td><td><a href="#p6-2">块H</a></td></tr>
+  </table>
+</div>
+
+<h2 id="p3">三、第 1–3 跳：从 API 到 ATMS</h2>
+
+<h3 id="p3-1">块A｜第 1 跳：App 侧只做三件事</h3>
+
+<p class="filename">Activity.java:2897-2915 ｜ ActivityClient.java:296-303</p>
+<div class="code-block"><pre>// Activity.java:2897-2915（android-12.0.0_r32 现查）
+public boolean enterPictureInPictureMode(@NonNull PictureInPictureParams params) {
+    if (!deviceSupportsPictureInPictureMode()) {
+        return false;                       // ① 纯客户端特性位，直接 false
+    }
+    if (params == null) {
+        throw new IllegalArgumentException(&quot;Expected non-null picture-in-picture params&quot;);
+    }
+    if (!mCanEnterPictureInPicture) {
+        throw new IllegalStateException(&quot;Activity must be resumed to enter&quot;
+                + &quot; picture-in-picture&quot;);   // ② 实际只拦&quot;已经 stop&quot;之后的调用
+    }
+    // ③ 先置 true：保证紧接着的 onPause 里 isInPictureInPictureMode() 已是 true
+    mIsInPictureInPictureMode = ActivityClient.getInstance().enterPictureInPictureMode(
+            mToken, params);
+    return mIsInPictureInPictureMode;       // 这是&quot;受理结果&quot;，不是动画完成
+}</pre></div>
+<div class="code-block"><pre>// ActivityClient.java:296-303
+boolean enterPictureInPictureMode(IBinder token, PictureInPictureParams params) {
+    try {
+        return getActivityClientController().enterPictureInPictureMode(token, params);
+    } catch (RemoteException e) {
+        throw e.rethrowFromSystemServer();  // binder 死亡直接抛，调用方看到 RuntimeException
+    }
+}
+
+// IActivityClientController.aidl:87
+boolean enterPictureInPictureMode(in IBinder token, in PictureInPictureParams params);</pre></div>
+
+<p><strong>这段在干什么：</strong>进入时是 App 主线程、Activity 还处于 resumed（或至少未 stop）；出去时只是“请求已发出”，UI 还没变。<code>mIsInPictureInPictureMode</code> 被立即写成 binder 的返回值，是为了让紧接着的 <code>onPause()</code> 里 <code>isInPictureInPictureMode()</code> 已经是 true——这是 Android 官方 PiP 指南要求的行为，不是实现随手写的。</p>
+<p><strong>设计意图：</strong><code>mCanEnterPictureInPicture</code> 在 <code>performCreate</code> / <code>performRestart</code> / <code>performNewIntent</code> 置 true（<code>Activity.java:8041</code>、<code>8066</code>、<code>8123</code>），在 <code>performStop</code> 才置 false（<code>Activity.java:8263</code>）。所以客户端这个检查实际拦的是“已经 stop 之后”的调用，异常文案里的 “must be resumed” 是历史措辞；真正的 resumed 要求由服务端 <code>checkEnterPictureInPictureState()</code> 判定。</p>
+<p class="pitfall"><span class="tag">实战</span><strong>现象：</strong>调用后立刻返回 false，UI 没反应。<strong>因果：</strong>客户端只负责特性位；false 可能来自这里，也可能来自 server 的状态门禁。<strong>怎么查：</strong>先在调用点看 <code>deviceSupportsPictureInPictureMode()</code> 与 <code>mCanEnterPictureInPicture</code>，再看 logcat 里 <code>ActivityTaskManagerService</code> 是否打印拒绝原因；用 <code>adb shell dumpsys activity activities | grep -i pinned</code> 确认当前是否已有 PiP。</p>
+
+<details><summary>🧠 思考（单块）</summary><div class="ans">如果 App 在 <code>onPause()</code> 里才调用 <code>enterPictureInPictureMode()</code>，此时 <code>mCanEnterPictureInPicture</code> 可能已经是什么值？为什么客户端不在这里直接抛 “must be resumed”？</div></details>
+
+<h3 id="p3-2">块B｜第 2 跳：ActivityClientController 把 token 换成 ActivityRecord</h3>
+
+<p class="filename">ActivityClientController#enterPictureInPictureMode() ｜ ActivityClientController.java:661-672 ｜ ActivityClientController#ensureValidPictureInPictureActivityParams() ｜ ActivityClientController.java:717-748</p>
+<div class="code-block"><pre>// ActivityClientController.java:661-672
+public boolean enterPictureInPictureMode(IBinder token, final PictureInPictureParams params) {
+    final long origId = Binder.clearCallingIdentity();  // 后续内部调用不记在 App 的 uid 上
+    try {
+        synchronized (mGlobalLock) {                    // ATMS 全局锁，不是 WMS 的 mWindowMap
+            final ActivityRecord r = ensureValidPictureInPictureActivityParams(
+                    &quot;enterPictureInPictureMode&quot;, token, params);
+            return mService.enterPictureInPictureMode(r, params);
+        }
+    } finally {
+        Binder.restoreCallingIdentity(origId);
+    }
+}</pre></div>
+<div class="code-block"><pre>// ActivityClientController.java:717-748
+private ActivityRecord ensureValidPictureInPictureActivityParams(String caller,
+        IBinder token, PictureInPictureParams params) {
+    if (!mService.mSupportsPictureInPicture) {
+        throw new IllegalStateException(caller + &quot;: Device doesn&#x27;t support ...&quot;);
+    }
+    final ActivityRecord r = ActivityRecord.forTokenLocked(token);  // token → AR
+    if (r == null) {
+        throw new IllegalStateException(caller + &quot;: Can&#x27;t find activity for token=&quot; + token);
+    }
+    if (!r.supportsPictureInPicture()) {
+        throw new IllegalStateException(caller + &quot;: Current activity does not support ...&quot;);
+    }
+    if (params.hasSetAspectRatio()
+            &amp;&amp; !mService.mWindowManager.isValidPictureInPictureAspectRatio(
+            r.mDisplayContent, params.getAspectRatio())) {
+        // … 省略：读 config_pictureInPictureMin/MaxAspectRatio 并抛 IllegalArgumentException
+    }
+    params.truncateActions(ActivityTaskManager.getMaxNumPictureInPictureActions(mContext));
+    return r;
+}</pre></div>
+
+<p><strong>这段在干什么：</strong>进入时是 binder 线程、手里只有 <code>IBinder token</code> 和一个 <code>PictureInPictureParams</code>；出去时拿到了活的 <code>ActivityRecord r</code>，并且参数已经过一轮“会抛异常”的硬校验。<code>ActivityRecord.forTokenLocked(token)</code> 是 token 到对象的唯一入口；token 失效（Activity 已 finish）时这里直接抛，不会走到 ATMS。</p>
+<p><strong>设计意图：</strong><code>Binder.clearCallingIdentity()</code> 不是绕过权限，而是让后续内部调用（WMS 的宽高比检查、Task 操作）以 system 身份执行，不把调用 App 的 uid 带进系统内部。校验分两类：<strong>参数/对象非法 → 抛异常</strong>（设备不支持、token 找不到、Activity 不支持 PiP、宽高比越界）；<strong>运行态不允许 → 返回 false</strong>（下一跳 ATMS 的状态机）。这两个语义在排障时必须分开看。</p>
+<p class="pitfall"><span class="tag">实战</span><strong>现象：</strong>崩溃栈里出现 <code>IllegalArgumentException: Aspect ratio is too extreme</code>。<strong>因果：</strong>App 设了超出 <code>config_pictureInPictureMin/MaxAspectRatio</code> 的比例，在 ACC 就被拒。<strong>怎么查：</strong>看 <code>PictureInPictureParams.Builder.setAspectRatio()</code> 的入参，对照 <code>frameworks/base/core/res/res/values/config.xml</code> 里的两个 dimen；把比例改到区间内再复现。</p>
+
+<details><summary>🧠 思考（单块）</summary><div class="ans">为什么 <code>ensureValidPictureInPictureActivityParams()</code> 在 token 找不到时选择抛异常，而不是像状态门禁那样返回 false？这两种失败对调用方来说有什么不同的恢复策略？</div></details>
+
+<h3 id="p3-3">块C｜第 3 跳：ATMS 的状态门禁与“搬家 Runnable”</h3>
+
+<p class="filename">ActivityTaskManagerService.java:3365-3405 ｜ ActivityRecord.java:2663-2710</p>
+<div class="code-block"><pre>// ActivityTaskManagerService.java:3365-3405
+boolean enterPictureInPictureMode(@NonNull ActivityRecord r, PictureInPictureParams params) {
+    if (r.inPinnedWindowingMode()) {
+        return true;                                    // 幂等：已经是 PiP 直接成功
+    }
+    if (!r.checkEnterPictureInPictureState(&quot;enterPictureInPictureMode&quot;,
+            false /* beforeStopping */)) {
+        return false;                                   // 状态门禁不允许
+    }
+
+    final Runnable enterPipRunnable = () -&gt; {
+        synchronized (mGlobalLock) {
+            if (r.getParent() == null) {                // 等待期间被销毁
+                Slog.e(TAG, &quot;Skip enterPictureInPictureMode, destroyed &quot; + r);
+                return;
+            }
+            r.setPictureInPictureParams(params);       // 参数先落到 ActivityRecord
+            final float aspectRatio = r.pictureInPictureArgs.getAspectRatio();
+            final List&lt;RemoteAction&gt; actions = r.pictureInPictureArgs.getActions();
+            mRootWindowContainer.moveActivityToPinnedRootTask(
+                    r, &quot;enterPictureInPictureMode&quot;);   // 真正的 Task 搬家
+            final Task rootTask = r.getRootTask();
+            rootTask.setPictureInPictureAspectRatio(aspectRatio);
+            rootTask.setPictureInPictureActions(actions);  // 参数再落到 Task
+        }
+    };
+
+    if (isKeyguardLocked()) {
+        // 锁屏：先请求解锁，成功后在回调里 post；不是同步等
+        mActivityClientController.dismissKeyguard(r.appToken, new KeyguardDismissCallback() {
+            @Override
+            public void onDismissSucceeded() {
+                mH.post(enterPipRunnable);
+            }
+        }, null /* message */);
+    } else {
+        enterPipRunnable.run();                        // 未锁屏：当前线程直接搬
+    }
+    return true;                                       // 注意：这里只代表&quot;已受理&quot;
+}</pre></div>
+<div class="code-block"><pre>// ActivityRecord.java:2663-2710
+boolean checkEnterPictureInPictureState(String caller, boolean beforeStopping) {
+    if (!supportsPictureInPicture()) return false;
+    if (!checkEnterPictureInPictureAppOpsState()) return false;   // AppOps
+    if (mAtmService.shouldDisableNonVrUiLocked()) return false;   // VR 模式
+
+    boolean isKeyguardLocked = mAtmService.isKeyguardLocked();
+    boolean isCurrentAppLocked =
+            mAtmService.getLockTaskModeState() != LOCK_TASK_MODE_NONE;
+    final TaskDisplayArea taskDisplayArea = getDisplayArea();
+    boolean hasRootPinnedTask = taskDisplayArea != null &amp;&amp; taskDisplayArea.hasPinnedTask();
+    boolean isNotLockedOrOnKeyguard = !isKeyguardLocked &amp;&amp; !isCurrentAppLocked;
+
+    if (beforeStopping &amp;&amp; hasRootPinnedTask) {
+        return false;                                  // 已有 PiP，不允许自动再进
+    }
+
+    switch (mState) {
+        case RESUMED:
+            return !isCurrentAppLocked
+                    &amp;&amp; (supportsEnterPipOnTaskSwitch || !beforeStopping);
+        case PAUSING:
+        case PAUSED:
+            return isNotLockedOrOnKeyguard &amp;&amp; !hasRootPinnedTask
+                    &amp;&amp; supportsEnterPipOnTaskSwitch;
+        case STOPPING:
+            if (supportsEnterPipOnTaskSwitch) {
+                return isNotLockedOrOnKeyguard &amp;&amp; !hasRootPinnedTask;
+            }
+        default:
+            return false;
+    }
+}</pre></div>
+
+<p><strong>这段在干什么：</strong>进入时是已校验的 <code>ActivityRecord</code>；出去时要么直接返回 false（状态不允许），要么执行 <code>enterPipRunnable</code>：把参数落到 <code>ActivityRecord</code> / <code>Task</code>，调用 RWC 搬家。<strong>锁屏是一个异步分叉</strong>：先 <code>dismissKeyguard()</code>，解锁成功后在回调里 <code>mH.post(enterPipRunnable)</code>；不锁屏则当前线程直接跑。</p>
+<p><strong>设计意图：</strong>状态门禁放在 <code>ActivityRecord</code> 而不是 ATMS，是因为它需要读 Activity 自己的状态（<code>mState</code>、AppOps、是否 supportsEnterPipOnTaskSwitch）。<code>beforeStopping</code> 参数是给“自动进入 PiP”用的：Activity 即将 stop 时，如果已经有别的 PiP，就不允许再进；<code>PAUSING/PAUSED</code> 还要求 <code>supportsEnterPipOnTaskSwitch</code> 为 true——这个标志在启动/恢复路径里被置上，表示“这个 Activity 允许在切后台时缩成小窗”。</p>
+<p class="pitfall"><span class="tag">实战</span><strong>现象：</strong><code>enterPictureInPictureMode()</code> 返回 false，但 App 明明是 resumed。<strong>因果：</strong>常见是 AppOps 被拒、LockTask（车载/教育模式）、Keyguard 遮挡，或当前已经有 root pinned task。<strong>怎么查：</strong><code>adb shell dumpsys activity activities | grep -i -E "pinned|mWindowingMode"</code>；<code>adb shell dumpsys package &lt;包名&gt; | grep -i picture</code> 看 AppOps；再看 <code>adb shell dumpsys activity | grep -i locktask</code>。</p>
+
+<details><summary>🧠 思考（单块）</summary><div class="ans">为什么 <code>PAUSED</code> 状态仍允许进入 PiP，而 <code>STOPPED</code> 默认不允许？如果把 <code>supportsEnterPipOnTaskSwitch</code> 去掉，哪些真实场景会坏掉？</div></details>
+
+<h2 id="p4">四、第 4 跳：RootWindowContainer 搬 Task</h2>
+
+<h3 id="p4-1">块D｜整条链最核心的一步：Task 级重构</h3>
+
+<p class="filename">RootWindowContainer.java:2105-2145 ｜ 2188-2214</p>
+<div class="code-block"><pre>// RootWindowContainer.java:2105-2150
+void moveActivityToPinnedRootTask(ActivityRecord r, String reason) {
+    mService.deferWindowLayout();                       // 先冻住布局，避免半成品上屏
+    final TaskDisplayArea taskDisplayArea = r.getDisplayArea();
+    try {
+        final Task task = r.getTask();
+        final Task rootPinnedTask = taskDisplayArea.getRootPinnedTask();
+        if (rootPinnedTask != null) {
+            rootPinnedTask.dismissPip();                // 同时只允许一个 PiP：旧 PiP 先退出
+        }
+
+        // 抑制这次可见性变化的常规转场；真正的窗口模式变化交给下面的 TRANSIT_CHANGE
+        r.getDisplayContent().prepareAppTransition(TRANSIT_NONE);
+
+        final boolean singleActivity = task.getChildCount() == 1;
+        final Task rootTask;
+        if (singleActivity) {
+            rootTask = task;                            // 单 Activity：整个 Task 变 PiP
+        } else {
+            rootTask = new Task.Builder(mService)       // 多 Activity：新建 Task 只装栈顶
+                    .setActivityType(r.getActivityType())
+                    .setOnTop(true)
+                    .setActivityInfo(r.info)
+                    .setParent(taskDisplayArea)
+                    .setIntent(r.intent)
+                    .setDeferTaskAppear(true)
+                    .setHasBeenVisible(true)
+                    .build();
+            r.setLastParentBeforePip();                 // 记录&quot;回来的路&quot;
+            rootTask.setLastNonFullscreenBounds(task.mLastNonFullscreenBounds);
+            rootTask.setBounds(task.getBounds());
+            r.reparent(rootTask, MAX_VALUE, reason);    // 栈顶 Activity 摘出去
+            // … 省略：迁移 recents 动画事务、补 TO_BACK 转场（与 PiP 主路径无关）
+        }
+
+        // 中间窗口模式要在 reparent 之前取，否则 ActivityRecord 会被设成 fullscreen
+        final int intermediateWindowingMode = rootTask.getWindowingMode();
+        if (rootTask.getParent() != taskDisplayArea) {
+            // pinned task 必须是 DisplayArea 的直接子节点
+            rootTask.reparent(taskDisplayArea, true /* onTop */);
+        }</pre></div>
+<div class="code-block"><pre>// RootWindowContainer.java:2188-2214
+        // 把 Task 的窗口模式变化交给 Shell 的 Transitions（12 上没有 TRANSIT_PIP）
+        mService.getTransitionController().requestTransitionIfNeeded(TRANSIT_CHANGE, rootTask);
+
+        r.setWindowingMode(intermediateWindowingMode);  // AR 先保持原模式，动画期间不重排
+        r.mWaitForEnteringPinnedMode = true;            // 布局冻结闸门（DisplayPolicy 会跳过）
+        rootTask.setWindowingMode(WINDOWING_MODE_PINNED); // Task 真正变 pinned
+        rootTask.setDeferTaskAppear(false);
+        r.supportsEnterPipOnTaskSwitch = false;         // 进来后不再允许&quot;pause 时自动进&quot;
+    } finally {
+        mService.continueWindowLayout();
+    }
+
+    ensureActivitiesVisible(null, 0, false /* preserveWindows */);
+    resumeFocusedTasksTopActivities();
+    notifyActivityPipModeChanged(r.getTask(), r);       // 通知 AM/监听者
+}</pre></div>
+
+<p><strong>这段在干什么：</strong>进入时 Activity 还挂在原 Task 上；出去时它已经在（新建或复用的）pinned root task 里，Task 的 <code>windowingMode</code> 已变成 <code>WINDOWING_MODE_PINNED</code>，但 ActivityRecord 自己还保留“中间窗口模式”，等待配置下传。整个过程被 <code>deferWindowLayout()</code> / <code>continueWindowLayout()</code> 包住，避免半成品结构被布局线程看到。</p>
+<p><strong>设计意图：</strong></p>
+<ul>
+  <li><strong>为什么必须是 Task 级：</strong><code>windowingMode</code> 是 WindowContainer 的属性，PiP 是“一个 Task 进入小窗”，不是“某个 Window 变小”。单 Activity 的 Task 可以直接复用；多 Activity 的 Task 不能整栈变 PiP，只能新建一个 Task 把栈顶 Activity <code>reparent</code> 过去，原 Task 留在原地继续显示下面的页面。</li>
+  <li><strong>为什么先 <code>dismissPip()</code>：</strong>系统同时只允许一个 root pinned task。旧 PiP 不退出，新 PiP 就没有位置；<code>dismissPip()</code> 会把旧 Task 的窗口模式恢复为 undefined，并调度旧 Activity 的 PiP 回调（<code>wm/Task.java:7507</code>）。</li>
+  <li><strong>为什么 <code>prepareAppTransition(TRANSIT_NONE)</code> + <code>requestTransitionIfNeeded(TRANSIT_CHANGE)</code>：</strong>前者抑制“这次可见性变化”走常规转场，后者把 Task 的窗口模式变化交给 Shell 的 Transitions 处理。AOSP 12 没有专门的 <code>TRANSIT_PIP</code>，PiP 进入被包装成 <code>TRANSIT_CHANGE</code>；13 才引入独立的 <code>TRANSIT_PIP</code> 和 <code>fromClient</code> 归属判断。</li>
+  <li><strong>为什么 <code>r.setWindowingMode(intermediateWindowingMode)</code>：</strong>让 ActivityRecord 在动画期间仍按原模式布局；真正切 pinned 的是 <code>rootTask</code>。随后 <code>mWaitForEnteringPinnedMode = true</code>，<code>DisplayPolicy.layoutWindowLw()</code> 会直接跳过这个窗口的布局（<code>DisplayPolicy.java:1561-1574</code>），避免客户端在动画中按新尺寸重排、闪一下。</li>
+</ul>
+<p class="pitfall"><span class="tag">实战</span><strong>现象：</strong>多 Activity 的 App 进 PiP 后，下面的页面突然露出来，或者返回时回到了错误的页面。<strong>因果：</strong>多 Activity 分支新建了 Task 并 <code>reparent</code> 栈顶，原 Task 的剩余 Activity 会被 <code>ensureActivitiesVisible()</code> 重新计算可见性。<strong>怎么查：</strong><code>adb shell dumpsys activity activities</code> 看两个 Task 的 Activity 列表与 <code>lastParentBeforePip</code>；返回路径看 <code>Task#dismissPip()</code> 与 <code>lastNonFullscreenBounds</code> 的恢复。</p>
+
+<details><summary>🧠 思考（单块）</summary><div class="ans">如果多 Activity 的 Task 不新建 Task，而是直接把原 Task 的 <code>windowingMode</code> 改成 pinned，会发生什么？为什么 <code>requestTransitionIfNeeded(TRANSIT_CHANGE, rootTask)</code> 要在 <code>setWindowingMode(PINNED)</code> 之前调用？</div></details>
+
+<h2 id="p5">五、第 5–6 跳：Shell 接管与小窗动画</h2>
+
+<h3 id="p5-1">块E｜Shell 怎么从 TransitionInfo 里认出“这次是 PiP”</h3>
+
+<p class="filename">PipTransition.java:69-82 ｜ 103-130 ｜ PipBoundsAlgorithm.java:132-143</p>
+<div class="code-block"><pre>// PipTransition.java:69-82
+public boolean startAnimation(IBinder transition, TransitionInfo info,
+        SurfaceControl.Transaction t, Transitions.TransitionFinishCallback finishCallback) {
+    for (int i = info.getChanges().size() - 1; i &gt;= 0; --i) {
+        final TransitionInfo.Change change = info.getChanges().get(i);
+        if (change.getTaskInfo() != null
+                &amp;&amp; change.getTaskInfo().configuration.windowConfiguration.getWindowingMode()
+                == WINDOWING_MODE_PINNED) {
+            mFinishCallback = finishCallback;
+            return startEnterAnimation(change.getTaskInfo(), change.getLeash(), t);
+        }
+    }
+    return false;   // 不是 PiP 变化，交回 Transitions 的默认处理
+}</pre></div>
+<div class="code-block"><pre>// PipTransition.java:103-130
+private boolean startEnterAnimation(TaskInfo taskInfo, SurfaceControl leash,
+        SurfaceControl.Transaction t) {
+    setBoundsStateForEntry(taskInfo.topActivity, taskInfo.pictureInPictureParams,
+            taskInfo.topActivityInfo);
+    final Rect destinationBounds = mPipBoundsAlgorithm.getEntryDestinationBounds();
+    final Rect currentBounds = taskInfo.configuration.windowConfiguration.getBounds();
+
+    if (mOneShotAnimationType == ANIM_TYPE_BOUNDS) {
+        final Rect sourceHintRect = PipBoundsAlgorithm.getValidSourceHintRect(
+                taskInfo.pictureInPictureParams, currentBounds);  // 内容 PiP 的起点
+        animator = mPipAnimationController.getAnimator(taskInfo, leash, currentBounds,
+                currentBounds, destinationBounds, sourceHintRect,
+                TRANSITION_DIRECTION_TO_PIP, 0 /* startingAngle */, Surface.ROTATION_0);
+    } else if (mOneShotAnimationType == ANIM_TYPE_ALPHA) {
+        t.setAlpha(leash, 0f); t.apply();
+        animator = mPipAnimationController.getAnimator(taskInfo, leash, destinationBounds, 0f, 1f);
+        mOneShotAnimationType = ANIM_TYPE_BOUNDS;
+    } else {
+        throw new RuntimeException(&quot;Unrecognized animation type: &quot; + mOneShotAnimationType);
+    }
+    animator.setTransitionDirection(TRANSITION_DIRECTION_TO_PIP)
+            .setPipAnimationCallback(mPipAnimationCallback)
+            .setDuration(mEnterExitAnimationDuration)
+            .start();                                   // 改的是 leash，不是 Task 结构
+    return true;
+}</pre></div>
+
+<p><strong>这段在干什么：</strong>进入时 Shell 拿到一份 <code>TransitionInfo</code>，里面是这次转场所有 change 的 leash；出去时它挑出 <code>windowingMode == WINDOWING_MODE_PINNED</code> 的那个 Task，算出目标 bounds，创建 animator 并开始播放。动画操作的是 <strong>leash</strong>，不是 Task 本身；Task 的 bounds 要等动画结束的 WCT 才真正落下去。</p>
+<p><strong>设计意图：</strong>AOSP 12 的 <code>PipTransition.startAnimation()</code> 不判断 transition type，只判断 change 里的 Task 是不是 pinned——所以它能接住 <code>TRANSIT_CHANGE</code>（PiP 进入）、<code>TRANSIT_OPEN</code>（App 启动即 PiP）以及旋转等其他转场里的 pinned change。目标位置由 <code>PipBoundsAlgorithm.getEntryDestinationBounds()</code> 决定：优先用上次的 reentry snap fraction/size，没有就取默认 bounds，再按 aspect ratio 调整。内容 PiP 还会用 <code>sourceRectHint</code> 做“从原视频矩形长出来”的起点。</p>
+<p class="pitfall"><span class="tag">实战</span><strong>现象：</strong>进入 PiP 时小窗从屏幕左上角飞过来，而不是从视频位置缩过去。<strong>因果：</strong><code>sourceRectHint</code> 没设或不在当前 bounds 内，<code>getValidSourceHintRect()</code> 返回空，动画退回整 Task 的 currentBounds。<strong>怎么查：</strong>在 <code>PictureInPictureParams.Builder.setSourceRectHint()</code> 传入视频 View 的全局矩形；用 <code>adb logcat -s PipTaskOrganizer</code> 看进入日志，再对照 <code>dumpsys window</code> 里的 PiP bounds。</p>
+
+<details><summary>🧠 思考（单块）</summary><div class="ans">为什么 <code>PipBoundsAlgorithm</code> 要在 Shell（SystemUI 进程）里算，而不是在 system_server 的 WMS 里算？如果放到 WMS，哪些输入会拿不到？</div></details>
+
+<h3 id="p5-2">块F｜leash 落地：onTaskAppeared 与 finish 事务</h3>
+
+<p class="filename">PipTaskOrganizer.java:513-527 ｜ PipTransition.java:139-158</p>
+<div class="code-block"><pre>// PipTaskOrganizer.java:513-527
+public void onTaskAppeared(ActivityManager.RunningTaskInfo info, SurfaceControl leash) {
+    mTaskInfo = info;
+    mToken = mTaskInfo.token;
+    mState = State.TASK_APPEARED;
+    mLeash = leash;                      // 后续所有动画都改这条 leash
+    mPictureInPictureParams = mTaskInfo.pictureInPictureParams;
+    setBoundsStateForEntry(mTaskInfo.topActivity, mPictureInPictureParams,
+            mTaskInfo.topActivityInfo);
+
+    mPipUiEventLoggerLogger.setTaskInfo(mTaskInfo);
+    mPipUiEventLoggerLogger.log(
+            PipUiEventLogger.PipUiEventEnum.PICTURE_IN_PICTURE_ENTER);
+    // … 省略：外接屏 displayId 变化、swipe-to-home、alpha 超时分支
+}</pre></div>
+<div class="code-block"><pre>// PipTransition.java:139-158
+private void prepareFinishResizeTransaction(TaskInfo taskInfo, Rect destinationBounds,
+        @PipAnimationController.TransitionDirection int direction,
+        SurfaceControl.Transaction tx, WindowContainerTransaction wct) {
+    Rect taskBounds = null;
+    if (isInPipDirection(direction)) {
+        // 动画结束：把 WM 设的中间 Activity 窗口模式清掉，Task bounds 落到最终小窗
+        taskBounds = destinationBounds;
+        wct.setActivityWindowingMode(taskInfo.token, WINDOWING_MODE_UNDEFINED);
+        wct.scheduleFinishEnterPip(taskInfo.token, destinationBounds);
+    } else if (isOutPipDirection(direction)) {
+        taskBounds = (direction == TRANSITION_DIRECTION_LEAVE_PIP) ? null : destinationBounds;
+        wct.setWindowingMode(taskInfo.token, getOutPipWindowingMode());
+        wct.setActivityWindowingMode(taskInfo.token, WINDOWING_MODE_UNDEFINED);
+    }
+
+    wct.setBounds(taskInfo.token, taskBounds);
+    wct.setBoundsChangeTransaction(taskInfo.token, tx);  // Surface 事务与 bounds 同步
+}</pre></div>
+
+<p><strong>这段在干什么：</strong>进入时 Task 已经出现在 Shell 的 TaskOrganizer 里；<code>onTaskAppeared()</code> 把 <code>RunningTaskInfo</code>、<code>leash</code>、<code>PictureInPictureParams</code> 保存下来，状态置为 <code>TASK_APPEARED</code>，并打点 <code>PICTURE_IN_PICTURE_ENTER</code>。动画结束时，<code>prepareFinishResizeTransaction()</code> 生成一个 WCT：把 Activity 的窗口模式重置为 undefined，把 Task bounds 设为最终小窗 bounds，并通过 <code>setBoundsChangeTransaction()</code> 让 Surface 事务与 bounds 变更同步。</p>
+<p><strong>设计意图：</strong>“动画”和“最终布局”是两件事。动画期间 WMS 不改 Task bounds（否则会触发客户端重排），只让 Shell 改 leash 的 matrix/crop/alpha；动画结束时才用 WCT 一次性把 Task 落到目标 bounds，并触发真正的 relayout。这样客户端只会在动画结束后收到一次尺寸变化，不会每帧都重排。</p>
+<p><strong>一处容易读错的细节：</strong>
+<code>prepareFinishResizeTransaction()</code> 里还调了 
+<code>wct.scheduleFinishEnterPip()</code>，写进 <code>mPinnedBounds</code> 并置 
+<code>CHANGE_PIP_CALLBACK</code>（<code>WindowContainerTransaction.java:116-124</code>、
+<code>:459</code>、<code>:473</code>）。但在 AOSP 12 的 <code>frameworks/base</code> 里，
+这个字段<strong>只有定义和 getter，没有读取者</strong>
+（<code>getPinnedBounds()</code> 全树零调用，见 <code>WindowContainerTransaction.java:601</code>）
+——它是一条预留管道，不是 PiP 回调的触发点。
+真正的回调在下一节：<code>windowingMode</code> 变化沿配置下传到 Activity 进程。
+读到这里不要因为看到 PiP-Callback 字样就以为 WMS 内部有个消费者在派发。</p>
+<p class="pitfall"><span class="tag">实战</span><strong>现象：</strong>PiP 小窗已经出现，但里面的内容还是全屏尺寸，或者黑边。<strong>因果：</strong>finish WCT 没应用/被取消，Task bounds 没落下去；或 <code>mWaitForEnteringPinnedMode</code> 没清，窗口一直跳过布局。<strong>怎么查：</strong><code>adb shell dumpsys window windows | grep -i pip</code> 看 PiP 窗口 frame 与 Task bounds；断点打在 <code>PipTransition#onFinishResize()</code>（<code>PipTransition.java:93</code>）和 <code>ActivityRecord</code> 清 <code>mWaitForEnteringPinnedMode</code> 的那一行。</p>
+
+<details><summary>🧠 思考（单块）</summary><div class="ans">如果动画期间就让 WMS 把 Task bounds 改成小窗尺寸，会省掉 finish WCT，但会带来什么副作用？为什么 <code>setBoundsChangeTransaction()</code> 要和 WCT 一起提交？</div></details>
+
+<h2 id="p6">六、第 7 跳：配置变更与回调</h2>
+
+<h3 id="p6-1">块G｜“进入 PiP”的真正信号：windowingMode 变了</h3>
+
+<p class="filename">ActivityRecord.java:7758-7766 ｜ ActivityTaskSupervisor.java:2302-2313 ｜ 2451-2456 ｜ ActivityRecord.java:1265-1281</p>
+<div class="code-block"><pre>// ActivityRecord.java:7758-7766（配置沿树下传时）
+// Before PiP animation is done, the windowing mode of the activity is still the previous
+// mode (see RootWindowContainer#moveActivityToPinnedRootTask). So once the windowing mode
+// of activity is changed, it is the signal of the last step to update the PiP states.
+if (!wasInPictureInPicture &amp;&amp; inPinnedWindowingMode() &amp;&amp; task != null) {
+    mWaitForEnteringPinnedMode = false;   // 动画前的布局冻结解除
+    mTaskSupervisor.scheduleUpdatePictureInPictureModeIfNeeded(task, task.getBounds());
+}</pre></div>
+<div class="code-block"><pre>// ActivityTaskSupervisor.java:2302-2313
+void scheduleUpdatePictureInPictureModeIfNeeded(Task task, Rect targetRootTaskBounds) {
+    final PooledConsumer c = PooledLambda.obtainConsumer(
+            ActivityTaskSupervisor::addToPipModeChangedList, this,
+            PooledLambda.__(ActivityRecord.class));
+    task.forAllActivities(c);              // 这个 Task 下所有 Activity 都要收到回调
+    c.recycle();
+
+    mPipModeChangedTargetRootTaskBounds = targetRootTaskBounds;
+    if (!mHandler.hasMessages(REPORT_PIP_MODE_CHANGED_MSG)) {
+        mHandler.sendEmptyMessage(REPORT_PIP_MODE_CHANGED_MSG);  // 锁外、配置算完后回调
+    }
+}
+
+// ActivityTaskSupervisor.java:2451-2456
+case REPORT_PIP_MODE_CHANGED_MSG: {
+    for (int i = mPipModeChangedActivities.size() - 1; i &gt;= 0; i--) {
+        final ActivityRecord r = mPipModeChangedActivities.remove(i);
+        r.updatePictureInPictureMode(mPipModeChangedTargetRootTaskBounds, false /* forceUpdate */);
+    }
+} break;
+
+// ActivityRecord.java:1265-1281
+void updatePictureInPictureMode(Rect targetRootTaskBounds, boolean forceUpdate) {
+    final boolean inPictureInPictureMode =
+            inPinnedWindowingMode() &amp;&amp; targetRootTaskBounds != null;
+    if (inPictureInPictureMode != mLastReportedPictureInPictureMode || forceUpdate) {
+        mLastReportedPictureInPictureMode = inPictureInPictureMode;
+        mLastReportedMultiWindowMode = inPictureInPictureMode;  // 先报 MW，顺序不能反
+        if (targetRootTaskBounds != null &amp;&amp; !targetRootTaskBounds.isEmpty()) {
+            computeConfigurationAfterMultiWindowModeChange();
+        }
+        ensureActivityConfiguration(0 /* globalChanges */, PRESERVE_WINDOWS,
+                true /* ignoreVisibility */);                   // 触发 config 下发/relaunch
+    }
+}</pre></div>
+
+<p><strong>这段在干什么：</strong>进入时 Task 的 <code>windowingMode</code> 已经变成 pinned，但 ActivityRecord 还处在“中间模式 + 布局冻结”；配置沿树下传时，<code>ActivityRecord.onConfigurationChanged()</code> 发现 <code>!wasInPictureInPicture &amp;&amp; inPinnedWindowingMode()</code>，于是清掉 <code>mWaitForEnteringPinnedMode</code>，并通过 ATMS 的 handler 调度一次 PiP 状态上报。handler 里遍历这个 Task 下所有 attached 的 Activity，逐个调 <code>updatePictureInPictureMode()</code>。</p>
+<p><strong>设计意图：</strong>不在搬家现场直接跨进程回调，是因为当时还持有 <code>mGlobalLock</code>，而且客户端配置还没切完；用 handler 把回调推迟到“配置已计算、锁已释放”的时刻，顺序才正确。<code>updatePictureInPictureMode()</code> 先更新 <code>mLastReportedPictureInPictureMode</code> / <code>mLastReportedMultiWindowMode</code>，再 <code>ensureActivityConfiguration()</code>——注释明确说这两个回调必须发生在 resize 引起的配置变更之前。</p>
+<p class="pitfall"><span class="tag">实战</span><strong>现象：</strong>App 已经收到 PiP 回调，但 <code>onPictureInPictureModeChanged()</code> 里读到的 <code>Configuration</code> 还是全屏。<strong>因果：</strong>回调参数是这次 config 下发的结果；如果 Activity 声明了 <code>configChanges</code> 自己处理，框架可能不重建，但配置对象仍应是新的。<strong>怎么查：</strong>在回调里打印 <code>newConfig.windowConfiguration.getBounds()</code> 与 <code>getWindowingMode()</code>；对照 <code>adb shell dumpsys activity activities</code> 里该 Task 的 bounds。</p>
+
+<details><summary>🧠 思考（单块）</summary><div class="ans">为什么 <code>mWaitForEnteringPinnedMode</code> 要在 <code>onConfigurationChanged()</code> 里清，而不是在 <code>moveActivityToPinnedRootTask()</code> 返回时清？如果提前清，布局会以什么尺寸跑？</div></details>
+
+<h3 id="p6-2">块H｜客户端：一次窗口模式比较，决定回调 true/false</h3>
+
+<p class="filename">ActivityThread.java:5965-5986 ｜ Activity.java:8340-8352</p>
+<div class="code-block"><pre>// ActivityThread.java:5965-5986
+private void handleWindowingModeChangeIfNeeded(Activity activity,
+        Configuration newConfiguration) {
+    final int newWindowingMode = newConfiguration.windowConfiguration.getWindowingMode();
+    final IBinder token = activity.getActivityToken();
+    final int oldWindowingMode = mLastReportedWindowingMode.getOrDefault(
+            token, WINDOWING_MODE_UNDEFINED);
+    if (oldWindowingMode == newWindowingMode) return;
+
+    // PiP callback is sent before the MW one.
+    if (newWindowingMode == WINDOWING_MODE_PINNED) {
+        activity.dispatchPictureInPictureModeChanged(true, newConfiguration);
+    } else if (oldWindowingMode == WINDOWING_MODE_PINNED) {
+        activity.dispatchPictureInPictureModeChanged(false, newConfiguration);
+    }
+
+    final boolean wasInMultiWindowMode = WindowConfiguration.inMultiWindowMode(oldWindowingMode);
+    final boolean nowInMultiWindowMode = WindowConfiguration.inMultiWindowMode(newWindowingMode);
+    if (wasInMultiWindowMode != nowInMultiWindowMode) {
+        activity.dispatchMultiWindowModeChanged(nowInMultiWindowMode, newConfiguration);
+    }
+    mLastReportedWindowingMode.put(token, newWindowingMode);
+}</pre></div>
+<div class="code-block"><pre>// Activity.java:8340-8352
+final void dispatchPictureInPictureModeChanged(boolean isInPictureInPictureMode,
+        Configuration newConfig) {
+    mFragments.dispatchPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+    if (mWindow != null) {
+        mWindow.onPictureInPictureModeChanged(isInPictureInPictureMode);
+    }
+    mIsInPictureInPictureMode = isInPictureInPictureMode;  // 这里才与系统真值对齐
+    onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+}</pre></div>
+
+<p><strong>这段在干什么：</strong>进入时 App 主线程收到新的 <code>Configuration</code>；<code>handleWindowingModeChangeIfNeeded()</code> 用 <code>mLastReportedWindowingMode</code> 里的旧值和 <code>newConfiguration</code> 里的新值比较：新值是 pinned → 派发 <code>dispatchPictureInPictureModeChanged(true)</code>；旧值是 pinned、新值不是 → 派发 false。随后才处理 multi-window 回调，注释明确写着 “PiP callback is sent before the MW one”。</p>
+<p><strong>设计意图：</strong>回调不是 binder 直接返回的，而是配置变更链路的产物。这样框架只需要在窗口模式真正变化时发一次信号，客户端无论因为配置重建还是自己处理 <code>configChanges</code>，都能在同一条路径上收到。<code>Activity.dispatchPictureInPictureModeChanged()</code> 最后把 <code>mIsInPictureInPictureMode</code> 覆盖成系统真值——这也是为什么 API 返回 true 之后，回调仍可能因为转场取消而永远不来。</p>
+<p class="pitfall"><span class="tag">实战</span><strong>现象：</strong><code>enterPictureInPictureMode()</code> 返回 true，但 <code>onPictureInPictureModeChanged(true)</code> 一直没来。<strong>因果：</strong>Activity 在等待期间被销毁（<code>r.getParent() == null</code>）、转场被取消，或进程未 attached（<code>addToPipModeChangedList()</code> 直接跳过）。<strong>怎么查：</strong>看 <code>adb shell dumpsys activity activities</code> 里该 Activity 是否还在、Task 是否 pinned；logcat 过滤 <code>PipTaskOrganizer</code> 与 <code>ActivityTaskManager</code>；在 <code>updatePictureInPictureMode()</code> 入口打断点确认是否被调用。</p>
+
+<details><summary>🧠 思考（单块）</summary><div class="ans">为什么回调判断用的是“新旧 windowingMode 比较”，而不是直接相信 <code>ActivityRecord.inPinnedWindowingMode()</code>？如果 App 自己处理了 <code>configChanges</code>，这条链路还成立吗？</div></details>
+
+<h2 id="p7">七、稳态闭环与退出</h2>
+
+<div class="card">
+  <p>一次完整的进入结束后，系统停在一个明确的稳态：<strong>一个 root pinned task 存在，里面的 Activity 处于 paused/stopped 之一，Task 的 <code>windowingMode</code> 是 pinned，ActivityRecord 的 <code>mWaitForEnteringPinnedMode</code> 已清，客户端已收到 true 回调</strong>。此时再调用 <code>enterPictureInPictureMode()</code> 会在 ATMS 第一行 <code>r.inPinnedWindowingMode()</code> 直接返回 true（幂等）。</p>
+  <table>
+    <tr><th>状态</th><th>Task windowingMode</th><th>ActivityRecord</th><th>客户端</th></tr>
+    <tr><td>普通全屏</td><td>fullscreen / undefined</td><td>RESUMED/PAUSED</td><td><code>isInPictureInPictureMode() == false</code></td></tr>
+    <tr><td>进入中（动画）</td><td>pinned</td><td>中间模式 + <code>mWaitForEnteringPinnedMode=true</code></td><td>API 已返回 true，回调未到</td></tr>
+    <tr><td>稳态 PiP</td><td>pinned</td><td>paused/stopped，flag 已清</td><td>已收到 true 回调</td></tr>
+    <tr><td>退出中</td><td>undefined/fullscreen</td><td>恢复原模式</td><td>等待 false 回调</td></tr>
+  </table>
+
+  <p><strong>退出路径</strong>不是进入的简单逆运算，但结构对称：用户点关闭/返回、拖到边缘删除、或 App 主动退出时，最终会走到 <code>Task#dismissPip()</code>（<code>wm/Task.java:7507</code>）：在 <code>inSurfaceTransaction</code> 里把窗口模式设回 <code>WINDOWING_MODE_UNDEFINED</code>，把 Task 重新放到顶部，并调用 <code>scheduleUpdatePictureInPictureModeIfNeeded(task, this)</code>。客户端随后收到旧窗口模式与 pinned 不同的配置，<code>handleWindowingModeChangeIfNeeded()</code> 派发 <code>false</code> 回调；如果有 freeform 历史，<code>lastNonFullscreenBounds</code> 会用于恢复。</p>
+
+  <div class="annotation star3"><span class="tag">闭环</span> 进入是“摘 Activity → 建/复用 pinned Task → 播 leash 动画 → 下发 config”；退出是“恢复 Task 模式 → 重新定位 → 下发 config”。两者共用同一条 <code>ActivityRecord.updatePictureInPictureMode()</code> 回调路径，所以 <strong>PiP 的状态真值永远在 system_server，客户端只是跟着配置变更走</strong>。</div>
+</div>
+
+<h2 id="p8">八、排障与源码速查</h2>
+
+<div class="card">
+  <h3>先看状态，再看日志</h3>
+  <pre class="tree"># 当前是否有 pinned Task、在哪个 Task
+adb shell dumpsys activity activities | grep -i -E "pinned|mWindowingMode"
+
+# PiP 窗口的 frame / leash / 可见性
+adb shell dumpsys window windows | grep -i -E "pip|pinned"
+
+# Shell 侧进入打点与 TaskOrganizer 状态
+adb logcat -s PipTaskOrganizer
+
+# 卡在“已 pause 但没变小”时，看 ATMS 与转场
+adb logcat -s ActivityTaskManager WindowManager</pre>
+
+  <h3>四种典型失败</h3>
+  <table>
+    <tr><th>现象</th><th>先查什么</th><th>对应锚点</th></tr>
+    <tr><td>API 返回 false</td><td>AppOps / LockTask / Keyguard / 已有 PiP / 状态不是 RESUMED</td><td><code>ActivityRecord.java:2663</code></td></tr>
+    <tr><td>抛 <code>IllegalStateException</code></td><td>token 失效、Activity 不支持 PiP、设备不支持</td><td><code>ActivityClientController.java:717</code></td></tr>
+    <tr><td>抛 <code>IllegalArgumentException</code></td><td>宽高比越界</td><td><code>ActivityClientController.java:717</code></td></tr>
+    <tr><td>返回 true 但回调不来</td><td>Activity 被销毁、转场取消、进程未 attached</td><td><code>ActivityRecord.java:1265</code>、<code>ActivityTaskSupervisor.java:2302</code></td></tr>
+  </table>
+
+  <h3>AOSP 12 与 13 的差异（写 ROM/对比时别混）</h3>
+  <ul>
+    <li>12 的 ATMS 签名是 <code>enterPictureInPictureMode(ActivityRecord, PictureInPictureParams)</code>，没有 <code>fromClient</code>；13 增加了来源判断，用于决定是否新建 <code>TRANSIT_PIP</code>。</li>
+    <li>12 没有 <code>TRANSIT_PIP</code>，PiP 进入走 <code>TRANSIT_CHANGE</code>，由 <code>PipTransition.startAnimation()</code> 按 pinned change 识别；13 有独立 <code>TRANSIT_PIP</code> 与 Shell 的 <code>PipTransition</code> 类型判断。</li>
+    <li>12 的 <code>moveActivityToPinnedRootTask(r, reason)</code> 同步设置 <code>rootTask.setWindowingMode(PINNED)</code>；13 把窗口模式变更推迟到 transition 收集之后，并多了 <code>queueSyncSet</code> 处理同步引擎冲突。</li>
+    <li>12 用 <code>Task#dismissPip()</code> 直接退出旧 PiP；13 在 RWC 里先 <code>transitionController.collect(rootPinnedTask)</code> 再 <code>removeRootTasksInWindowingModes(PINNED)</code>。</li>
+  </ul>
+</div>
+
+<h2 id="quiz">🧠 自测：3 个问题</h2>
+
+<details><summary>1. 为什么 <code>enterPictureInPictureMode()</code> 返回 true 之后，UI 还可能完全没变化？</summary>
+<div class="ans">因为返回值只代表请求被 ACC/ATMS 受理（<code>Activity.java:2912</code> 立即写入 <code>mIsInPictureInPictureMode</code>），真正的结构变化在 <code>enterPipRunnable</code> 里，动画在 Shell 里，客户端回调要等配置下发。锁屏分支还会先等解锁回调；转场取消时回调可能永远不来。判断是否真的进入，要看 <code>dumpsys activity activities</code> 的 <code>mWindowingMode=pinned</code> 和 <code>onPictureInPictureModeChanged(true)</code>。</div></details>
+
+<details><summary>2. 多 Activity 的 Task 进 PiP，为什么必须新建 Task 并把栈顶 Activity reparent 过去？</summary>
+<div class="ans">因为 <code>windowingMode</code> 是 Task 级属性。整栈变 pinned 会把下面的页面一起塞进小窗；只有把栈顶 Activity 摘到新的 pinned Task，原 Task 才能继续显示剩余页面。代价是返回路径要处理 <code>lastParentBeforePip</code> 和原 Task 的可见性重算，相关逻辑在 <code>RootWindowContainer.java:2105</code> 的多 Activity 分支与 <code>ActivityRecord.onParentChanged()</code>。</div></details>
+
+<details><summary>3. PiP 的“进入/退出”回调为什么走配置变更，而不是 binder 直接回调？</summary>
+<div class="ans">因为窗口模式变化本身就是一次配置变化，<code>ActivityThread</code> 已经有现成的 <code>handleWindowingModeChangeIfNeeded()</code> 可以比较新旧模式；走同一条路能保证配置重建、<code>configChanges</code> 自处理等所有情况行为一致。system_server 侧则用 <code>ActivityTaskSupervisor</code> 的 handler 把回调推迟到锁外、配置算完之后，避免持锁跨进程和顺序错乱。</div></details>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>🎬 Android 窗口层级专题 | <strong>13 — 画中画 PiP：一次跨 ATMS / WMCore / WM Shell 的窗口模式迁移</strong></p>
+  <p>基于 AOSP 12（android-12.0.0_r32）· WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实</p>
+  <p style="margin-top:10px;"><a href="10-显示子系统的节拍.html">← 10 vsync 与 Choreographer</a> &nbsp;|&nbsp; <strong>13 PiP 专题 ← 你在这</strong> &nbsp;|&nbsp; <a href="WMS学习路线图.html">🗺️ 学习路线图 →</a></p>
+  <p style="margin-top:8px;"><a href="09-窗口动画与过渡.html">关联：09 窗口动画与 leash</a> &nbsp;|&nbsp; <a href="index.html">📚 系列导航</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📌 下篇预告：11 IME 与壁纸专项（ImeContainer、壁纸窗口生命周期）；12 多显示与多窗口；本篇 13 为跨层专题补篇。</p>
+</div>
+</div>
+
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

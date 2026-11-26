@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>显示子系统的节拍：vsync 与 Choreographer（窗口层级补篇）</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+      --tree-bg: #f7f2e7; --tree-text: #2c2c2c; --tree-border: #ddd3c3; --tree-comment: #5f7f5a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+      --tree-bg: #2f3540; --tree-text: #ece7de; --tree-border: #4a5260; --tree-comment: #a8c98a;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol","Apple Symbols",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.82rem; line-height:1.95; padding:16px 18px; overflow-x:auto; white-space:pre; background:var(--tree-bg); color:var(--tree-text); border:1px solid var(--tree-border); border-radius:10px; margin:16px 0; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+    .tree .cm { color:var(--tree-comment); }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .analogy { border-left:4px solid var(--accent2); background:var(--bg-card); border:1px solid var(--border); border-left-width:4px; padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .analogy .tag { color:var(--accent2); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:10px 16px; margin:14px 0; font-size:.9rem; color:var(--text2); }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:14px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-size:.82rem; font-weight:bold; margin-right:8px; }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+  <style>
+    /* ===== reading polish ===== */
+    :root {
+      --shadow-sm: 0 2px 8px rgba(43,42,39,.04);
+      --shadow-md: 0 10px 30px rgba(43,42,39,.07);
+    }
+    [data-theme="dark"] {
+      --shadow-sm: 0 2px 8px rgba(0,0,0,.25);
+      --shadow-md: 0 10px 30px rgba(0,0,0,.35);
+    }
+    html { scroll-behavior:smooth; }
+    body {
+      background:
+        radial-gradient(1100px 520px at 12% -8%, rgba(185,71,50,.06), transparent 60%),
+        radial-gradient(900px 480px at 100% 0%, rgba(47,125,99,.05), transparent 55%),
+        var(--bg);
+      font-size:16.5px;
+    }
+    [data-theme="dark"] body {
+      background:
+        radial-gradient(1100px 520px at 12% -8%, rgba(224,120,93,.08), transparent 60%),
+        radial-gradient(900px 480px at 100% 0%, rgba(99,195,154,.06), transparent 55%),
+        var(--bg);
+    }
+    .container { max-width:1080px; }
+    h1,h2,h3,.toc strong { font-family:"Source Han Serif SC","Noto Serif SC","Songti SC",SimSun,Georgia,serif; }
+    h1 { font-size:2.15rem; line-height:1.35; letter-spacing:.02em; }
+    h2 { font-size:1.55rem; margin-top:58px; padding:0 0 10px 18px; position:relative; border-bottom:none; }
+    h2::before { content:""; position:absolute; left:0; top:.22em; bottom:.42em; width:4px; border-radius:3px; background:linear-gradient(180deg,var(--accent),var(--accent3)); }
+    h2::after { content:""; position:absolute; left:0; right:0; bottom:0; height:1px; background:linear-gradient(90deg,var(--accent),var(--h2-border) 45%,transparent); opacity:.55; }
+    h3 { font-size:1.2rem; }
+    h2,h3 { scroll-margin-top:24px; }
+    p { max-width:86ch; }
+    p, li { text-wrap:pretty; }
+    .subtitle { font-size:1rem; max-width:88ch; }
+    a { text-underline-offset:3px; }
+    ::selection { background:var(--accent); color:#fff; }
+
+    .toc { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:3px 26px; padding:22px 26px 18px; }
+    .toc strong { grid-column:1/-1; margin-bottom:6px; }
+    .toc a { display:block; padding:6px 10px; border-radius:7px; border-left:2px solid transparent; font-size:.92rem; transition:background .18s,border-color .18s,color .18s,transform .18s; }
+    .toc a:hover { background:var(--hover-bg); border-left-color:var(--accent); color:var(--accent); text-decoration:none; transform:translateX(2px); }
+    @media (max-width:760px){ .toc { grid-template-columns:1fr; } }
+
+    .card { border-radius:14px; padding:24px 28px; box-shadow:var(--shadow-sm); transition:transform .2s,box-shadow .2s,border-color .2s; }
+    .card:hover { transform:translateY(-1px); box-shadow:var(--shadow-md); }
+    #abstract + .card { border-left:4px solid var(--accent); background:linear-gradient(135deg,rgba(185,71,50,.07),transparent 55%),var(--bg-card); }
+    #abstract + .card strong { color:var(--accent); }
+    #abstract + .card ul { margin-bottom:0; }
+
+    table { font-size:.9rem; }
+    th { letter-spacing:.03em; }
+    tbody tr:nth-child(even) td { background:rgba(0,0,0,.018); }
+    [data-theme="dark"] tbody tr:nth-child(even) td { background:rgba(255,255,255,.025); }
+    th:first-child { border-top-left-radius:8px; }
+    th:last-child { border-top-right-radius:8px; }
+
+    .tree { position:relative; padding:30px 20px 18px; border-left:4px solid var(--accent3); border-radius:12px; font-variant-ligatures:none; -webkit-overflow-scrolling:touch; }
+    .tree::before { content:"调用树"; position:absolute; top:8px; right:14px; font-family:"Noto Sans SC","PingFang SC",sans-serif; font-size:.66rem; letter-spacing:.16em; color:var(--text2); opacity:.7; }
+    .tree::-webkit-scrollbar { height:8px; }
+    .tree::-webkit-scrollbar-thumb { background:var(--tree-border); border-radius:4px; }
+    .tree:hover { border-left-color:var(--accent); }
+
+    .annotation, .analogy, .pitfall, .think, .hint, .step { border-radius:10px; }
+    details { border-left:3px solid var(--accent3); border-radius:8px; padding:12px 18px; }
+    details[open] { border-left-color:var(--accent); }
+    details[open] summary { color:var(--accent); }
+    summary { transition:color .2s; }
+    summary:hover { color:var(--accent3); }
+
+    #reading-progress { position:fixed; top:0; left:0; height:3px; width:0; background:linear-gradient(90deg,var(--accent),var(--accent3)); z-index:1000; transition:width .08s linear; }
+    #top-btn { position:fixed; bottom:90px; right:30px; width:44px; height:44px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.15rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,.15); z-index:999; opacity:0; transform:translateY(8px); pointer-events:none; transition:opacity .2s,transform .2s,background .2s; backdrop-filter:blur(4px); }
+    #top-btn.show { opacity:1; transform:translateY(0); pointer-events:auto; }
+    #top-btn:hover { transform:scale(1.08); }
+
+    @media (max-width:640px){
+      body { padding:22px 12px; }
+      h1 { font-size:1.6rem; }
+      h2 { font-size:1.3rem; margin-top:42px; }
+      .card { padding:18px; }
+      .tree { font-size:.76rem; padding:28px 14px 14px; }
+      #top-btn { right:18px; bottom:84px; }
+      #theme-btn { right:18px; bottom:24px; }
+    }
+    @media (prefers-reduced-motion:reduce){ * { transition:none !important; scroll-behavior:auto !important; } }
+    @media print {
+      #theme-btn, #top-btn, #reading-progress, .toc { display:none !important; }
+      body { background:#fff !important; color:#000 !important; }
+      .card, .tree, table, details { break-inside:avoid; }
+      details { display:block; }
+    }
+  </style>
+</head>
+<body>
+<div id="reading-progress" aria-hidden="true"></div>
+
+<div class="container">
+
+<h1>显示子系统的节拍：vsync 与 Choreographer</h1>
+<p class="subtitle">读窗口层级时处处撞见的两个词，其实一层都不在窗口树里——本文按功能拆成 11 章：每个功能一张调用树，每层代码带行内注释，从 HWC 中断一路读到 App 的 doFrame</p>
+<p class="series">📐 Android 窗口层级专题 10 ｜ 基于 <code>android-12.0.0_r32</code> ｜ 主篇：<a href="04-像素怎样上屏.html">04 像素怎样上屏</a> ｜ 导航：<a href="index.html">系列索引</a> ｜ 路线图：<a href="WMS学习路线图.html">WMS 学习路线图</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+<button id="top-btn" title="回到顶部" aria-label="回到顶部">↑</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📖 目录</strong>
+  <a href="#p0">0.0 名词表</a>
+  <a href="#abstract">摘要</a>
+  <a href="#fn1">功能一：硬件 vsync 进 SF —— onComposerHalVsync()</a>
+  <a href="#fn2">功能二：样本喂给模型 —— Scheduler::addResyncSample()</a>
+  <a href="#fn3">功能三：确认周期、拟合相位 —— VSyncReactor / VSyncPredictor</a>
+  <a href="#fn4">功能四：开关硬件 vsync —— enableHardwareVsync() / disableHardwareVsync()</a>
+  <a href="#fn5">功能五：建客户端连接 —— EventThread::createEventConnection()</a>
+  <a href="#fn6">功能六：按需申请一次 vsync —— EventThread::requestNextVsync()</a>
+  <a href="#fn7">功能七：分发 vsync —— threadMain() / dispatchEvent() / postEvent()</a>
+  <a href="#fn8">功能八：App 侧排帧 —— Choreographer::postCallback()</a>
+  <a href="#fn9">功能九：App 侧收帧与执行 —— onVsync() / doFrame()</a>
+  <a href="#fn10">功能十：WMS 动画线程 —— WindowAnimator::animate()</a>
+  <a href="#fn11">功能十一：相位与刷新率 —— VsyncConfiguration / VsyncModulator</a>
+  <a href="#p7">稳态闭环：静止画面为什么一帧都没有</a>
+  <a href="#p8">排障速查与源码索引</a>
+  <a href="#quiz">🧠 自测：4 个问题</a>
+</div>
+
+<div class="card" style="border-left:4px solid var(--accent);">
+  <p><strong>先把定位钉死：</strong>vsync 不属于窗口层级，它属于显示子系统最底下的时间基准；Choreographer 也不属于窗口层级，它是 App 侧（以及 WMS 动画线程）对这个时间基准的消费者与调度器。你在 03/04/09 篇里反复看到的「每帧提交 SF」「动画在 vsync-sf 上跑」「申请一次给一次」，全部是在描述这两个东西的行为，而不是窗口树本身的性质。掉帧与「Skipped N frames」、动画首帧慢半拍、静态界面异常耗电、Perfetto 里对不齐 VSYNC 轨道，这四类现象最后都要落到本文这几条链上。主流程一句话：<strong>HWC 中断 → SF 收时间戳 → Scheduler 喂模型 → 模型算节拍、定时器唤醒 → EventThread 按连接分发 → BitTube 送到 App → Choreographer 的 doFrame → traversal</strong>。</p>
+</div>
+
+<h2 id="p0">0.0 名词表</h2>
+<div class="card">
+<table>
+  <tr><th>名词</th><th>一句话解释</th></tr>
+  <tr><td><strong>vsync</strong></td><td>面板扫完一帧、回到第一行的那一瞬间。软件里它的形态就是一个纳秒时间戳（<code>nsecs_t</code>），不是事件对象、不是回调。</td></tr>
+  <tr><td><strong>TE 信号</strong></td><td>Panel 的 tearing effect 信号，DDIC 每帧发一次给 SoC，是硬件 vsync 的物理来源。</td></tr>
+  <tr><td><strong>VSYNC-app</strong></td><td>给 App 用的那条相位。<code>Choreographer.getInstance()</code> 默认连这条。</td></tr>
+  <tr><td><strong>VSYNC-sf</strong></td><td>给 SurfaceFlinger 合成用的那条相位。<code>Choreographer.getSfInstance()</code> 与 SF 主循环连这条。</td></tr>
+  <tr><td><strong>phase offset</strong></td><td>两条 vsync 相对硬件节拍的提前量，默认各 1ms（<code>VsyncConfiguration.cpp:86-89</code>）。</td></tr>
+  <tr><td><strong>VSyncPredictor</strong></td><td>进程内的线性模型：拿历史时间戳拟合出周期与相位，之后不等中断也能算 <code>nextAnticipatedVSyncTimeFrom()</code>。</td></tr>
+  <tr><td><strong>VSyncReactor</strong></td><td>看门人：确认周期是否稳定、要不要继续采样、刷新率切换时如何过渡。</td></tr>
+  <tr><td><strong>VSyncDispatch</strong></td><td>定时器队列。有人要 vsync 时，按预测时刻用定时器唤醒，不依赖硬件中断。</td></tr>
+  <tr><td><strong>EventThread</strong></td><td>SF 进程里的分发线程，两条（app / appSf），各自维护一串 <code>EventThreadConnection</code>，按需把 vsync 写进各自的管道。</td></tr>
+  <tr><td><strong>BitTube</strong></td><td>一对 socketpair，SF 端写、客户端读；vsync 事件就是以 <code>DisplayEventReceiver::Event</code> 结构体从这管道过去的。</td></tr>
+  <tr><td><strong>Choreographer</strong></td><td>线程级的帧调度器：把「我想在下一帧做某事」翻译成「申请一次 vsync」，收到后按 input→animation→insets→traversal→commit 的顺序执行回调。</td></tr>
+  <tr><td><strong>doFrame</strong></td><td>Choreographer 收到 vsync 后的主函数，一帧的全部回调在这里同步跑完。</td></tr>
+  <tr><td><strong>vsyncId / FrameTimeline</strong></td><td>每个 vsync 事件带的 token，用来把 App 的 doFrame、SF 的合成、上屏时间串成一条时间线。</td></tr>
+  <tr><td><strong>present fence</strong></td><td>内容真正上屏的信号。SF 用它校正预测：预测偏了就用它触发重新采样。</td></tr>
+  <tr><td><strong>sync barrier</strong></td><td>Handler 队列的同步屏障，让异步消息（traversal、vsync）优先于普通消息执行；<code>ViewRootImpl#scheduleTraversals</code> 会先立一道。</td></tr>
+</table>
+</div>
+
+<h2 id="abstract">摘要</h2>
+<div class="card">
+<p><strong>主线：</strong>HWC 的硬件 vsync 进入 SF 后只当采样源，Scheduler 用它训练出周期/相位模型；模型学准就关掉硬件中断，由 VSyncDispatch 按预测时刻唤醒 EventThread；EventThread 再按连接把 vsync 写进每个客户端的 BitTube；App 的 Choreographer 收到后跑 doFrame，WMS 的 WindowAnimator 则用另一条 VSYNC-sf 相位推进动画。</p>
+<ul>
+<li><strong>采样：</strong><code>onComposerHalVsync</code> 只记录、过滤、喂模型，不合成、不直接发 App；外屏不喂模型。</li>
+<li><strong>模型：</strong><code>VSyncReactor</code> 确认周期，<code>VSyncPredictor</code> 用线性回归算周期与相位；<code>needsMoreSamples()</code> 决定硬件中断继续开还是关。</li>
+<li><strong>分发：</strong>每个客户端一条 <code>EventThreadConnection</code> + <code>BitTube</code>；<code>requestNextVsync</code> 把 <code>vsyncRequest</code> 置为 <code>Single</code>，<code>threadMain</code> 按需投递，<code>postEvent</code> 写管道。</li>
+<li><strong>消费：</strong>Choreographer 用 <code>mFrameScheduled</code> 保证一帧只申请一次；<code>onVsync</code> 只排消息，<code>doFrame</code> 按 input→animation→insets→traversal→commit 执行。</li>
+<li><strong>两条相位：</strong>app 与 sf 默认各提前 1ms；WMS 的 <code>WindowAnimator</code> 在 <code>android.anim</code> 线程上用 <code>getSfInstance()</code>，先排下一帧再干本帧。</li>
+</ul>
+</div>
+
+<h2 id="fn1">功能一：硬件 vsync 进 SF —— <code>onComposerHalVsync()</code></h2>
+
+<p>HWC 每来一个硬件节拍，SF 只拿到一个纳秒时间戳。这个函数把它变成三样东西：该屏最近一次硬件 vsync 的记录、一次重复上报的过滤、以及给 Scheduler 的一个样本。它不合成、不 invalidate，也不直接给 App 发 vsync。</p>
+
+<div class="tree">HWC HAL onVsync()                                      [vendor thread]        <span class="cm">// 面板 TE 中断，厂商线程回调</span>
+└─ SurfaceFlinger::onComposerHalVsync()                 [SurfaceFlinger.cpp:1718] <span class="cm">// 入口：只收时间戳</span>
+   ├─ DisplayDevice::onVsync()                          [DisplayDevice.cpp:211]   <span class="cm">// 记录该屏最近一次硬件节拍</span>
+   │  └─ mLastHwVsync = timestamp                       <span class="cm">// 供 getRefreshTimestamp() 推算刷新边界</span>
+   ├─ HWComposer::onVsync()                             [HWComposer.cpp:205]      <span class="cm">// 校验 display、丢重复样本</span>
+   │  ├─ toPhysicalDisplayId()                           <span class="cm">// display 还活着吗</span>
+   │  └─ 丢弃灭/亮屏时重复上报的同一时间戳                <span class="cm">// 防止同一拍喂两次</span>
+   ├─ if (外屏) return                                   <span class="cm">// 模型只学内屏</span>
+   └─ Scheduler::addResyncSample()                       [Scheduler.cpp:548]       <span class="cm">// 交给模型；见功能二</span></div>
+
+<p><code>getHwComposer().onVsync()</code> 返回 <code>false</code> 时直接 <code>return</code>，这不是「这一帧不显示」，而是「这个样本不可信」。外屏也在 <code>addResyncSample</code> 之前返回，因为整个进程只有一个预测模型，它只认内屏的节拍。这样设计把采样和分发彻底分开：采样可以随时关掉，分发只由 EventThread 的按需状态决定。</p>
+
+<h2 id="fn2">功能二：把样本喂给模型，并决定硬件 vsync 的生死 —— <code>Scheduler::addResyncSample()</code></h2>
+
+<p>样本进来先看硬件中断是否开着：关着就直接丢弃，避免把陈旧相位喂进已经学准的模型。开着才交给 Reactor；Reactor 返回的布尔量决定接下来是继续开中断，还是立刻关掉。</p>
+
+<div class="tree">Scheduler::addResyncSample()                            [Scheduler.cpp:548]       <span class="cm">// 入口：一个硬件样本</span>
+├─ lock(mHWVsyncLock)                                                             <span class="cm">// 只锁状态，不锁 HAL</span>
+├─ if (mPrimaryHWVsyncEnabled)                                                    <span class="cm">// 中断开着才喂；关着说明样本过期</span>
+│  └─ VSyncReactor::addHwVsyncTimestamp()               [VSyncReactor.cpp:170]    <span class="cm">// 确认周期、更新模型</span>
+│     ├─ periodConfirmed()                              [VSyncReactor.cpp:142]    <span class="cm">// 连续间隔稳定？稳定才承认周期</span>
+│     ├─ VSyncPredictor::addVsyncTimestamp()            [VSyncPredictor.cpp:94]   <span class="cm">// 样本入历史窗口</span>
+│     └─ needsMoreSamples()                             [VSyncPredictor.cpp:342]  <span class="cm">// 样本够不够？</span>
+├─ if (needsHwVsync) enableHardwareVsync()              [Scheduler.cpp:487]       <span class="cm">// 还缺 → 继续开中断</span>
+└─ else disableHardwareVsync(false)                     [Scheduler.cpp:496]       <span class="cm">// 够了 → 关中断，保留重开资格</span></div>
+
+<p>返回值 <code>needsHwVsync</code> 不是「这一帧要不要画」，而是「模型还缺不缺样本」。缺就继续开中断，不缺就关；关的时候传 <code>false</code>，表示「以后还能再开」，而不是把硬件能力标记为不可用。锁只包住状态变更，HAL 调用放在锁外，否则 SF 主线程会在 <code>setVsyncEnabled</code> 上等 HWC 时被这把锁卡住。</p>
+
+<h2 id="fn3">功能三：确认周期、拟合相位 —— <code>VSyncReactor</code> / <code>VSyncPredictor</code></h2>
+
+<p>Reactor 先判断连续样本的间隔是否稳定；稳定才承认周期，然后交给 Predictor 做线性回归。Predictor 保存一组历史时间戳，斜率是周期，截距是相位；样本不够时 <code>needsMoreSamples()</code> 返回 true，模型继续要样本。</p>
+
+<div class="tree">VSyncReactor::addHwVsyncTimestamp()                      [VSyncReactor.cpp:170]    <span class="cm">// 入口：Reactor 看门</span>
+├─ periodConfirmed()                                     [VSyncReactor.cpp:142]    <span class="cm">// 周期确认状态机</span>
+│  ├─ 连续样本间隔 ≈ 标称周期                                                      <span class="cm">// 稳定才承认</span>
+│  └─ mPeriodConfirmationInProgress 状态机                                          <span class="cm">// 切换中先存上一个样本</span>
+├─ VSyncPredictor::addVsyncTimestamp()                   [VSyncPredictor.cpp:94]   <span class="cm">// 喂给线性模型</span>
+│  ├─ validate() / clearTimestamps()                     <span class="cm">// 异常样本丢弃或重学</span>
+│  ├─ mTimestamps 环形缓冲                                                         <span class="cm">// 保留最近 N 个</span>
+│  └─ 线性回归：slope = 周期，intercept = 相位                                       <span class="cm">// 拟合出节拍</span>
+└─ VSyncPredictor::needsMoreSamples()                    [VSyncPredictor.cpp:342]  <span class="cm">// 样本不足 → 还要采样</span>
+
+VSyncDispatchTimerQueue 排 timer <span class="cm">// 预测路径：按模型时刻排定时器</span>
+└─ VSyncPredictor::nextAnticipatedVSyncTimeFrom()       [VSyncPredictor.cpp:240]  <span class="cm">// 模型回答「下一拍几点」</span></div>
+
+<p>周期确认和相位拟合是两件事：Reactor 只回答「这串样本的间隔稳不稳」，Predictor 才回答「下一拍是几点」。模型不需要等硬件中断也能算，所以中断可以在学准后关掉；而 <code>needsMoreSamples()</code> 一旦为 false，采样就停，直到 present fence 或客户端 resync 发现预测偏了，再重新打开。</p>
+<h2 id="fn4">功能四：开关硬件 vsync —— <code>enableHardwareVsync()</code> / <code>disableHardwareVsync()</code></h2>
+
+<p>模型说还缺样本，就把硬件中断打开；说够了，就关掉。开关本身只改一个布尔量，但重开之前必须先把旧模型作废——周期可能已经变了，否则新样本会被拿去修正一条过期的直线。</p>
+
+<div class="tree">Scheduler::enableHardwareVsync()                          [Scheduler.cpp:487]       <span class="cm">// 打开硬件中断</span>
+├─ lock(mHWVsyncLock)                                                               <span class="cm">// 串行化开关</span>
+├─ if (!mPrimaryHWVsyncEnabled &amp;&amp; mHWVsyncAvailable)                                 <span class="cm">// 没开且能力可用</span>
+│  ├─ VSyncPredictor::resetModel()                        [VSyncPredictor.cpp:347]  <span class="cm">// 旧模型作废，重新学</span>
+│  ├─ mSchedulerCallback.setVsyncEnabled(true)                                      <span class="cm">// 回调到 SF</span>
+│  │  └─ SurfaceFlinger::setVsyncEnabled()                [SurfaceFlinger.cpp:1810] <span class="cm">// 转给 HWC</span>
+│  │     └─ HWComposer::setVsyncEnabled()                 [HWComposer.cpp:433]      <span class="cm">// 转给 Composer</span>
+│  │        └─ ComposerHal::setVsyncEnabled()             [ComposerHal.cpp:573]     <span class="cm">// 转给 HWC2</span>
+│  │           └─ HWC2::Display::setVsyncEnabled()        [HWC2.cpp:469]            <span class="cm">// 面板 TE 中断</span>
+│  └─ mPrimaryHWVsyncEnabled = true                                                 <span class="cm">// 记下已开</span>
+└─ (否则什么都不做)                                                                  <span class="cm">// 已开或不可用</span>
+
+Scheduler::disableHardwareVsync(makeUnavailable)           [Scheduler.cpp:496]       <span class="cm">// 关闭硬件中断</span>
+├─ if (mPrimaryHWVsyncEnabled)                                                       <span class="cm">// 当前开着才关</span>
+│  ├─ mSchedulerCallback.setVsyncEnabled(false)                                      <span class="cm">// 落到面板</span>
+│  └─ mPrimaryHWVsyncEnabled = false                                                 <span class="cm">// 记下已关</span>
+└─ if (makeUnavailable) mHWVsyncAvailable = false          <span class="cm">// 灭屏/热插拔：以后也不能开</span></div>
+
+<p><code>disableHardwareVsync(false)</code> 只关当前中断，保留「以后还能开」的资格；<code>makeUnavailable=true</code> 才把能力本身置为不可用，通常出现在灭屏或热插拔。重开时先 <code>resetModel()</code> 再 <code>setVsyncEnabled(true)</code>，顺序不能反：模型如果还留着旧周期，第一批新样本会被当成对旧直线的修正，而不是重新学习。</p>
+
+<h2 id="fn5">功能五：建客户端连接 —— <code>EventThread::createEventConnection()</code></h2>
+
+<p>每个客户端一条 <code>EventThreadConnection</code>，底层是一对 <code>BitTube</code> socketpair。连接建立时就把缓冲区分配好，接收端 fd 交给客户端，SF 只留发送端；后续每帧投递不再分配、不再走 binder。</p>
+
+<div class="tree">SurfaceFlinger::createDisplayEventConnection()            [SurfaceFlinger.cpp:1684] <span class="cm">// 客户端建连接入口</span>
+├─ 选 app 还是 appSf 句柄                                                             <span class="cm">// 两条 vsync 各一条连接</span>
+└─ Scheduler::createDisplayEventConnection()              [Scheduler.cpp:296]       <span class="cm">// 按句柄找 EventThread</span>
+   └─ EventThread::createEventConnection()                [EventThread.cpp:271]     <span class="cm">// 真正建连接</span>
+      └─ new EventThreadConnection()                      [EventThread.cpp:154]     <span class="cm">// 连接对象</span>
+         └─ BitTube::BitTube()                            [BitTube.cpp:37]          <span class="cm">// 分配 socketpair</span>
+            └─ socketpair()                               <span class="cm">// 一对 fd，跨进程两端</span>
+
+DisplayEventReceiver::DisplayEventReceiver()              [DisplayEventReceiver.cpp:34] <span class="cm">// 客户端构造</span>
+├─ ISurfaceComposer::createDisplayEventConnection()                                  <span class="cm">// binder 到 SF</span>
+└─ EventThreadConnection::stealReceiveChannel()           [EventThread.cpp:173]     <span class="cm">// 接收 fd 搬给客户端</span>
+   └─ 把接收 fd 搬到客户端，SF 只留发送 fd                                          <span class="cm">// 管道由此分家</span></div>
+
+<p>连接建好之后，SurfaceFlinger 侧只保留发送端，接收端已经交给客户端；下面这条链从 SF 的入口一路看到 EventThread 的连接创建，每一层只做自己那一小步，不跨层兜底。</p>
+
+<p>连接是 per-client 的，不是 per-process 的：同一个 App 里两个 Choreographer（app 与 sf）会各自建一条连接，拿到各自的 fd。管道容量在创建时就固定，投递时只写一个固定大小的 <code>Event</code> 结构体；这条路径每帧都走，任何序列化或动态分配都会被 60/120 倍放大。</p>
+
+<h2 id="fn6">功能六：按需申请一次 vsync —— <code>EventThread::requestNextVsync()</code></h2>
+
+<p>客户端申请一帧，只把连接上的 <code>vsyncRequest</code> 从 <code>None</code> 改成 <code>Single</code>，然后唤醒 <code>threadMain</code> 重新计算等待条件。申请时顺手校一次模型，但 resync 内部有 750ms 限频，不会每帧都重采样。</p>
+
+<div class="tree">Choreographer::scheduleVsyncLocked()                      [Choreographer.java:880]  <span class="cm">// App 侧申请入口</span>
+└─ DisplayEventReceiver::scheduleVsync()                  [DisplayEventReceiver.java:247] <span class="cm">// Java 转 JNI</span>
+   └─ nativeScheduleVsync()                               [android_view_DisplayEventReceiver.cpp:208] <span class="cm">// JNI</span>
+      └─ receiver-&gt;scheduleVsync()                        [android_view_DisplayEventReceiver.cpp:211] <span class="cm">// native 对象</span>
+         └─ DisplayEventReceiver::requestNextVsync()      [DisplayEventReceiver.cpp:75] <span class="cm">// binder oneway</span>
+            └─ EventThread::requestNextVsync()            [EventThread.cpp:318]     <span class="cm">// 到 SF 的分发线程</span>
+               ├─ resyncCallback()                        <span class="cm">// 顺手校模型；750ms 限频</span>
+               └─ vsyncRequest = Single; notify_all()      <span class="cm">// 申请一次给一次，唤醒 threadMain</span></div>
+
+<p>申请动作从 Java 侧发出后，经过一次 JNI 转调和一次 binder oneway 才到 EventThread；下面把这三层放在一起看，注意调用方不会等待结果。</p>
+
+<p>申请是异步的：<code>requestNextVsync</code> 走 binder oneway，调用方不会等 EventThread 处理。真正决定「给不给」的是 <code>threadMain</code> 里的汇总和 <code>shouldConsumeEvent</code> 里的状态自减；如果连接已经是 <code>Single</code>，第二次申请会被静默吞掉，所以 App 侧必须用 <code>mFrameScheduled</code> 保证一帧只申请一次。</p>
+<h2 id="fn7">功能七：分发 vsync —— <code>threadMain()</code> / <code>dispatchEvent()</code> / <code>postEvent()</code></h2>
+
+<p><code>threadMain</code> 是 EventThread 的主循环：先看有没有待处理事件，再逐条连接判断「谁要、谁该收」，最后把事件交给 <code>dispatchEvent</code>。真正写进客户端管道的是 <code>postEvent</code>；分发层只负责选人，不负责解释 vsync 的含义。</p>
+
+<div class="tree">EventThread::threadMain()                                 [EventThread.cpp:403]     <span class="cm">// 分发主循环</span>
+├─ while (mState != Quit)                                                           <span class="cm">// 直到线程退出</span>
+├─ mPendingEvents.pop_front()                             <span class="cm">// 取事件：vsync/hotplug/mode change</span>
+├─ for each connection:                                                             <span class="cm">// 遍历所有客户端连接</span>
+│  ├─ vsyncRequested |= vsyncRequest != None              <span class="cm">// 汇总「还有人要吗」</span>
+│  └─ shouldConsumeEvent() → consumers                    <span class="cm">// 逐连接过滤、限帧、状态自减</span>
+├─ dispatchEvent(event, consumers)                        [EventThread.cpp:571]     <span class="cm">// 给选中的连接投递</span>
+│  └─ for each consumer:                                                             <span class="cm">// 只投给 consumers</span>
+│     └─ EventThreadConnection::postEvent()               [EventThread.cpp:189]     <span class="cm">// 写客户端管道</span>
+│        └─ DisplayEventReceiver::sendEvents()            [DisplayEventReceiver.cpp:101] <span class="cm">// 转 BitTube</span>
+│           └─ BitTube::sendObjects()                     [BitTube.cpp:148]         <span class="cm">// 真正 send()</span>
+└─ State transition → mVSyncSource-&gt;setVSyncEnabled()     <span class="cm">// Idle/VSync/SyntheticVSync</span>
+
+EventThread 的状态 <span class="cm">// 四态决定怎么等</span>
+├─ Idle            <span class="cm">// 无人申请：wait() 无超时，真休眠</span>
+├─ VSync           <span class="cm">// 有人要：按预测节拍唤醒</span>
+├─ SyntheticVSync  <span class="cm">// 灭屏/驱动异常：16ms 自造假 vsync</span>
+└─ Quit            <span class="cm">// 线程退出</span></div>
+
+<p><code>threadMain</code> 里没有「广播」：它先汇总所有连接的 <code>vsyncRequest</code>，再对每个连接单独调用 <code>shouldConsumeEvent</code>。这一步决定了有人要才醒、没人要就回 <code>Idle</code>；<code>Single</code> 的「投递一次就自减」也藏在这里，不是调用方自觉。</p>
+
+<p><code>dispatchEvent</code> 只对已经选中的 consumer 逐个投递，所以分发成本与「有多少人在等」成正比，而不是与进程数成正比。<code>EAGAIN</code> 表示管道满，只丢当前帧；<code>EPIPE</code> 才说明连接死了，需要从列表里摘掉。这个区分很重要：主线程偶尔卡一下不应该导致连接被永久移除。</p>
+
+<p>三个状态对应三种等待方式：<code>Idle</code> 是无超时 <code>wait()</code>，这是零唤醒的硬保证；<code>VSync</code> 是 1000ms 超时兜底，防止驱动卡死后客户端永远收不到回调；<code>SyntheticVSync</code> 是 16ms 自造节拍，用于灭屏或驱动异常。状态切换只在跨状态时执行一次 <code>setVSyncEnabled</code>，不会每帧重复开关。</p>
+
+<h2 id="fn8">功能八：App 侧排帧 —— <code>Choreographer::postCallback()</code></h2>
+
+<p>App 想在下一次 vsync 做事，先调 <code>postCallback</code> 把回调塞进对应队列；真正申请 vsync 的是 <code>scheduleFrameLocked</code>，它用 <code>mFrameScheduled</code> 保证一帧只申请一次。跨线程调用时，申请消息会被插到队首，避免被已有消息拖延。</p>
+
+<div class="tree">ViewRootImpl::scheduleTraversals()                        [ViewRootImpl.java:2097]  <span class="cm">// App 重绘唯一入口</span>
+├─ postSyncBarrier()                                     <span class="cm">// 挡普通消息，让 traversal 先跑</span>
+└─ Choreographer::postCallback(CALLBACK_TRAVERSAL)       [Choreographer.java:430]  <span class="cm">// 回调入队</span>
+   └─ postCallbackDelayedInternal()                      [Choreographer.java:462]  <span class="cm">// 按延迟入对应队列</span>
+      ├─ addCallbackLocked()                             <span class="cm">// 按 dueTime 排序</span>
+      └─ scheduleFrameLocked()                           [Choreographer.java:636]  <span class="cm">// 申请下一帧</span>
+         ├─ if (!mFrameScheduled)                        <span class="cm">// 幂等闸门：一帧只申请一次</span>
+         ├─ scheduleVsyncLocked()                        [Choreographer.java:880]  <span class="cm">// 同线程直接申请</span>
+         │  └─ DisplayEventReceiver::scheduleVsync()      [DisplayEventReceiver.java:247] <span class="cm">// 到 SF</span>
+         └─ MSG_DO_SCHEDULE_VSYNC（跨线程时）             <span class="cm">// 异步消息插到队首</span></div>
+
+<p>App 侧所有重绘最终都汇到 scheduleTraversals 这一个入口；下面看它如何先立屏障、再把 traversal 回调交给 Choreographer，顺序不能反。</p>
+
+<p><code>mFrameScheduled</code> 是应用层的「按需」开关：一旦为 true，后续所有 <code>postCallback</code> 都只是往队列里加，不会重复申请 vsync；直到 <code>doFrame</code> 把它清回 false，下一次才有资格再申请。延迟回调不会立刻申请 vsync，而是先排一条定时消息——提前申请只会白醒一次。</p>
+
+<h2 id="fn9">功能九：App 侧收帧与执行 —— <code>onVsync()</code> / <code>doFrame()</code></h2>
+
+<p><code>onVsync</code> 只做一件事：把一条异步消息排到 vsync 时间戳上。<code>doFrame</code> 才是真正执行回调的地方，它按 input → animation → insets → traversal → commit 的顺序跑完一帧，并把帧时间吸附到最近的节拍。</p>
+
+<div class="tree">DisplayEventReceiver::getEvents()                        [DisplayEventReceiver.cpp:91] <span class="cm">// 客户端读管道</span>
+└─ FrameDisplayEventReceiver::onVsync()                  [Choreographer.java:981]  <span class="cm">// 收到一条 vsync</span>
+   ├─ mHavePendingVsync 自检                             <span class="cm">// 一次只允许一个 pending</span>
+   └─ mHandler.sendMessageAtTime(this, timestampNanos)   <span class="cm">// 按 vsync 时刻排消息</span>
+      └─ FrameDisplayEventReceiver::run()                [Choreographer.java:1020] <span class="cm">// 消息到点</span>
+         └─ Choreographer::doFrame()                     [Choreographer.java:701]  <span class="cm">// 一帧主函数</span>
+            ├─ jitter 吸附到最近节拍                     <span class="cm">// 防止动画时间轴漂移</span>
+            ├─ CALLBACK_INPUT                            <span class="cm">// 输入先消费</span>
+            ├─ CALLBACK_ANIMATION                        <span class="cm">// 动画再算</span>
+            ├─ CALLBACK_INSETS_ANIMATION                 <span class="cm">// Insets 动画</span>
+            ├─ CALLBACK_TRAVERSAL                        <span class="cm">// ViewRootImpl 测量/布局/绘制</span>
+            └─ CALLBACK_COMMIT                           <span class="cm">// 最后提交，拿上屏估计</span></div>
+
+<p><code>onVsync</code> 不直接跑回调，是为了让消息队列先处理掉早于 vsync 时刻的普通消息，避免 vsync 饿死主线程。<code>doFrame</code> 的五段顺序在常量定义处就固定了：输入先消费、动画再算、Insets 在 traversal 前、commit 最后拿真实上屏估计。顺序换一下，动画或布局就会用到过期数据。</p>
+<h2 id="fn10">功能十：WMS 动画线程 —— <code>WindowAnimator::animate()</code></h2>
+
+<p><code>WindowAnimator</code> 跑在 <code>android.anim</code> 线程上，用的是 <code>Choreographer.getSfInstance()</code>，也就是 VSYNC-sf 那条相位。它每帧先给自己排下一帧，再干本帧的活；这样即使本帧超时，下一帧的申请也已经在途，表现为持续背压而不是断流。</p>
+
+<div class="tree">WindowAnimator::WindowAnimator()                          [WindowAnimator.java:99]   <span class="cm">// WMS 动画器构造</span>
+├─ mService.mAnimationHandler.runWithScissors(                                        <span class="cm">// 投到 android.anim 线程</span>
+│  () -&gt; mChoreographer = Choreographer.getSfInstance())   <span class="cm">// 取 VSYNC-sf 实例</span>
+└─ mAnimationFrameCallback = frameTimeNs -&gt; { animate(...) } <span class="cm">// 每帧回调</span>
+
+WindowAnimator::scheduleAnimation()                        [WindowAnimator.java:293]  <span class="cm">// 申请下一帧</span>
+└─ Choreographer::postFrameCallback(mAnimationFrameCallback) <span class="cm">// 落到 CALLBACK_ANIMATION</span>
+
+WindowAnimator::animate(frameTimeNs, vsyncId)              [WindowAnimator.java:128]  <span class="cm">// 每帧推进</span>
+├─ scheduleAnimation()                                    <span class="cm">// 先排下一帧，形成背压</span>
+└─ updateWindowsForAnimator / prepareSurfaces / ...        <span class="cm">// 本帧真正推进动画</span></div>
+
+<p><code>runWithScissors</code> 把 lambda 投到目标线程并等它执行完，确保 <code>getSfInstance()</code> 在 <code>android.anim</code> 上被调用。线程本身由 <code>AnimationThread</code> 创建，名字与优先级都已核实：<code>super("android.anim", THREAD_PRIORITY_DISPLAY, false)</code>（<code>AnimationThread.java:35</code>）。WMS 侧的 Handler 建在它上面（<code>WindowManagerService.java:766</code>），<code>mAnimator = new WindowAnimator(this)</code> 在 <code>WindowManagerService.java:1248</code>。</p>
+
+<h2 id="fn11">功能十一：相位与刷新率 —— <code>VsyncConfiguration</code> / <code>VsyncModulator</code></h2>
+
+<p>app 和 sf 不是同一条 vsync：它们相对硬件节拍各有一个提前量，默认各 1ms。提前量先被换算成 duration，再交给 <code>VsyncModulator</code> 在 early / late 之间切换；early 用于“这一帧要赶早”的场景，late 是常态。</p>
+
+<div class="tree">SurfaceFlinger::createEventThread()<span class="cm"> // 建两条 vsync 的入口</span>
+└─ Scheduler::createConnection("app" / "appSf")            [SurfaceFlinger.cpp:3178] <span class="cm">// 建两条 vsync 连接</span>
+   ├─ PhaseOffsets::getDefaultOffsets()                   [VsyncConfiguration.cpp:163] <span class="cm">// 取默认提前量</span>
+   │  ├─ appOffsetToDuration()                            [VsyncConfiguration.cpp:151] <span class="cm">// app 相位换算</span>
+   │  └─ sfOffsetToDuration()                             [VsyncConfiguration.cpp:147] <span class="cm">// sf 相位换算</span>
+   └─ VsyncModulator::getNextVsyncConfig()                [VsyncModulator.cpp:140]  <span class="cm">// 选 early/late</span>
+      ├─ earlyGpu / early                                <span class="cm">// 有 early GPU/transaction 帧</span>
+      └─ late                                            <span class="cm">// 常态，默认 1ms/1ms</span></div>
+
+<p>两条相位是「同一块面板、两个唤醒点」：app 先醒，留出绘制时间；sf 后醒，留出合成时间。提前量不是固定的，刷新率切换或 early 帧会把配置换成另一组 duration，但换算方式不变——都是把 offset 从节拍上减掉，减出负数就补一个周期。</p>
+
+<h2 id="p7">稳态闭环：静止画面为什么一帧都没有</h2>
+
+<p>把前面的碎片拼成一次完整循环，就能回答一个最常被问到的问题：<strong>屏幕静止时，这套机制到底在干什么？</strong>答案是什么都不干，而且是有严格代码依据的「什么都不干」。</p>
+
+<div class="step"><span class="no">1</span><strong>没有新的无效区域。</strong><code>View#invalidate</code> 不产生调用 → <code>ViewRootImpl#scheduleTraversals</code> 不进 → Choreographer 的队列空。</div>
+<div class="step"><span class="no">2</span><strong><code>mFrameScheduled</code> 保持 false。</strong>没有 <code>postCallback</code>，就没人调 <code>scheduleFrameLocked</code>（<code>Choreographer.java:636</code>），自然不会有 <code>scheduleVsync()</code>。</div>
+<div class="step"><span class="no">3</span><strong>连接上 <code>vsyncRequest</code> 停在 <code>None</code>。</strong><code>mHavePendingVsync</code> 为 false，也没有新的 <code>requestNextVsync</code>（<code>EventThread.cpp:318</code>）。</div>
+<div class="step"><span class="no">4</span><strong>EventThread 汇总为 false。</strong><code>vsyncRequested</code> 恒为 false（<code>EventThread.cpp:437</code>），<code>nextState = Idle</code>，触发 <code>mVSyncSource-&gt;setVSyncEnabled(false)</code>。</div>
+<div class="step"><span class="no">5</span><strong>DispSyncSource 停掉 callback repeater</strong>（<code>DispSyncSource.cpp:139</code>），<code>VSyncDispatch</code> 里不再有定时唤醒。</div>
+<div class="step"><span class="no">6</span><strong>Scheduler 侧的采样需求也归零。</strong>没有 invalidate → 没有 present fence 异常 → 模型无需重采样 → 硬件 vsync 保持关闭（<code>Scheduler.cpp:496</code>）。</div>
+<div class="step"><span class="no">7</span><strong>线程真的睡下去。</strong><code>mCondition.wait(lock)</code> 无超时（<code>EventThread.cpp:483</code>），SF 主循环在 <code>pollOnce(-1)</code> 上等唤醒。</div>
+
+<p>反向的启动条件只有一个：<strong>任何一方 <code>postCallback</code> / <code>scheduleAnimation</code></strong>。一次点击、一次动画启动、一次窗口属性变化，就会让第 3 步重新发生，整条链被依次点亮。<strong>这就是「按需」的全部含义——不是靠某个总开关，而是每一层都在自己的条件满足时自然收敛/展开。</strong></p>
+
+<div class="annotation star3"><span class="tag">关键认知</span> vsync 是<strong>时间</strong>，不是<strong>内容</strong>：模型只保证「什么时候醒」，醒着的时候有没有事做，由窗口树 / View 树决定。反过来，窗口树只保证「谁盖谁、谁在哪」，什么时候真正上屏，由 vsync 决定。<strong>两套系统正交，接口就是这笔「申请一次、给一次」的契约。</strong></div>
+
+<h2 id="p8">排障速查与源码索引</h2>
+
+<h3>8.1 三个已验证的抓手</h3>
+<div class="card">
+<table>
+  <tr><th>手段</th><th>能看到什么</th><th>出处</th></tr>
+  <tr><td><code>adb shell dumpsys SurfaceFlinger --vsync</code></td><td>app/sf 相位、duration、刷新率与 early/late 配置</td><td>选项注册于 <code>SurfaceFlinger.cpp:4661</code>；内容由 <code>VsyncConfiguration#dump</code>（<code>VsyncConfiguration.cpp:101</code> 起）输出</td></tr>
+  <tr><td>Perfetto，选 <code>surfaceflinger</code> + <code>view</code> + <code>wm</code> tag</td><td>VSYNC-app / VSYNC-sf 轨道、<code>Choreographer#doFrame</code>、SF 的 invalidate 切片、WMS 的 <code>animate</code></td><td>vsync-sf 计数器在 <code>MessageQueue.cpp:107</code>；doFrame 切片名在 <code>Choreographer.java:707</code></td></tr>
+  <tr><td>logcat 关键词</td><td><code>Skipped N frames</code> / <code>Faking VSYNC due to driver stall</code> / <code>Already have a pending vsync event</code> / <code>Failed dispatching</code></td><td><code>Choreographer.java:727</code>、<code>EventThread.cpp:489</code>、<code>Choreographer.java:995</code>、<code>EventThread.cpp:584</code></td></tr>
+</table>
+</div>
+
+<h3>8.2 四个现象的第一落点</h3>
+<div class="card">
+<table>
+  <tr><th>现象</th><th>先怀疑哪一层</th><th>第一跳代码</th></tr>
+  <tr><td>掉帧、滑动不跟手</td><td>App traversal 超预算，或 SF 合成晚于 VSYNC-sf</td><td><code>Choreographer#doFrame</code> 的 jitter 判定（<code>Choreographer.java:718</code>）</td></tr>
+  <tr><td>动画首帧卡一下</td><td>early 档没生效 / GPU 未热</td><td><code>VsyncModulator#getNextVsyncConfig</code>（<code>VsyncModulator.cpp:140</code>）</td></tr>
+  <tr><td>静止仍耗电</td><td>某连接保持 Periodic，或持续 invalidate</td><td><code>EventThread#threadMain</code> 的汇总逻辑（<code>EventThread.cpp:437</code>）</td></tr>
+  <tr><td>某 App 收不到 vsync</td><td>管道满 / 主线程阻塞 / 连接被摘</td><td><code>EventThreadConnection#postEvent</code>（<code>EventThread.cpp:194</code>）</td></tr>
+</table>
+</div>
+
+<h3>8.3 全篇方法索引</h3>
+<div class="card">
+<table>
+  <tr><th>方法 / 类</th><th>位置</th><th>作用</th></tr>
+  <tr><td><code>SurfaceFlinger#onComposerHalVsync</code></td><td>SurfaceFlinger.cpp:1718</td><td>硬件 vsync 入口，只转交时间戳</td></tr>
+  <tr><td><code>Scheduler#addResyncSample</code></td><td>Scheduler.cpp:548</td><td>喂样本并决定硬件 vsync 开关</td></tr>
+  <tr><td><code>VSyncReactor#addHwVsyncTimestamp</code></td><td>VSyncReactor.cpp:170</td><td>周期确认、返回是否还需采样</td></tr>
+  <tr><td><code>VSyncPredictor#addVsyncTimestamp</code></td><td>VSyncPredictor.cpp:94</td><td>拟合周期/相位</td></tr>
+  <tr><td><code>Scheduler#enableHardwareVsync</code></td><td>Scheduler.cpp:487</td><td>重开采样（先 resetModel）</td></tr>
+  <tr><td><code>EventThread#createEventConnection</code></td><td>EventThread.cpp:271</td><td>为客户端建 BitTube 连接</td></tr>
+  <tr><td><code>EventThread#requestNextVsync</code></td><td>EventThread.cpp:318</td><td>「申请一次给一次」</td></tr>
+  <tr><td><code>EventThread#threadMain</code></td><td>EventThread.cpp:403</td><td>分发循环与状态机</td></tr>
+  <tr><td><code>EventThread#dispatchEvent</code></td><td>EventThread.cpp:571</td><td>给选中的 consumer 投递</td></tr>
+  <tr><td><code>EventThreadConnection#postEvent</code></td><td>EventThread.cpp:189</td><td>写 BitTube</td></tr>
+  <tr><td><code>Choreographer#scheduleFrameLocked</code></td><td>Choreographer.java:636</td><td>应用层去重闸门</td></tr>
+  <tr><td><code>Choreographer#doFrame</code></td><td>Choreographer.java:701</td><td>五段式回调 + jitter 吸附</td></tr>
+  <tr><td><code>WindowAnimator#animate</code></td><td>WindowAnimator.java:128</td><td>WMS 侧每帧推进（背压式自我续帧）</td></tr>
+  <tr><td><code>ViewRootImpl#scheduleTraversals</code></td><td>ViewRootImpl.java:2097</td><td>App 侧申请帧的唯一入口</td></tr>
+</table>
+</div>
+
+<h2 id="quiz">🧠 自测：4 个问题</h2>
+
+<details><summary>1. 外屏的 vsync 在 onComposerHalVsync 里直接 return，从没喂进 addResyncSample。那外屏的合成靠什么对齐？</summary>
+<div class="ans">
+<p>靠<strong>内屏的模型 + 共享的 dispatch 定时器</strong>。预测模型是 per-Scheduler 的（<code>mVsyncSchedule.tracker</code> 只有一个），<code>addResyncSample</code> 只吃内屏样本；外屏只是不贡献样本，它要的节拍仍然由同一个 <code>VSyncDispatch</code> 按内屏周期推算。多屏不同刷新率时，靠 <code>setVsyncPeriod</code> 给模型换周期，并用外屏自己的最近一次 vsync 时间戳（<code>getRefreshTimestamp()</code>）估算该屏的刷新边界，而不是再训一个模型。</p>
+<p><strong>关键判据：</strong>代码里 <code>if (hwcDisplayId != getHwComposer().getInternalHwcDisplayId()) return;</code> 之后没有任何 per-display 的模型对象。</p>
+</div>
+</details>
+
+<details><summary>2. 采样够了就把硬件 vsync 关掉，SF 仍能每 16.67ms 醒一次——是谁算的、靠什么等下去？预测连续偏了，哪一步会把硬件 vsync 重新打开？</summary>
+<div class="ans">
+<p><strong>算：</strong><code>VSyncPredictor#nextAnticipatedVSyncTimeFrom</code>（<code>VSyncPredictor.cpp:240</code>）用拟合出的周期与相位推算。<strong>等：</strong><code>VSyncDispatch</code> 的定时器队列（<code>VSyncDispatchTimerQueue</code>）按该时刻设定时器，到点回调 <code>MessageQueue#vsyncCallback</code>（<code>MessageQueue.cpp:105</code>）→ <code>dispatchInvalidate</code> → SF 主循环醒来合成。</p>
+<p><strong>纠偏：</strong>实际 present 时间与预测不符时，<code>Scheduler#addPresentFence</code>（<code>Scheduler.cpp:567</code>）调 <code>controller-&gt;addPresentFence</code>，返回 true 就 <code>enableHardwareVsync()</code>；后者先 <code>tracker-&gt;resetModel()</code> 再 <code>setVsyncEnabled(true)</code>，重新进入采样。此外客户端申请 vsync 会经 <code>resyncCallback</code> 触发 <code>Scheduler#resync</code>（<code>Scheduler.cpp:526</code>，750ms 限频）。</p>
+</div>
+</details>
+
+<details><summary>3. 有人把 setVsyncRate(1) 设在一个连接上，为什么安静界面也会持续耗电？请指出这条链上「按需」失效的每一层。</summary>
+<div class="ans">
+<p><code>rate=1</code> 对应 <code>VSyncRequest::Periodic</code>（<code>EventThread.h:53-59</code>），于是：①<code>threadMain</code> 里 <code>vsyncRequested |= connection-&gt;vsyncRequest != None</code> 恒为 true（<code>EventThread.cpp:437</code>）；②<code>nextState</code> 永远是 <code>State::VSync</code>，<code>setVSyncEnabled(false)</code> 永不执行；③<code>DispSyncSource</code> 的 callback repeater 一直在跑，<code>VSyncDispatch</code> 定时唤醒不止；④SF 每帧被叫醒做一次「没有新内容」的合成尝试。<strong>四层全开，与界面是否变化无关。</strong></p>
+<p>排查时要注意：<code>Single</code> 会自减成 <code>SingleSuppressCallback</code> 再回 <code>None</code>，是安全的；只有 <code>Periodic</code> 或 <code>rate&gt;1</code> 才是常开。</p>
+</div>
+</details>
+
+<details><summary>4.（结合功能六与功能八）「申请一次给一次」在 SF 侧和 App 侧各由哪个状态位保证？如果两侧状态不同步，会发生什么？</summary>
+<div class="ans">
+<p><strong>SF 侧：</strong><code>EventThreadConnection#vsyncRequest</code>，在 <code>shouldConsumeEvent</code>（<code>EventThread.cpp:518</code>）里投递后从 <code>Single</code> 改 <code>SingleSuppressCallback</code>、再改 <code>None</code>。<strong>App 侧：</strong><code>Choreographer#mFrameScheduled</code>（<code>Choreographer.java:636</code> 置 true，在 doFrame 里置 false），以及 <code>mHavePendingVsync</code>（<code>:995</code> 的自检）。</p>
+<p><strong>不同步的后果：</strong>若 App 侧提前把 <code>mFrameScheduled</code> 复位但 SF 还没投递，App 会再申请一次 → SF 侧仍是 <code>Single</code>，<code>requestNextVsync</code> 的 <code>if (vsyncRequest == None)</code> 不成立，这次申请被<strong>静默吞掉</strong>，表现为「偶发丢一帧」（<code>EventThread.cpp:318-330</code>）。若反过来 SF 已投递而 App 迟迟不处理，管道满后 <code>postEvent</code> 返回 <code>-EAGAIN</code>，logcat 出现 <code>Failed dispatching</code>。这正是「一帧只申请一次」必须靠两侧闸门共同保证的原因。</p>
+</div>
+</details>
+
+
+<footer>
+<p style="margin-top:26px; padding-top:16px; border-top:1px solid var(--border); color:var(--text2); font-size:.88rem;">
+📐 Android 窗口层级专题 10 ｜ 基于 <code>android-12.0.0_r32</code>（WSL <code>/home/book/aosp12</code>）逐行核实 ｜ 全部锚点经 <code>audit_anchors.py</code> 校验
+</p>
+<p style="margin-top:8px;"><a href="09-窗口动画与过渡.html">← 09 窗口动画与过渡</a> &nbsp;|&nbsp; <a href="index.html">系列索引</a> &nbsp;|&nbsp; <a href="04-像素怎样上屏.html">04 像素怎样上屏</a> &nbsp;|&nbsp; <a href="09-窗口动画与过渡.html">09 窗口动画与过渡</a> &nbsp;|&nbsp; <a href="WMS学习路线图.html">🗺️ WMS 学习路线图</a></p>
+<p style="margin-top:8px; color:var(--accent3);">延伸阅读：本篇只讲「节拍从哪来、怎么分发、谁消费」；节拍之下的合成细节（commit / composite / present）在 04 篇，节拍之上的转场编排（leash / AppTransition）在 09 篇。</p>
+<p style="margin-top:8px;">下篇（专题补篇）：<a href="13-画中画.html">13 画中画 PiP：一次跨 ATMS / WMCore / WM Shell 的窗口模式迁移 →</a></p>
+</footer>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+<script>
+(function(){
+  var bar = document.getElementById('reading-progress');
+  var topBtn = document.getElementById('top-btn');
+  function update(){
+    var el = document.documentElement;
+    var max = el.scrollHeight - el.clientHeight;
+    var pct = max > 0 ? (el.scrollTop / max) * 100 : 0;
+    bar.style.width = pct.toFixed(2) + '%';
+    if (el.scrollTop > 600) topBtn.classList.add('show');
+    else topBtn.classList.remove('show');
+  }
+  window.addEventListener('scroll', update, {passive:true});
+  window.addEventListener('resize', update);
+  topBtn.addEventListener('click', function(){ window.scrollTo({top:0, behavior:'smooth'}); });
+  update();
+})();
+</script>
+</body>
+</html>

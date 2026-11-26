@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Binder 线程池与并发：15 条线程、饥饿与死锁 — AOSP 12 源码深度分析</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol","Apple Symbols",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .draft-note { border:1px dashed var(--accent); background:var(--tag-bg); border-radius:8px; padding:12px 18px; margin-bottom:24px; font-size:.88rem; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .think .qtag { color:var(--accent3); font-weight:bold; }
+    .analogy { border-left:4px solid var(--accent2); background:var(--bg-card); border:1px solid var(--border); border-left-width:4px; padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .analogy .tag { color:var(--accent2); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:10px 16px; margin:14px 0; font-size:.9rem; color:var(--text2); }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:14px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-size:.82rem; font-weight:bold; margin-right:8px; }
+    .why { color:var(--accent2); font-weight:bold; }
+    .deliver { border:1px solid var(--accent2); border-radius:8px; padding:12px 18px; margin:14px 0; background:var(--bg-card); font-size:.92rem; }
+    .deliver .tag { color:var(--accent2); }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🧵 Binder 线程池与并发：15 条线程、饥饿与死锁</h1>
+<p class="subtitle">服务端到底谁在执行事务？池怎么扩容又怎么收缩？为什么会「饱死」而不报错 · AOSP 12 源码逐行核实</p>
+<p class="series">📚 Android Framework 专题 · Binder 篇 B2（临时稿） ｜ 上承 B0 全链路、B1 驱动层 ｜ 基于 <code>android-12.0.0_r32</code></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="draft-note">
+  📝 <strong>临时稿（_draft）</strong>：本文件尚未分配系列编号、未放入正式目录、未更新 index.html。请直接在本文件上审阅修改；改完后由你下发正式落盘命令。
+</div>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p1">一、全景：为什么服务端必须有「线程池」</a>
+  <a href="#p2">二、池的诞生：startThreadPool 与 PoolThread</a>
+  <a href="#p3">三、扩容与收缩：BR_SPAWN_LOOPER 与超时退出</a>
+  <a href="#p4">四、忙碌计数与饥饿检测</a>
+  <a href="#p5">五、oneway 洪水与缓冲区耗尽</a>
+  <a href="#p6">六、死锁环路：同步调用的经典陷阱</a>
+  <a href="#p7">七、观测与诊断手册</a>
+  <a href="#p8">八、源码速查、实践题与自测</a>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p1">一、全景：为什么服务端必须有「线程池」</h2>
+
+<div class="card">
+  <p>B0 里说过一句话：「服务端执行事务的是 <strong>Binder 线程</strong>，不是主线程」。但没说清为什么需要「池」、池有多大、谁管扩容。这一篇把这个"看不见的劳动力市场"讲透。</p>
+
+  <h3>问题的起点：调用会阻塞</h3>
+  <div class="tree">如果服务端只有 1 个 Binder 线程会怎样？
+
+  A 调用 S.foo()（同步，等结果）
+       │
+       ▼
+  S 的 Binder 线程开始执行 foo() ──▶ 需要调另一个服务 T.bar()
+                                        │
+                                        │ 阻塞等待 T 的回复
+                                        ▼
+  ✗ 此时 B 也想调 S.baz() —— 但唯一那条 Binder 线程还卡在 foo() 里
+     B 的请求只能排队 → B 被拖慢 → 如果 B 是 system_server，全线卡死
+
+所以：必须有多条 Binder 线程，让"阻塞"不传染。</div>
+
+  <p>但"多"不能无限——每条线程都要占栈（默认 1MB 虚拟地址）、要被调度。于是有了这套设计：</p>
+
+  <table>
+    <tr><th>机制</th><th>谁负责</th><th>做什么</th></tr>
+    <tr><td>初始线程</td><td>用户态</td><td>进程启动时起 <strong>1 条</strong>主 Binder 线程</td></tr>
+    <tr><td>上限</td><td>用户态 + 驱动</td><td>默认 <strong>15</strong> 条，通过 <code>BINDER_SET_MAX_THREADS</code> 告诉驱动</td></tr>
+    <tr><td>扩容</td><td><strong>驱动发起</strong></td><td>驱动发现"都忙"时下发 <code>BR_SPAWN_LOOPER</code>，用户态收到就起新线程</td></tr>
+    <tr><td>收缩</td><td>用户态</td><td>池线程空闲超时（<code>TIMED_OUT</code>）就退出</td></tr>
+    <tr><td>饥饿监测</td><td>用户态</td><td>忙碌计数触顶超过 100ms 就打 <code>binder thread pool starved</code></td></tr>
+  </table>
+
+  <div class="annotation"><span class="tag">源码边界（同 B1）</span> 「驱动怎么判断"都忙"、什么时候发 <code>BR_SPAWN_LOOPER</code>」这部分在<strong>内核 <code>drivers/android/binder.c</code></strong>，<strong>不在这棵 AOSP 树里</strong>。本篇只讲用户态能看到的：收到命令后怎么起线程、怎么计数、怎么退出。</div>
+
+  <div class="analogy">
+    <span class="tag">类比</span> 银行网点：<strong>1 号窗口</strong>常开（主 Binder 线程）；客户排长队时<strong>经理打电话叫人来开新窗口</strong>（驱动发 <code>BR_SPAWN_LOOPER</code>）；最多开到 <strong>15 个窗口</strong>（<code>BINDER_SET_MAX_THREADS</code>）；没人了就<strong>关掉多余窗口</strong>（空闲超时退出）。<br>而"15 个窗口全在办大额业务、谁也动不了"就是<strong>饥饿/死锁</strong>——门口队伍无限长，但你不会收到"网点故障"的报错，只会觉得"怎么这么慢"。
+  </div>
+
+  <div class="hint">🔗 三篇 Binder 的关系：<strong>B0</strong> 讲一次调用怎么走完整链路；<strong>B1</strong> 讲驱动边界与一次拷贝；<strong>B2（本篇）</strong> 讲"谁来执行、能同时执行几个、卡住了会怎样"。这三篇合起来，你才能解释"Binder 调不通/很慢/莫名 ANR"这类问题。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p2">二、池的诞生：startThreadPool 与 PoolThread</h2>
+
+<div class="card">
+  <p>每个进程第一次用 Binder（通常是 <code>ProcessState::self()</code>）时会做初始化，但<strong>线程池不是自动起的</strong>——要显式调 <code>startThreadPool()</code>。</p>
+
+  <h3>块 A：起第一条线程（ProcessState.cpp:139 / 339 / 58）</h3>
+  <div class="code-block">
+    <div class="filename">ProcessState.cpp:58-70、139-147、339-347</div>
+    <pre><span class="kw">class</span> <span class="fn">PoolThread</span> : <span class="kw">public</span> Thread
+{
+<span class="kw">public</span>:
+    <span class="kw">explicit</span> <span class="fn">PoolThread</span>(<span class="kw">bool</span> isMain) : mIsMain(isMain) {}
+    <span class="cm">// ① 只是记下"我是不是主线程"，没有别的状态</span>
+
+<span class="kw">protected</span>:
+    <span class="kw">virtual bool</span> <span class="fn">threadLoop</span>()
+    {
+        IPCThreadState::<span class="fn">self</span>()-&gt;<span class="fn">joinThreadPool</span>(mIsMain);
+        <span class="kw">return false</span>;
+        <span class="cm">// ② ★ 线程体就一行：进池子（joinThreadPool 不会返回，直到该退出）</span>
+        <span class="cm">//    return false 表示"这个 Thread 对象不要循环调用 threadLoop"</span>
+    }
+};
+
+<span class="kw">void</span> <span class="fn">ProcessState::startThreadPool</span>()
+{
+    AutoMutex _l(mLock);
+    <span class="kw">if</span> (!mThreadPoolStarted) {
+        mThreadPoolStarted = <span class="kw">true</span>;
+        <span class="fn">spawnPooledThread</span>(<span class="kw">true</span>);
+        <span class="cm">// ③ ★ 只起 1 条，且标记为"主"（isMain=true）——</span>
+        <span class="cm">//    主线程的意义见块 C：它不会因空闲而退出</span>
+    }
+}
+
+<span class="kw">void</span> <span class="fn">ProcessState::spawnPooledThread</span>(<span class="kw">bool</span> isMain)
+{
+    <span class="kw">if</span> (mThreadPoolStarted) {
+        String8 name = <span class="fn">makeBinderThreadName</span>();
+        sp&lt;Thread&gt; t = sp&lt;PoolThread&gt;::<span class="fn">make</span>(isMain);
+        t-&gt;<span class="fn">run</span>(name.<span class="fn">string</span>());
+        <span class="cm">// ④ 起线程并命名（名字见下）</span>
+    }
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：起一条（或多条）线程，线程体进入 <code>joinThreadPool</code> 循环。</p>
+  <p><strong>设计意图</strong>：<span class="why">为什么线程体只有一行</span>。因为"当 Binder 线程"这件事的全部逻辑都在 <code>joinThreadPool</code> 里：注册、取命令、执行、判断要不要退出。把 <code>PoolThread</code> 做成极薄的壳，是为了让"起线程"和"跑循环"解耦——加线程时不需要关心循环细节。</p>
+
+  <h3>块 B：线程名——排障时最有用的一行（ProcessState.cpp:331）</h3>
+  <div class="code-block">
+    <div class="filename">ProcessState.cpp:331-337</div>
+    <pre><span class="kw">String8</span> <span class="fn">ProcessState::makeBinderThreadName</span>() {
+    int32_t s = <span class="fn">android_atomic_add</span>(<span class="num">1</span>, &amp;mThreadPoolSeq);
+    pid_t pid = <span class="fn">getpid</span>();
+    String8 name;
+    name.<span class="fn">appendFormat</span>(<span class="cm">"Binder:%d_%X"</span>, pid, s);
+    <span class="cm">// ① 格式：Binder:&lt;pid&gt;_&lt;序号，十六进制&gt;</span>
+    <span class="cm">//    例如 Binder:1234_3 —— 1234 是进程 pid，3 是该进程第 4 条（从 1 递增）</span>
+
+    <span class="kw">return</span> name;
+}
+<span class="cm">// ② ★ 这个命名是排障的入口：</span>
+<span class="cm">//    adb shell cat /proc/&lt;pid&gt;/task/*/comm | grep Binder</span>
+<span class="cm">//    可以直接数出"这个进程当前有几条 Binder 线程"</span>
+<span class="cm">//    ps -T -p &lt;pid&gt; 也能看到它们各自的 CPU/状态</span>
+<span class="cm">// ③ 用十六进制序号是为了省字符（线程名上限 15 字符）——</span>
+<span class="cm">//    pid 最大 7 位 + "Binder:" 7 位 + "_" + 序号，刚好够</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：给每条线程起名 <code>Binder:&lt;pid&gt;_&lt;seq&gt;</code>。</p>
+  <p><strong>设计意图</strong>：<span class="why">线程名是唯一能在 /proc 里"按名字筛选"的标识</span>。没有它，你只能靠栈去猜哪条是 Binder 线程。<strong>这条信息在诊断"线程池是否打满"时是决定性的</strong>——先数出数量，再决定要不要挖栈。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>想知道某个系统进程吃了几条 Binder 线程</strong>：<br>
+  <code>adb shell ps -A | grep system_server</code> 拿 pid，然后<br>
+  <code>adb shell "cat /proc/&lt;pid&gt;/task/*/comm" | grep -c Binder</code>。<br>
+  如果接近 15（上限），说明<strong>可能已经打满</strong>——接着看 §4 的饥饿日志与 §6 的死锁环路。</div>
+  <div class="think"><span class="qtag">🧠 思考（单块）</span> 既然 <code>spawnPooledThread(true)</code> 只在 <code>startThreadPool()</code> 里调一次，那"主" Binder 线程和后续扩容出来的线程，区别到底在哪？看块 C 的 <code>TIMED_OUT &amp;&amp; !isMain</code> 那一行。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p3">三、扩容与收缩：BR_SPAWN_LOOPER 与超时退出</h2>
+
+<div class="card">
+  <p>池子会自己长大，然后自己缩小。这两件事分别发生在两个地方：<strong>长大由驱动"催"</strong>，<strong>缩小由线程自己"走"</strong>。</p>
+
+  <h3>块 C：线程循环——唯一的进出点（IPCThreadState.cpp:617）</h3>
+  <div class="code-block">
+    <div class="filename">IPCThreadState.cpp:617-650</div>
+    <pre><span class="kw">void</span> <span class="fn">IPCThreadState::joinThreadPool</span>(<span class="kw">bool</span> isMain)
+{
+    mOut.<span class="fn">writeInt32</span>(isMain ? BC_ENTER_LOOPER : BC_REGISTER_LOOPER);
+    <span class="cm">// ① ★ 入池登记：主线程报 BC_ENTER_LOOPER，池线程报 BC_REGISTER_LOOPER</span>
+    <span class="cm">//    驱动据此把它们记到"这个进程的线程池"里——</span>
+    <span class="cm">//    ★ 只有登记过，驱动才可能给它派活（B1 的 ioctl 就靠这个）</span>
+    <span class="cm">//    两者的区别：ENTer 的那条在池子里是"常驻"，REGISTER 的会被回收</span>
+
+    mIsLooper = <span class="kw">true</span>;
+    status_t result;
+    <span class="kw">do</span> {
+        <span class="fn">processPendingDerefs</span>();
+        <span class="cm">// ② 处理积压的对象解引用（释放已经没人引用的 BpBinder 等）</span>
+
+        result = <span class="fn">getAndExecuteCommand</span>();
+        <span class="cm">// ③ ★ 核心：取一条命令并执行（内部 talkWithDriver → executeCommand）</span>
+        <span class="cm">//    没有命令时，这里会<b>阻塞</b>在 ioctl 上睡眠——不耗 CPU</span>
+
+        <span class="kw">if</span> (result &lt; NO_ERROR &amp;&amp; result != TIMED_OUT &amp;&amp; result != -ECONNREFUSED &amp;&amp; result != -EBADF) {
+            <span class="fn">LOG_ALWAYS_FATAL</span>(<span class="cm">"getAndExecuteCommand(fd=%d) returned unexpected error %d, aborting"</span>,
+                  mProcess-&gt;mDriverFD, result);
+            <span class="cm">// ④ 非预期错误 → 直接崩溃（驱动出问题就没有安全退路）</span>
+        }
+
+        <span class="kw">if</span> (result == TIMED_OUT &amp;&amp; !isMain) {
+            <span class="kw">break</span>;
+            <span class="cm">// ⑤ ★★ 收缩机制：池线程空闲超时就退出；<b>主线程（isMain）不退出</b></span>
+            <span class="cm">//    这保证进程永远至少有 1 条 Binder 线程可用</span>
+        }
+    } <span class="kw">while</span> (result != -ECONNREFUSED &amp;&amp; result != -EBADF);
+    <span class="cm">// ⑥ 驱动 fd 失效（进程要死了）才跳出</span>
+
+    mOut.<span class="fn">writeInt32</span>(BC_EXIT_LOOPER);
+    mIsLooper = <span class="kw">false</span>;
+    <span class="fn">talkWithDriver</span>(<span class="kw">false</span>);
+    <span class="cm">// ⑦ ★ 离池必须<b>主动注销</b>：告诉驱动"我走了，别再给我派活"</span>
+    <span class="cm">//    否则驱动仍以为这条线程可用，派过来的事务没人接 → 对端永久等待</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：线程入池登记 → 循环取活干 → 空闲超时（非主线程）退出 → 离池注销。</p>
+  <p><strong>设计意图</strong>：<span class="why">"主线程不退出"是最小可用性的保证</span>。如果所有线程都能空闲退出，那么某个瞬间可能出现"池里 0 条线程"——此时有事务进来，驱动会一直等（或要求新建，但那是异步的，存在窗口期）。保留一条常驻线程消除了这个窗口。<strong>代价</strong>：每个用过 Binder 的进程至少多一条常驻线程。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>服务"假死"：调用方永远等不到回复</strong>。<strong>因果</strong>：某条 Binder 线程在执行中崩了/被异常路径跳过，没有走到 ⑦ 的 <code>BC_EXIT_LOOPER</code>；驱动以为它还在，把事务派给它 → 无人处理。<strong>怎么查</strong>：<code>adb shell ps -T -p &lt;pid&gt;</code> 看 <code>Binder:*</code> 线程是否停在奇怪的位置；服务端日志里找有没有 <code>*_LEAVING THE THREAD POOL</code>（<code>LOG_THREADPOOL</code> 宏，需打开日志）。</div>
+
+  <h3>块 D：扩容——谁在催生（IPCThreadState.cpp:1350）</h3>
+  <div class="code-block">
+    <div class="filename">IPCThreadState.cpp:1350-1356 + ProcessState.cpp:339</div>
+    <pre><span class="cm">// 【收到催生命令】执行命令的分发里，有这么一段：</span>
+<span class="kw">case</span> BR_SPAWN_LOOPER:
+    mProcess-&gt;<span class="fn">spawnPooledThread</span>(<span class="kw">false</span>);
+    <span class="kw">break</span>;
+<span class="cm">// ① ★★ 这就是"扩容"的全部代码 —— 只有一行！</span>
+<span class="cm">//    注意传的是 false：新线程是<b>池线程</b>（可被回收），不是主线程</span>
+<span class="cm">// ② 那么"什么时候发这条命令"？→ 在驱动里（不在这棵树）。</span>
+<span class="cm">//    驱动维护每个进程"已注册线程数 / 正在执行的线程数"，</span>
+<span class="cm">//    发现没有空闲线程可派活时，就给该进程发 BR_SPAWN_LOOPER</span>
+
+<span class="cm">// 【用户态的限制】</span>
+<span class="kw">void</span> <span class="fn">ProcessState::spawnPooledThread</span>(<span class="kw">bool</span> isMain)
+{
+    <span class="kw">if</span> (mThreadPoolStarted) {
+        <span class="cm">// … 起线程</span>
+    }
+}
+<span class="cm">// ③ ★ 注意 if：线程池没启动时，即使收到 BR_SPAWN_LOOPER 也不会起线程！</span>
+<span class="cm">//    极端情况下（进程刚初始化、还没 startThreadPool）会产生"催了但没生"</span>
+
+<span class="cm">// 【上限】ProcessState.cpp:348</span>
+<span class="kw">status_t</span> <span class="fn">ProcessState::setThreadPoolMaxThreadCount</span>(<span class="kw">size_t</span> maxThreads) {
+    <span class="fn">LOG_ALWAYS_FATAL_IF</span>(mThreadPoolStarted &amp;&amp; maxThreads &lt; mMaxThreads,
+           <span class="cm">"Binder threadpool cannot be shrunk after starting"</span>);
+    <span class="cm">// ④ ★★ 启动后<b>不允许缩小上限</b>，否则直接 fatal ——</span>
+    <span class="cm">//    因为已经存在的线程数可能超过新上限，计数逻辑会错乱</span>
+    <span class="kw">if</span> (<span class="fn">ioctl</span>(mDriverFD, BINDER_SET_MAX_THREADS, &amp;maxThreads) != -<span class="num">1</span>) {
+        mMaxThreads = maxThreads;
+        <span class="cm">// ⑤ 同步告诉驱动（驱动据此决定最多催生到几条）</span>
+    }
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：收到 <code>BR_SPAWN_LOOPER</code> 就起一条新池线程；上限通过 ioctl 告知驱动，且启动后不能调小。</p>
+  <p><strong>设计意图</strong>：<span class="why">扩容决策权在驱动，不在用户态</span>。因为只有驱动知道"此刻这个进程有没有空闲线程可接活"——用户态看不到全局队列。<strong>这个分工很关键</strong>：如果让用户态自己判断"我要不要加线程"，它只能靠猜（比如"我这条线程忙了"），会过度扩容。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>报 <code>Binder threadpool cannot be shrunk after starting</code> 直接崩溃</strong>。<strong>因果</strong>：某个模块在 <code>startThreadPool()</code> 之后调用 <code>setThreadPoolMaxThreadCount()</code> 且传了更小的值（常见于"动态调整上限"的错误实现）。<strong>怎么查</strong>：搜代码里对该函数的调用点，确认都在启动前；要调大可以（允许），调小不行。</div>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 C、块 D）</span> 假设一个进程因为突发流量把 15 条线程全用满了，随后流量回落、空闲线程按 ⑤ 陆续退出——请描述这个"先胀后缩"过程中，<code>mExecutingThreadsCount</code> 会怎么变化？如果此时又来了一个事务，会不会出现"线程数不够但驱动不催生"的情况？</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p4">四、忙碌计数与饥饿检测</h2>
+
+<div class="card">
+  <p>这一节是 B2 的<strong>核心</strong>：系统怎么知道"线程池快撑不住了"，以及你为什么会看到那条 <code>starved</code> 日志。</p>
+
+  <h3>块 E：一次取活前后的计数（IPCThreadState.cpp:519）</h3>
+  <div class="code-block">
+    <div class="filename">IPCThreadState.cpp:519-558（裁剪）</div>
+    <pre><span class="kw">status_t</span> <span class="fn">IPCThreadState::getAndExecuteCommand</span>()
+{
+    status_t result;
+    int32_t cmd;
+
+    result = <span class="fn">talkWithDriver</span>();
+    <span class="cm">// ① 阻塞在这里等命令（没有活时睡眠，不耗 CPU）</span>
+    <span class="kw">if</span> (result &gt;= NO_ERROR) {
+        size_t IN = mIn.<span class="fn">dataAvail</span>();
+        <span class="kw">if</span> (IN &lt; <span class="kw">sizeof</span>(int32_t)) <span class="kw">return</span> result;
+        cmd = mIn.<span class="fn">readInt32</span>();
+        <span class="cm">// ② 读出一条命令（BR_*）</span>
+
+        <span class="fn">pthread_mutex_lock</span>(&amp;mProcess-&gt;mThreadCountLock);
+        mProcess-&gt;mExecutingThreadsCount++;
+        <span class="cm">// ③ ★ 开始执行：忙碌计数 +1</span>
+        <span class="kw">if</span> (mProcess-&gt;mExecutingThreadsCount &gt;= mProcess-&gt;mMaxThreads &amp;&amp;
+                mProcess-&gt;mStarvationStartTimeMs == <span class="num">0</span>) {
+            mProcess-&gt;mStarvationStartTimeMs = <span class="fn">uptimeMillis</span>();
+            <span class="cm">// ④ ★★ 首次"全忙"时记下时间戳 —— 饥饿计时的起点</span>
+            <span class="cm">//    注意条件是 >= mMaxThreads：<b>所有</b>线程都在执行才算</span>
+        }
+        <span class="fn">pthread_mutex_unlock</span>(&amp;mProcess-&gt;mThreadCountLock);
+
+        result = <span class="fn">executeCommand</span>(cmd);
+        <span class="cm">// ⑤ 真正干活（BR_TRANSACTION → 回调 Java 服务实现）</span>
+
+        <span class="fn">pthread_mutex_lock</span>(&amp;mProcess-&gt;mThreadCountLock);
+        mProcess-&gt;mExecutingThreadsCount--;
+        <span class="cm">// ⑥ 干完：忙碌计数 -1</span>
+        <span class="kw">if</span> (mProcess-&gt;mExecutingThreadsCount &lt; mProcess-&gt;mMaxThreads &amp;&amp;
+                mProcess-&gt;mStarvationStartTimeMs != <span class="num">0</span>) {
+            int64_t starvationTimeMs = <span class="fn">uptimeMillis</span>() - mProcess-&gt;mStarvationStartTimeMs;
+            <span class="kw">if</span> (starvationTimeMs &gt; <span class="num">100</span>) {
+                ALOGE(<span class="cm">"binder thread pool (%zu threads) starved for %" PRId64 " ms"</span>,
+                      mProcess-&gt;mMaxThreads, starvationTimeMs);
+                <span class="cm">// ⑦ ★★★ 饥饿日志！只在"全忙持续 &gt; 100ms"时打一次</span>
+                <span class="cm">//    看到这条日志＝你的进程在这段时间内<b>无法接收新事务</b></span>
+            }
+            mProcess-&gt;mStarvationStartTimeMs = <span class="num">0</span>;
+        }
+
+        <span class="cm">// Cond broadcast can be expensive, so don't send it every time a binder</span>
+        <span class="cm">// call is processed. b/168806193</span>
+        <span class="kw">if</span> (mProcess-&gt;mWaitingForThreads &gt; <span class="num">0</span>) {
+            <span class="fn">pthread_cond_broadcast</span>(&amp;mProcess-&gt;mThreadCountDecrement);
+            <span class="cm">// ⑧ 有人在 blockUntilThreadAvailable 里等 → 通知它</span>
+        }
+        <span class="fn">pthread_mutex_unlock</span>(&amp;mProcess-&gt;mThreadCountLock);
+    }
+
+    <span class="kw">return</span> result;
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：每次执行命令前后各改一次忙碌计数；全忙时开始计时，超过 100ms 就打日志。</p>
+  <p><strong>设计意图</strong>：<span class="why">为什么用"计数触顶 + 100ms"而不是"平均延迟"</span>。因为 Binder 线程池的问题特征是<strong>瞬时全忙</strong>：平时 1~2 条线程够用，突发时瞬间打满。平均值会把这个尖峰摊平到看不见；而"触顶持续 100ms"能精确抓住这种尖峰，且误报率低（100ms 已远超正常事务处理时间）。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>logcat 里刷 <code>binder thread pool (15 threads) starved for 250 ms</code></strong>。<strong>因果</strong>：该进程所有 Binder 线程同时被占住 ≥100ms，期间新事务全部排队。<strong>三大常见根因</strong>：① 某条线程在做同步 binder 调用且对端慢（阻塞传染）；② 某条线程在等锁（Java 层 synchronized 死等）；③ 事务处理里做了重活（大 JSON 解析、数据库批量写）。<strong>怎么查</strong>：立刻 <code>adb shell ps -T -p &lt;pid&gt;</code> 看 15 条 <code>Binder:*</code> 的状态，再抓 <code>kill -3</code> 拿所有线程栈——看它们卡在 <code>waitForResponse</code>、<code>monitor</code> 还是业务代码。</div>
+
+  <h3>块 F：等线程可用（IPCThreadState.cpp:504）</h3>
+  <div class="code-block">
+    <div class="filename">IPCThreadState.cpp:504-517</div>
+    <pre><span class="kw">void</span> <span class="fn">IPCThreadState::blockUntilThreadAvailable</span>()
+{
+    <span class="fn">pthread_mutex_lock</span>(&amp;mProcess-&gt;mThreadCountLock);
+    mProcess-&gt;mWaitingForThreads++;
+    <span class="cm">// ① 登记"有人在等"——这个计数决定了块 E 的 ⑧ 要不要广播</span>
+
+    <span class="kw">while</span> (mProcess-&gt;mExecutingThreadsCount &gt;= mProcess-&gt;mMaxThreads) {
+        ALOGW(<span class="cm">"Waiting for thread to be free. mExecutingThreadsCount=%lu mMaxThreads=%lu
+"</span>,
+                (unsigned <span class="kw">long</span>)mProcess-&gt;mExecutingThreadsCount,
+                (unsigned <span class="kw">long</span>)mProcess-&gt;mMaxThreads);
+        <span class="fn">pthread_cond_wait</span>(&amp;mProcess-&gt;mThreadCountDecrement, &amp;mProcess-&gt;mThreadCountLock);
+        <span class="cm">// ② ★ 全忙就睡在条件变量上，直到有人干完活（块 E 的 ⑧ 广播）</span>
+        <span class="cm">//    注意：这里会往 logcat 打 WARN —— 也是"线程池紧张"的信号</span>
+    }
+    mProcess-&gt;mWaitingForThreads--;
+    <span class="fn">pthread_mutex_unlock</span>(&amp;mProcess-&gt;mThreadCountLock);
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：需要"保证有线程可用"的调用方（如 <code>flushCommands</code>、<code>joinThreadPool</code> 的某些路径）在这里等，直到计数降下来。</p>
+  <p><strong>设计意图</strong>：<span class="why">这是线程池的"背压"</span>。当池满时，不是静默排队（那样会无限堆积），而是让调用方<strong>显式等待</strong>并打 WARN —— 让问题暴露出日志，而不是悄悄变慢。</p>
+  <div class="annotation"><span class="tag">两条日志的区别</span>
+  <code>binder thread pool (15 threads) starved for N ms</code> = <strong>事后统计</strong>（已经全忙了一段时间，刚恢复）；<br>
+  <code>Waiting for thread to be free. mExecutingThreadsCount=15 mMaxThreads=15</code> = <strong>实时事件</strong>（此刻正在等）。<br>
+  前者适合写报告，后者适合抓现场。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p5">五、oneway 洪水与缓冲区耗尽</h2>
+
+<div class="card">
+  <p>线程池说的"线程不够"，和 B1 说的"缓冲区不够"，是<strong>两种不同的资源耗尽</strong>，症状也不同。混淆它们会导致查错方向。</p>
+
+  <h3>块 G：oneway 的代价（ProcessState.cpp:364）</h3>
+  <div class="code-block">
+    <div class="filename">ProcessState.cpp:364-372 + IPCThreadState.cpp:895</div>
+    <pre><span class="kw">status_t</span> <span class="fn">ProcessState::enableOnewaySpamDetection</span>(<span class="kw">bool</span> enable) {
+    uint32_t enableDetection = enable ? <span class="num">1</span> : <span class="num">0</span>;
+    <span class="kw">if</span> (<span class="fn">ioctl</span>(mDriverFD, BINDER_ENABLE_ONEWAY_SPAM_DETECTION, &amp;enableDetection) == -<span class="num">1</span>) {
+        ALOGI(<span class="cm">"Binder ioctl to enable oneway spam detection failed: %s"</span>, <span class="fn">strerror</span>(errno));
+    }
+    <span class="cm">// ① ★ 这个开关让驱动检测"oneway 滥发"——</span>
+    <span class="cm">//    因为 oneway 不等回执，发送方会一路狂发，把目标进程的缓冲区灌满</span>
+    <span class="kw">return</span> NO_ERROR;
+}
+
+<span class="cm">// 收到告警时（waitForResponse 里）：</span>
+<span class="kw">case</span> BR_ONEWAY_SPAM_SUSPECT:
+    ALOGE(<span class="cm">"Process seems to be sending too many oneway calls."</span>);
+    CallStack::<span class="fn">logStack</span>(<span class="cm">"oneway spamming"</span>, CallStack::<span class="fn">getCurrent</span>().<span class="fn">get</span>(),
+            ANDROID_LOG_ERROR);
+    <span class="cm">// ② ★★ 直接把调用栈打出来 —— 这是定位"谁在滥发"最快的入口</span>
+    [[fallthrough]];
+<span class="kw">case</span> BR_TRANSACTION_COMPLETE:
+    <span class="kw">if</span> (!reply &amp;&amp; !acquireResult) <span class="kw">goto</span> finish;
+    <span class="kw">break</span>;</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：驱动可开启"oneway 滥发检测"；疑似滥发时，用户态把<strong>当前调用栈</strong>打进日志。</p>
+  <p><strong>设计意图</strong>：<span class="why">为什么 oneway 特别危险</span>。同步调用天然限流（一次只能有一个在飞，等回复才能发下一个）；<strong>oneway 没有这个约束</strong>，一个 for 循环就能把目标进程的缓冲区灌满。而缓冲区是 B1 讲的"进程共享 1MB"——灌满后连正常的同步调用也会失败（<code>BR_FAILED_REPLY</code>）。</p>
+
+  <h3>块 H：两种耗尽对照表</h3>
+  <table>
+    <tr><th></th><th>线程耗尽（本篇 §4）</th><th>缓冲区耗尽（B1 §4）</th></tr>
+    <tr><td>本质</td><td>没人接活</td><td>没地方放数据</td></tr>
+    <tr><td>典型原因</td><td>同步调用阻塞传染、锁等待、重活</td><td>oneway 洪水、单次大数据、并发多</td></tr>
+    <tr><td>调用方感受</td><td><strong>慢</strong>（排队，最终可能成功）</td><td><strong>失败</strong>（<code>FAILED_TRANSACTION</code>）</td></tr>
+    <tr><td>关键日志</td><td><code>starved for N ms</code> / <code>Waiting for thread to be free</code></td><td><code>oneway spamming</code> / <code>TransactionTooLargeException</code></td></tr>
+    <tr><td>观测手段</td><td>数 <code>Binder:*</code> 线程 + 抓栈</td><td>看 <code>/sys/kernel/debug/binder/stats</code>（需 root）</td></tr>
+  </table>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>「调着调着就失败了」但线程数看起来正常</strong>。<strong>因果</strong>：很可能不是线程问题而是<strong>缓冲区</strong>问题——特别是你用 oneway 做高频日志上报/事件通知时。<strong>怎么查</strong>：① 看是否 <code>FAILED_TRANSACTION</code>；② 开 <code>enableOnewaySpamDetection</code> 看有没有 <code>oneway spamming</code> 的栈；③ 把 oneway 改成同步（临时）看是否还失败——如果好了就是缓冲区问题。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p6">六、死锁环路：同步调用的经典陷阱</h2>
+
+<div class="card">
+  <p>这是线程池最危险的失效模式：<strong>所有线程都在互相等，永远不返回。</strong>它不崩溃、不报错，只是"越来越慢直到完全不动"。</p>
+
+  <h3>块 I：三种经典环路</h3>
+  <div class="tree">① 环路型（A→B→A）
+   system_server 的 Binder 线程 1 ──同步调──▶ App 进程的 Binder 线程 X
+                                              │
+                                              └──同步调──▶ system_server（另一服务）
+                                                             │
+                                                             └─ 需要空闲线程
+   ✗ 若 system_server 15 条线程都已进入类似的等待 → 没人接 → 永久卡住
+
+② 自锁型（同一进程内）
+   Binder 线程 1 持有锁 L，然后同步调另一个服务
+   那个服务的实现也要锁 L → 等 L → 线程 1 持有 L 且在等对方 → 死锁
+
+③ 线程池互等
+   进程 P 的 15 条线程，全部在同步调进程 Q
+   进程 Q 的 15 条线程，全部在同步调进程 P
+   ✗ 两边都没有空闲线程接新事务 → 双向死锁</div>
+
+  <h3>块 J：为什么"改成 oneway"能救（但要小心）</h3>
+  <div class="code-block">
+    <div class="filename">B0 块 I 的延续：oneway 的取舍</div>
+    <pre><span class="cm">// 【同步调用】调用方线程被占用：</span>
+<span class="cm">//   Binder 线程 ──transact(flags=0)──▶ 等 BR_REPLY ──▶ 期间<b>不能接新活</b></span>
+
+<span class="cm">// 【oneway】调用方立刻返回（只等"驱动已收下"）：</span>
+<span class="cm">//   Binder 线程 ──transact(flags=TF_ONE_WAY)──▶ 立刻可接下一个</span>
+<span class="cm">//   ★ 于是"阻塞传染"被切断 —— 这是系统服务调 App 一律用 oneway 的根本原因</span>
+
+<span class="cm">// 【但 oneway 的代价（B0 块 I + 本篇块 G）】</span>
+<span class="cm">//   ① 拿不到返回值，也收不到服务端异常（异常"disappear into the ether"）</span>
+<span class="cm">//   ② 不限流 → 可能把对端缓冲区灌满 → BR_FAILED_REPLY</span>
+<span class="cm">//   ③ 不保证顺序（多线程发送时）</span>
+
+<span class="cm">// 【工程结论】</span>
+<span class="cm">//   · system_server → App：<b>必须</b> oneway（否则 App 卡住会拖死系统）</span>
+<span class="cm">//   · App → system_server：通常同步（需要结果）</span>
+<span class="cm">//   · 高频事件通知：oneway + <b>自己做节流</b>（合并/丢弃/限速）</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：解释为什么"方向上"要用 oneway，但"频率上"必须自己控制。</p>
+  <p><strong>设计意图</strong>：<span class="why">Android 在架构层面就规定了这个方向</span>。回顾 06 篇：WMS 给 App 的所有回调（<code>IWindow</code> 的方法）几乎都是 oneway——因为 system_server 绝不能因为某个 App 卡住而卡住。<strong>这条规则不是优化，是生存要求</strong>。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>ANR 里看到主线程卡在 <code>BinderProxy.transact</code> → <code>waitForResponse</code></strong>。<strong>因果</strong>：主线程做了同步 binder 调用，对端慢或死锁。<strong>注意</strong>：这时<strong>不是</strong>线程池问题（主线程不是 Binder 线程），而是"调用方进程被阻塞"。<strong>怎么查</strong>：ANR trace 里顺着栈找到被调的服务，再看那个服务所在进程是否在 <code>starved</code> 或死锁。这条链要跨两个进程看。</div>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 C、块 I）</span> 线程池上限是 15。如果某进程的 15 条线程全部卡在"等另一个进程的回复"，而此时<strong>那个进程又想调用本进程</strong>——驱动会不会为它新开一条线程（>15）来打破僵局？如果不能，系统该如何设计避免这种互等？（提示：想想为什么 Android 规定"系统调 App 必须 oneway"。）</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p7">七、观测与诊断手册</h2>
+
+<div class="card">
+  <h3>三分钟诊断流程</h3>
+  <div class="step">
+    <p><span class="no">1</span><strong>确认是不是线程池问题</strong>：<code>adb shell "cat /proc/&lt;pid&gt;/task/*/comm" | grep -c Binder</code>。接近 15 就高度可疑。</p>
+    <p><span class="no">2</span><strong>看线程都在干什么</strong>：<code>adb shell ps -T -p &lt;pid&gt;</code> 看状态（S/D/R）；再 <code>adb shell kill -3 &lt;pid&gt;</code> 拿 Java 栈，或用 <code>debuggerd -b &lt;pid&gt;</code> 拿 native 栈。</p>
+    <p><span class="no">3</span><strong>找日志证据</strong>：<code>adb logcat -d | grep -E "starved|Waiting for thread to be free|oneway spamming"</code>。</p>
+    <p><span class="no">4</span><strong>区分线程问题 vs 缓冲区问题</strong>：对照本篇块 H 的表——失败（不是慢）= 缓冲区；慢/排队 = 线程池。</p>
+    <p><span class="no">5</span><strong>抓现场</strong>：Perfetto 里看 <code>binder transaction</code> 的切片；或 <code>dumpsys</code> 看目标服务状态。</p>
+  </div>
+
+  <h3>命令速查</h3>
+  <div class="code-block">
+    <div class="filename">WSL / adb —— 线程池相关</div>
+    <pre><span class="cm"># 1) 数 Binder 线程（最常用）</span>
+adb shell ps -A | grep &lt;进程名&gt;                      <span class="cm"># 先拿 pid</span>
+adb shell "cat /proc/&lt;pid&gt;/task/*/comm" | grep -c Binder
+adb shell ps -T -p &lt;pid&gt; | grep Binder               <span class="cm"># 带状态</span>
+
+<span class="cm"># 2) 抓所有线程栈（含 Binder 线程）</span>
+adb shell kill -3 &lt;pid&gt;                              <span class="cm"># Java 栈 → /data/anr/traces.txt</span>
+adb shell debuggerd -b &lt;pid&gt;                        <span class="cm"># native 栈</span>
+
+<span class="cm"># 3) 关键日志</span>
+adb logcat -d | grep -E "starved|Waiting for thread to be free|oneway spamming|Binder"
+
+<span class="cm"># 4) 驱动统计（需 root）</span>
+adb shell cat /sys/kernel/debug/binder/stats | head -50
+adb shell cat /sys/kernel/debug/binder/proc/&lt;pid&gt;    <span class="cm"># 单进程细节</span>
+
+<span class="cm"># 5) 打开 Binder 详细日志（谨慎，量大）</span>
+adb shell setprop log.tag.Binder VERBOSE</pre>
+  </div>
+  <div class="hint">💡 <strong>先数数量、再看栈、最后看日志</strong>——顺序反了容易被海量日志淹死。数量这一步能在 10 秒内告诉你"要不要继续往下查"。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p8">八、源码速查、实践题与自测</h2>
+
+<div class="card">
+  <h3>源码速查（行号均已 grep 核实）</h3>
+  <div class="code-block">
+    <div class="filename">frameworks/native/libs/binder/</div>
+    <pre><span class="cm"># 线程池的创建</span>
+ProcessState.cpp:45        DEFAULT_MAX_BINDER_THREADS = 15
+ProcessState.cpp:58         class PoolThread（线程体只有一行 joinThreadPool）
+ProcessState.cpp:139        startThreadPool() ★ 起 1 条主线程
+ProcessState.cpp:331        makeBinderThreadName() ★ "Binder:&lt;pid&gt;_&lt;seq&gt;"
+ProcessState.cpp:339        spawnPooledThread(bool isMain)
+ProcessState.cpp:348        setThreadPoolMaxThreadCount() ★ 启动后禁止调小
+ProcessState.cpp:364        enableOnewaySpamDetection()
+ProcessState.cpp:416-423    计数字段（mExecutingThreadsCount / mMaxThreads /
+                            mWaitingForThreads / mStarvationStartTimeMs）
+
+<span class="cm"># 线程循环与计数</span>
+IPCThreadState.cpp:504      blockUntilThreadAvailable() ★ 背压等线程
+IPCThreadState.cpp:519      getAndExecuteCommand() ★ 忙碌计数与饥饿检测
+IPCThreadState.cpp:536-551   饥饿判定（全忙 &gt;100ms 打日志）
+IPCThreadState.cpp:617      joinThreadPool() ★ 进出点
+IPCThreadState.cpp:621      BC_ENTER_LOOPER / BC_REGISTER_LOOPER
+IPCThreadState.cpp:640      TIMED_OUT &amp;&amp; !isMain → 退出（收缩）
+IPCThreadState.cpp:1350     case BR_SPAWN_LOOPER → spawnPooledThread(false) ★ 扩容
+
+<span class="cm"># uapi（用户态可见的内核契约）</span>
+uapi/linux/android/binder.h:122   BINDER_SET_MAX_THREADS
+uapi/linux/android/binder.h:197   BR_SPAWN_LOOPER
+uapi/linux/android/binder.h:215   BC_REGISTER_LOOPER
+uapi/linux/android/binder.h:216   BC_ENTER_LOOPER
+
+<span class="cm"># 注意：驱动侧"何时发 BR_SPAWN_LOOPER"在 drivers/android/binder.c，</span>
+<span class="cm">#       不在这棵 AOSP 树里（同 B1 的边界）</span></pre>
+  </div>
+
+  <h3>🛠️ 实践题（动手做）</h3>
+
+  <h4>P1 数出你手机上的 Binder 线程分布（20 分钟 · ★ 必做）</h4>
+  <div class="step">
+    <p><span class="no">1</span>用 <code>ps -A</code> 列出所有进程，对每个 pid 数 <code>Binder:*</code> 线程数。</p>
+    <p><span class="no">2</span>排序输出：哪些进程线程数最多？（预期：system_server 接近 15）</p>
+    <p><span class="no">3</span>观察一个 App：刚启动时几条？反复操作后几条？退出后台后是否回落？</p>
+  </div>
+  <div class="deliver"><span class="tag">交付</span> 一张 Top 10 进程的 Binder 线程数表 + 一句结论「哪些进程常驻高线程数，为什么」。</div>
+
+  <h4>P2 亲手制造一次饥饿（40 分钟 · ★ 推荐）</h4>
+  <div class="step">
+    <p><span class="no">1</span>在你 <code>D:\workspaceinder</code> 的服务端多个方法里 <code>Thread.sleep(300)</code>。</p>
+    <p><span class="no">2</span>客户端开 20 个线程并发调用。</p>
+    <p><span class="no">3</span>同时 <code>adb logcat | grep -E "starved|Waiting for thread"</code>，并周期性数线程数。</p>
+    <p><span class="no">4</span>观察：线程数怎么涨到 15 的？饥饿日志什么时候出现？调用方是变慢还是失败？</p>
+  </div>
+  <div class="deliver"><span class="tag">交付</span> 线程数随时间曲线 + 饥饿日志原文 + 一句结论「线程耗尽表现为慢而不是失败」。</div>
+
+  <h4>P3 制造并识别死锁环路（60 分钟 · 进阶）</h4>
+  <div class="step">
+    <p><span class="no">1</span>服务端方法 A 里同步调用客户端的回调方法，客户端回调里又同步调用服务端方法 B。</p>
+    <p><span class="no">2</span>用少数线程触发，观察是否卡死（不崩溃、无异常）。</p>
+    <p><span class="no">3</span><code>kill -3</code> 抓两边的线程栈，找出互相等待的证据。</p>
+    <p><span class="no">4</span><strong>修复</strong>：把其中一条改成 oneway（AIDL 里加 <code>oneway</code>），验证死锁消失。</p>
+  </div>
+  <div class="deliver"><span class="tag">交付</span> 两边的线程栈截图 + 一句话说明「哪条调用环、改成 oneway 后为什么解除」。</div>
+
+  <h3>🧠 自测：6 个问题</h3>
+
+  <details><summary>1. 为什么必须保留至少一条「主」Binder 线程不退出？</summary>
+  <div class="ans">因为主线程（<code>isMain=true</code>）在 <code>joinThreadPool</code> 里<strong>不会因 <code>TIMED_OUT</code> 退出</strong>（<code>IPCThreadState.cpp:640</code> 的 <code>&amp;&amp; !isMain</code>）。<br>如果所有线程都能空闲退出，就可能出现"池里 0 条线程"的窗口——此时有事务进来，驱动要么一直等、要么异步催生（存在时间差），期间调用方无谓等待。保留一条常驻线程消除了这个窗口，代价是每个用过 Binder 的进程至少多一条线程。</div></details>
+
+  <details><summary>2. 线程池是怎么"长大"的？决策权在谁手里？</summary>
+  <div class="ans">长大是<strong>驱动发起、用户态执行</strong>：驱动发现该进程没有空闲线程可派活时，下发 <code>BR_SPAWN_LOOPER</code>；用户态在 <code>executeCommand</code> 的 <code>case BR_SPAWN_LOOPER</code>（<code>IPCThreadState.cpp:1350</code>）里调 <code>spawnPooledThread(false)</code> 起一条新<strong>池线程</strong>。<br>决策权必须在驱动，因为只有它能看到全局——用户态看不到"别的线程有没有空闲"。<br>上限由 <code>BINDER_SET_MAX_THREADS</code> 告知驱动（默认 15），且 <strong>启动后不允许调小</strong>（<code>ProcessState.cpp:348</code>，否则 fatal）。</div></details>
+
+  <details><summary>3. 看到 <code>binder thread pool (15 threads) starved for 250 ms</code> 意味着什么？怎么查？</summary>
+  <div class="ans">意味着该进程<strong>所有 Binder 线程同时被占用 ≥100ms</strong>，这段时间内新事务全部排队（<code>IPCThreadState.cpp:536-551</code> 的判定：<code>mExecutingThreadsCount &gt;= mMaxThreads</code> 时开始计时，恢复时若 &gt;100ms 就打日志）。<br>查法：① <code>ps -T -p &lt;pid&gt;</code> 看 15 条 <code>Binder:*</code> 的状态；② <code>kill -3</code> / <code>debuggerd -b</code> 抓所有栈，看卡在 <code>waitForResponse</code>（阻塞传染）、<code>monitor</code>（锁等待）还是业务代码（重活）。<br>三大根因：同步调用阻塞传染、锁死等、事务里做重活。</div></details>
+
+  <details><summary>4. 「线程耗尽」和「缓冲区耗尽」怎么区分？</summary>
+  <div class="ans">看<strong>症状</strong>：线程耗尽 = <strong>慢</strong>（排队，最终可能成功）；缓冲区耗尽 = <strong>失败</strong>（<code>FAILED_TRANSACTION</code> / <code>TransactionTooLargeException</code>）。<br>看<strong>日志</strong>：前者是 <code>starved for N ms</code> 或 <code>Waiting for thread to be free</code>；后者是 <code>oneway spamming</code>（带调用栈）或客户端抛 <code>TransactionTooLargeException</code>。<br>根因不同：线程被"人"占住（同步调用/锁/重活）；缓冲区被"数据"占满（oneway 洪水/大数据/高并发）。</div></details>
+
+  <details><summary>5. 为什么系统服务调 App 一律用 oneway？</summary>
+  <div class="ans">切断<strong>阻塞传染</strong>。同步调用会让 system_server 的 Binder 线程一直等 App 的回复；如果 App 主线程卡住（比如在 onCreate 里做同步 IO），system_server 的那条线程也被拖住。15 条线程经不起几次这样的拖累，最终全线卡死（块 I 的环路型）。<br>oneway 让调用方只等"驱动已收下"就返回，立刻能接下一个事务。<br>代价（B0 块 I）：拿不到返回值、服务端异常静默消失、不限流可能灌满缓冲区——所以高频场景要自己做节流。</div></details>
+
+  <details><summary>6. 一条 Binder 线程"在池里但收不到活"，可能是什么问题？</summary>
+  <div class="ans">检查它有没有正确<strong>入池/离池</strong>：<br>① 入池必须写 <code>BC_ENTER_LOOPER</code>（主）或 <code>BC_REGISTER_LOOPER</code>（池）——没登记的话驱动不会给它派活（<code>IPCThreadState.cpp:621</code>）；<br>② 离池必须写 <code>BC_EXIT_LOOPER</code>——如果异常路径跳过了这一步，驱动仍以为它可用，派过来的事务无人处理，表现为<strong>对端永久等待</strong>（块 C 的 ⑦ 与 pitfall）。<br>排查：<code>ps -T</code> 看线程状态、<code>debuggerd -b</code> 看它停在哪个函数、检查是否有异常吞噬了退出流程。</div></details>
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android Framework 专题 · Binder 篇 B2 | <strong>Binder 线程池与并发：15 条线程、饥饿与死锁</strong></p>
+  <p>基于 AOSP 12 · 行号 2026-10-19 现地核实 · 驱动侧实现不在本树，已如实标注边界</p>
+  <p style="margin-top:10px;">
+    <a href="../../../android-framework-binder.html">← B0 全链路</a> &nbsp;|&nbsp;
+    <a href="draft-2026-10-19-binder-driver.html">← B1 驱动层</a> &nbsp;|&nbsp;
+    <a href="../../../Android-Framework学习路线图.html">🧭 Framework 路线图（B 赛道）</a>
+  </p>
+  <p style="margin-top:8px;">正式落盘后决定编号（拟 B2）与放置位置。</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

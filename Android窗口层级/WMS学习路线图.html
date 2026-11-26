@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WMS 学习路线图 — 从层级树构建出发（AOSP 12）</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:30px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .step-box { background:var(--step-bg); border:1px solid var(--step-border); border-radius:8px; padding:18px 22px; margin:16px 0; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .cm { color:var(--cm); font-style:italic; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .flow { display:flex; flex-wrap:wrap; align-items:center; gap:6px 4px; margin:16px 0; font-family:"SF Mono","Fira Code",monospace; font-size:.78rem; }
+    .flow-box { background:var(--code-bg); border:1px solid var(--border); border-radius:6px; padding:5px 10px; white-space:nowrap; }
+    .flow-box.star { border-color:var(--accent); background:var(--tag-bg); }
+    .flow-arrow { color:var(--text2); font-size:1.1rem; }
+    .stage-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; margin:18px 0; }
+    .stage-cell { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
+    .stage-cell .n { display:inline-block; background:var(--accent3); color:#fff; border-radius:6px; font-size:.78rem; padding:1px 9px; margin-bottom:8px; }
+    .stage-cell.done .n { background:var(--accent2); }
+    .stage-cell.next .n { background:var(--accent); }
+    .stage-cell h4 { margin:2px 0 6px; }
+    .stage-cell .meta { color:var(--text2); font-size:.8rem; }
+    .chain { counter-reset:step; margin:14px 0; padding-left:4px; }
+    .chain .row { position:relative; padding:8px 12px 8px 44px; margin-bottom:6px; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; font-size:.88rem; }
+    .chain .row::before { counter-increment:step; content:counter(step); position:absolute; left:10px; top:9px; width:22px; height:22px; line-height:22px; text-align:center; background:var(--accent3); color:#fff; border-radius:50%; font-size:.75rem; font-weight:bold; }
+    .chain .row b { color:var(--accent2); }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .lab { border-left:4px solid var(--accent2); padding:10px 16px; margin:12px 0; background:var(--code-bg); border-radius:6px; font-size:.92rem; }
+    .lab .tag { color:var(--accent2); }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } .stage-grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🗺️ WMS 系统学习路线图</h1>
+<p class="subtitle">从「层级树构建」出发 · 六阶段 · 每站都有真实文件行号、实战问题与动手实验</p>
+<p class="series">📚 Android 窗口层级专题 · 学习导航 | 基于 <code>android-12.0.0_r32</code>（WSL <code>/home/book/aosp12</code>） | 所有锚点 2026-10-15 grep 核实</p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p0">〇、你在哪里：全景路线</a>
+  <a href="#pver">一、先立住：四个版本事实</a>
+  <a href="#p-tools">二、阶段 0：工具箱（半天）</a>
+  <a href="#p-input">三、阶段 1：输入系统（05 篇）</a>
+  <a href="#p-life">四、阶段 2：Activity/Task 与窗口生命周期（06–07 篇）</a>
+  <a href="#p-layout">五、阶段 3：布局 / Insets / 旋转与配置（08 篇）</a>
+  <a href="#p-anim">六、阶段 4：动画与过渡（09 篇）</a>
+  <a href="#p-vsync">七、阶段 4+：vsync 与 Choreographer（10 篇 · 已落盘）</a>
+    <a href="#p-ime">八、阶段 5：IME 与壁纸专项（11 篇）</a>
+  <a href="#p-multi">九、阶段 6：多显示与多窗口（12 篇 · 按需）</a>
+  <a href="#p-lock">九、贯穿线：线程与锁模型</a>
+  <a href="#p-plan">十、节奏表与学习纪律</a>
+  <a href="#p-grep">十一、源码速查命令</a>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p0">〇、你在哪里：全景路线</h2>
+
+<div class="card">
+  <p>你已经走完了「树的静态结构」与第一条动态主线：00/01 概念 → 02 树怎么构建、窗口怎么挂树 → 03 树怎么被遍历并产出布局/Z 序/事务 → 04 SurfaceControl·BLAST·SurfaceFlinger 怎么把树变成像素 → 05 输入系统（事件怎么命中窗口） → 06 窗口的诞生（addView → addWindow → WindowState 上树，生命周期开篇）。</p>
+  <p>接下来的路线，是继续给这棵树补上动态主线：<strong>生命周期</strong>（窗口从哪来、到哪去，07 篇续）、<strong>布局配置</strong>（frame/Insets/旋转怎么算）、<strong>动画</strong>（转场时 Layer 树怎么被临时改造）；再外加两个特殊系统（IME/壁纸）与多屏多窗。</p>
+
+  <div class="stage-grid">
+    <div class="stage-cell done"><span class="n">已完成</span><h4>00–01 概念</h4><div class="meta">WindowContainer 家族 · layer · WindowToken · 树 vs View 树</div></div>
+    <div class="stage-cell done"><span class="n">已完成</span><h4>02 树的构建</h4><div class="meta">DisplayAreaPolicyBuilder 两趟遍历 · addWindow 挂树</div></div>
+    <div class="stage-cell done"><span class="n">已完成</span><h4>03 窗口刷新：布局、Z 序与事务提交</h4><div class="meta">performSurfacePlacement · performLayout · assignChildLayers · 事务</div></div>
+    <div class="stage-cell done"><span class="n">已完成</span><h4>04 Surface 与合成</h4><div class="meta">SurfaceControl · BLASTBufferQueue · SF commit/composite/present</div></div>
+    <div class="stage-cell done"><span class="n">已完成</span><h4>05 输入系统</h4><div class="meta">InputMonitor → InputDispatcher 命中 → InputChannel → ANR</div></div>
+    <div class="stage-cell done"><span class="n">已完成</span><h4>06 窗口的诞生</h4><div class="meta">客户端 addView → binder → WMS.addWindow → WindowState 上树</div></div>
+    <div class="stage-cell done"><span class="n">已完成</span><h4>07 窗口的来路与归途</h4><div class="meta">ActivityStarter · ActivityRecord(=WindowToken) · StartingSurface · 删除三路径</div></div>
+    <div class="stage-cell done"><span class="n">已完成</span><h4>08 窗口的尺寸与身体</h4><div class="meta">computeFrame · InsetsStateController · DisplayRotation · 解冻六条件</div></div>
+    <div class="stage-cell done"><span class="n">已完成</span><h4>09 窗口动画与过渡</h4><div class="meta">AppTransition · leash 缰绳 · WindowAnimator · Shell 接管</div></div>
+    <div class="stage-cell done"><span class="n">已完成</span><h4>10 vsync 与 Choreographer</h4><div class="meta">VSyncPredictor · app/sf 两条相位 · EventThread · Choreographer · android.anim</div></div>
+    <div class="stage-cell next"><span class="n">下一站</span><h4>11 IME / 壁纸</h4><div class="meta">IMMS 焦点绑定 · ImeContainer · WallpaperController</div></div>
+    <div class="stage-cell"><span class="n">按需</span><h4>12 多屏多窗</h4><div class="meta">DisplayContent 列表 · windowingMode · 分屏/PIP</div></div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="pver">一、先立住：四个版本事实</h2>
+
+<div class="annotation star3">
+  <p><span class="tag">版本陷阱 ⚠</span> 网上大量 WMS 文章基于 8/9/10/13，类名和职责差别很大。以下四点是本树（android-12.0.0_r32）实测，请先记住，读代码时能少走很多弯路。</p>
+</div>
+
+<div class="card">
+  <ol>
+    <li><strong>没有 TaskFragment</strong>：12 树里不存在 <code>TaskFragment.java</code>（12L/API32 才引入）。任务容器只有 <code>Task</code>（<code>Task.java:252 class Task extends WindowContainer&lt;WindowContainer&gt;</code>）。</li>
+    <li><strong>WMS 与 ATMS 同包同锁</strong>：都在 <code>com.android.server.wm</code> 包；全局锁 <code>mGlobalLock</code> 声明在 <code>ActivityTaskManagerService.java:362</code>（<code>WindowManagerGlobalLock</code>），<code>:370</code> 的 <code>mGlobalLockWithoutBoost</code> 是同一把。</li>
+    <li><strong>PhoneWindowManager 的位置</strong>：在 <code>com.android.server.policy</code> 包（<code>.../server/policy/PhoneWindowManager.java</code>），<strong>不是</strong> <code>wm/policy</code>，那个目录不存在。</li>
+    <li><strong>动画主力不是 Shell Transitions</strong>：12 上转场主线是 AppTransition + SurfaceAnimator(leash) + TaskOrganizer/RemoteAnimation；TransitionController 一整套是 13/14 的主线，别拿新版本文章套 12。另外 SystemUI 侧没有 <code>SystemBars.java</code>。</li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p-tools">二、阶段 0：工具箱（半天，先武装再读代码）</h2>
+
+<div class="card">
+  <table>
+    <tr><th>工具</th><th>入口 / 锚点</th><th>用途</th></tr>
+    <tr>
+      <td><code>dumpsys window</code><br><code>windows / displays</code><br><code>visible-window-views</code></td>
+      <td>WMS dump 链（WindowManagerService.dumpLocked）</td>
+      <td>看窗口树与 WindowState 全部字段：frame、mBaseLayer/mSubLayer、relayoutCalled、hasSurface、attr、focus</td>
+    </tr>
+    <tr>
+      <td><code>adb shell cmd window …</code></td>
+      <td>WindowManagerShellCommand.java：<code>:75 size</code>、<code>:85 tracing</code>（:89 转交 mWindowTracing）、<code>:106 user-rotation</code>、<code>:110 set-ignore-orientation-request</code>、<code>:122 reset</code></td>
+      <td>模拟分辨率/密度/旋转，复现配置类 bug，不用改系统设置</td>
+    </tr>
+    <tr>
+      <td><strong>WindowTracing + Winscope</strong></td>
+      <td>WindowTracing.java：<code>:48</code> 类、<code>:98 startTrace</code>、<code>:191 isEnabled</code><br><code>cmd window tracing start/stop</code></td>
+      <td>单步回放 WindowContainer 树随时间的变化——层级/动画/旋转问题的<strong>第一神器</strong></td>
+    </tr>
+    <tr>
+      <td><code>dumpsys input</code></td>
+      <td>InputDispatcher 内部状态</td>
+      <td>focusedWindow、各屏 touchStates、ANR 等待队列、inboundQueue——输入问题第一现场</td>
+    </tr>
+    <tr>
+      <td><code>getevent -lt</code> / <code>sendevent</code></td>
+      <td>EventHub 之下的 evdev 层</td>
+      <td>判断输入问题在驱动/硬件前还是 framework</td>
+    </tr>
+    <tr>
+      <td><code>dumpsys SurfaceFlinger</code> + SF tracing</td>
+      <td>04 篇链路末端</td>
+      <td>验证 SF Layer 树与 WMS WindowContainer 树是否同构</td>
+    </tr>
+  </table>
+</div>
+
+<div class="lab"><p><span class="tag">🧪 本阶段实验</span> 启动一个 App → 抓一份 <code>dumpsys window windows</code>，把 dump 里每个字段对照 WindowState 源码读懂；再开 window tracing 做一次屏幕旋转，到 <a href="https://ui.perfetto.dev/">Winscope/Perfetto</a> 里回放，看到 freeze 截图层与真实层的交接即算过关。</p></div>
+
+<!-- ============================================================ -->
+
+<h2 id="p-input">三、阶段 1：输入系统（对应 05 篇，建议 1–2 周）</h2>
+
+<div class="annotation">
+  <p><span class="tag">一句话主线</span> 屏幕触摸 → evdev → InputReader 加工 → InputDispatcher 做命中测试 → 通过窗口的 InputChannel 发往 App → ViewRootImpl 入队派发。焦点、ANR、触摸错位全部在这条线上。</p>
+</div>
+
+<h3>核心调用链（全部已核实）</h3>
+<div class="chain">
+  <div class="row"><b>“电话线”建立</b>：<code>WMS.addWindow()</code>（WMS.java:1457）中 :1687–1690 <code>win.openInputChannel(outInputChannel)</code> → <code>WindowState.openInputChannel()</code>（WindowState.java:2689）:2694 <code>mInputManager.createInputChannel(name)</code>；句柄存于 WindowState.java:607 <code>mInputChannel</code> / :615 <code>mInputChannelToken</code>。无输入能力的窗口走 <code>Session.addToDisplayWithoutInputChannel</code>（Session.java:209）。</div>
+  <div class="row"><b>窗口列表喂给 native</b>：<code>InputMonitor</code>（InputMonitor.java:72）的 <code>updateInputWindowsLw()</code>（:338）→ 逐窗口 <code>populateInputWindowHandle()</code>（:270，填 touchable region / token / focusable）→ :490 <code>updateInputWindows(inDrag)</code> → InputManagerService → JNI <code>com_android_server_input_InputManagerService.cpp</code> → InputDispatcher。</div>
+  <div class="row"><b>native 分发线程</b>：<code>InputDispatcher::dispatchOnce()</code>（InputDispatcher.cpp:572）→ <code>dispatchOnceInnerLocked()</code>（:683）→ 按键走 <code>findFocusedWindowTargetsLocked()</code>（:1786），触摸走 <code>findTouchedWindowTargetsLocked()</code>（:1900，命中区域、触摸分裂、模态、遮挡过滤都在这里）。</div>
+  <div class="row"><b>ANR 判定</b>：<code>processAnrsLocked()</code>（:640）→ 阈值 <code>DEFAULT_INPUT_DISPATCHING_TIMEOUT</code>（:102，基值 5000ms × 厂商 HwTimeoutMultiplier）→ <code>onAnrLocked(Connection)</code>（:5515）/ <code>onAnrLocked(InputApplicationHandle)</code>（:5550）→ 回 system_server 弹 ANR。</div>
+  <div class="row"><b>上游设备读取</b>：<code>reader/InputReader.cpp</code> 的 <code>loopOnce()</code> + <code>reader/EventHub.cpp</code>（evdev 原始事件、设备热插拔）。</div>
+  <div class="row"><b>Policy 按键拦截</b>（音量/电源/Home/唤醒）：<code>PhoneWindowManager.interceptKeyBeforeQueueing()</code>（PhoneWindowManager.java:3383）、<code>interceptMotionBeforeQueueingNonInteractive()</code>（:3964）。</div>
+  <div class="row"><b>焦点</b>：<code>DisplayContent.findFocusedWindow()</code>（:3362）、<code>updateFocusedWindowLocked()</code>（:3387）。</div>
+  <div class="row"><b>App 侧接收</b>：<code>ViewRootImpl.enqueueInputEvent()</code>（ViewRootImpl.java:8438）→ <code>doProcessInputEvents()</code>（:8493）→ <code>deliverInputEvent()</code>（:8520）；通道接收端是 <code>InputEventReceiver</code>（:38，native Looper 回调）。</div>
+</div>
+
+<div class="flow">
+  <span class="flow-box">evdev</span><span class="flow-arrow">→</span>
+  <span class="flow-box">EventHub.cpp</span><span class="flow-arrow">→</span>
+  <span class="flow-box">InputReader.loopOnce</span><span class="flow-arrow">→</span>
+  <span class="flow-box star">InputDispatcher 命中测试</span><span class="flow-arrow">→</span>
+  <span class="flow-box">InputChannel(socketpair)</span><span class="flow-arrow">→</span>
+  <span class="flow-box">InputEventReceiver</span><span class="flow-arrow">→</span>
+  <span class="flow-box">ViewRootImpl 派发</span>
+</div>
+
+<div class="pitfall">
+  <p><span class="tag">🐛 实战问题</span></p>
+  <ul>
+    <li><strong>Input dispatching timed out（ANR）</strong>：先分清两种——窗口无响应（App 主线程卡死）vs 焦点窗口不存在/未就绪（awaitedFocusedApplication，常见于启动慢）。两者 onAnrLocked 重载不同，<code>dumpsys input</code> 看 connection 的 waitQueue/focus 能直接区分。</li>
+    <li><strong>触摸点到错误窗口</strong>：touchable region 算错（SurfaceView/异形裁剪）、不可见但仍持有 InputChannel 的窗口拦截、FLAG_NOT_TOUCH_MODAL 的区域外放行行为、spy/policy flag。</li>
+    <li><strong>点了没反应</strong>：窗口 NOT_FOCUSABLE 导致按键无焦点、token 已 remove 但 channel 未注销、焦点在另一块 display。</li>
+    <li>多点触控被“分裂”到两个窗口；模态对话框没拦住下层事件；IME 弹出后触摸宿主变化（与阶段 5 联动）。</li>
+  </ul>
+</div>
+
+<div class="lab"><p><span class="tag">🧪 动手实验</span> ① 开发者选项打开“显示点按操作反馈”，配合 <code>dumpsys input</code> 观察 focusedWindow 与 touchState；② 加一个 <code>FLAG_NOT_FOCUSABLE | FLAG_NOT_TOUCH_MODAL</code> 悬浮窗，分别点窗口内外验证路由；③ <code>adb shell input keyevent/tap</code> 注入，在 dispatchOnceInnerLocked 加 log/断点完整跟一遍。</p></div>
+
+<!-- ============================================================ -->
+
+<h2 id="p-life">四、阶段 2：Activity/Task 与窗口生命周期（对应 06–07 篇，建议 1–2 周）</h2>
+
+<div class="annotation star3">
+  <p><span class="tag">已完成 ✓</span> 06 篇已完成（窗口的诞生：addView → addWindow → WindowState 上树），见 <a href="06-窗口的诞生.html">06 窗口的诞生</a>；本节剩余的「Activity/Task 启动链与回退栈生命周期」内容见 07 篇。</p>
+</div>
+
+<div class="annotation">
+  <p><span class="tag">一句话主线</span> startActivity → ActivityStarter 决策 → ActivityRecord（就是 WindowToken）挂进 Task → bindApplication/realStartActivity → ViewRootImpl 首次 relayout → 首绘翻转 isDrawn → 删除。把 02 篇“窗口怎么挂树”补全成“窗口从哪来、到哪去”。</p>
+</div>
+
+<h3>核心调用链（已核实）</h3>
+<div class="chain">
+  <div class="row"><b>启动入口与决策</b>：<code>ATMS.startActivity()</code>（ActivityTaskManagerService.java:1144）→ <code>ActivityStarter.execute()</code>（ActivityStarter.java:611）→ <code>executeRequest()</code>（:811）→ <code>startActivityUnchecked()</code>（:1548）→ <code>startActivityInner()</code>（:1570 附近，launchMode / task 复用 / 回退栈全在这里）。</div>
+  <div class="row"><b>身份关系</b>：<code>ActivityRecord extends WindowToken</code>（ActivityRecord.java:365）——一个 Activity 在 WMS 树里就是一个 token；<code>WindowToken extends WindowContainer&lt;WindowState&gt;</code>（WindowToken.java:71）；非应用 token 经 <code>DisplayContent.addWindowToken()</code>（DisplayContent.java:1134）挂树（02 篇已学）。</div>
+  <div class="row"><b>容器</b>：<code>Task</code>（Task.java:252）、<code>RootWindowContainer</code>（:175，WindowContainer&lt;DisplayContent&gt;）、<code>KeyguardController</code>（:65，锁屏对可见性/转场有生杀权）。</div>
+  <div class="row"><b>启动窗口</b>（splash/快照）：<code>StartingSurfaceController</code>（StartingSurfaceController.java:46）<code>createSplashScreenStartingSurface()</code>（:60）/ <code>createTaskSnapshotSurface()</code>（:115）；12 上优先走 <code>TaskOrganizerController.addStartingWindow()</code>（:71，ShellStartingSurface）——由 SystemUI/Shell 接管。</div>
+  <div class="row"><b>绘制就绪状态机</b>：<code>WindowState.isDrawn()</code>（:2091）、<code>isReadyForDisplay()</code>（:2006）、<code>mViewVisibility</code>（:322 / 赋值 :1059）、首帧 buffer 到达后的 commitFinishDrawingLocked（03 篇 mApplySurfaceChangesTransaction 回调里出现过）。</div>
+  <div class="row"><b>删除</b>：<code>WindowState.removeIfPossible()</code>（:2418，延迟/条件删除，会等动画）与 <code>removeImmediately()</code>（:2362）——理解“Activity 已 onDestroy 但窗口还在等动画结束”的分离。</div>
+  <div class="row"><b>客户端入口</b>：<code>Session.addToDisplay()</code>（Session.java:189；另有 :209 的无输入通道变体）。</div>
+</div>
+
+<div class="pitfall">
+  <p><span class="tag">🐛 实战问题</span></p>
+  <ul>
+    <li><strong>启动黑屏/白屏</strong>三种成因，排障点完全不同：starting window 没加上（TaskOrganizer 侧）/ 首帧太晚 isDrawn 迟迟不翻转（App 侧）/ 主题 windowBackground 本身是白色。</li>
+    <li><strong>has leaked window</strong>：Activity destroy 时 WindowManager.removeView 没配对（Dialog/Toast 还持有 token）。</li>
+    <li>splash 图标不消失、starting window 残留、冷启动 task snapshot 显示成旧画面。</li>
+    <li>launchMode / taskAffinity / clearTop / 多实例行为与预期不符；后台 Activity 启动被拦（BAL）；showWhenLocked 在锁屏上的显示时机；配置变更期间窗口两次 add/remove 造成闪烁。</li>
+  </ul>
+</div>
+
+<div class="lab"><p><span class="tag">🧪 动手实验</span> ① <code>am start -W -n pkg/.Act</code> 看 WaitTime/TotalTime，配合 tracing 对齐 starting window → 真实窗口的接力点；② 故意在 onCreate 弹 Dialog 后直接 finish，复现 leaked window 并读 WMS 日志；③ 跟一次最近任务恢复，观察快照 surface 与真实 Activity 窗口的替换。</p></div>
+
+<!-- ============================================================ -->
+
+<h2 id="p-layout">五、阶段 3：布局 / Insets / 旋转与配置（对应 08 篇，建议 1–2  周）</h2>
+
+<div class="annotation">
+  <p><span class="tag">学什么</span> 03 篇学了遍历“怎么跑”，这一阶段学每一遍里“算了什么”：窗口 frame 怎么定、系统栏怎么让位、旋转怎么做到不闪、配置变化怎么沿树传播。</p>
+</div>
+
+<h3>核心锚点（已核实）</h3>
+<div class="chain">
+  <div class="row"><b>布局</b>：<code>DisplayContent.performLayoutNoTrace()</code>（DisplayContent.java:4417）→ 逐窗口回调 <code>mPerformLayout</code>（:781）→ <code>WindowState.computeFrame()</code>（WindowState.java:1274）；策略侧 <code>DisplayPolicy</code>（DisplayPolicy.java:181）的 <code>addWindowLw()</code>（:1070）与 performLayoutLw——系统装饰窗口的 frame 由 policy 先定，再约束应用窗口。</div>
+  <div class="row"><b>Insets 三件套</b>：<code>InsetsStateController</code>（InsetsStateController.java:64，每屏一份，管所有 source）、<code>InsetsSourceProvider</code>（InsetsSourceProvider.java:68，一个 source = 状态栏/导航栏/IME 之一）、<code>ImeInsetsSourceProvider</code> + <code>InsetsPolicy</code> + <code>InsetsControlTarget</code>（谁拿到系统栏显隐控制权）。客户端对应 WindowInsets / OnApplyWindowInsetsListener / setDecorFitsSystemWindows。</div>
+  <div class="row"><b>旋转</b>：<code>DisplayRotation</code>（DisplayRotation.java:84）<code>updateRotationUnchecked()</code>（:415）；冻结显示 startFreezingDisplayLocked / stopFreezingDisplayLocked（DisplayContent.java:3008 可见 stop 调用点）——冻结期间用截屏盖住，直到新方向首帧就绪。</div>
+  <div class="row"><b>配置变更</b>：<code>ActivityRecord.resolveOverrideConfiguration()</code>（:7142）、<code>onConfigurationChanged()</code>（:7697）、<code>ensureActivityConfiguration()</code>（:7950）；Task 同样有 onConfigurationChanged 向下传播。</div>
+  <div class="row"><b>手动模拟</b>：<code>cmd window user-rotation</code>（ShellCommand:106）、<code>set-ignore-orientation-request</code>（:110）、<code>size/density/reset</code>（:75/:122）。</div>
+</div>
+
+<div class="pitfall">
+  <p><span class="tag">🐛 实战问题</span></p>
+  <ul>
+    <li><strong>键盘弹起布局被顶乱</strong>：adjustResize/adjustPan 与 WindowInsets(Animation) 冲突；fitsSystemWindows 消费链断裂；IME inset 没收到（ImeInsetsSourceProvider 控制权没给目标窗口）。</li>
+    <li>沉浸式/手势导航：状态栏隐藏后手势条还在；setSystemBarsBehavior 粘滞模式不生效。</li>
+    <li>旋转闪一下/截图不更新（freeze 没解除）；传感器旋转与 Activity requestedOrientation 打架。</li>
+    <li>折叠屏/外屏：screenSize 变化被 manifest configChanges 吃掉但代码没处理；DisplayCutout 安全区与圆角（02 篇最高 layer 36）避让。</li>
+  </ul>
+</div>
+
+<div class="lab"><p><span class="tag">🧪 动手实验</span> ① <code>cmd window size 1080x1920 / density 240 / reset</code> 复现多分辨率；② 强制旋转 + tracing，观察 freeze 截图 surface 与真实 surface 的交接时刻；③ 写一个带 OnApplyWindowInsetsListener 的 demo，弹 IME 后 dump InsetsStateController 状态对照客户端收到的 insets。</p></div>
+
+<!-- ============================================================ -->
+
+<h2 id="p-anim">六、阶段 4：动画与过渡（对应 09 篇，建议 1 周）</h2>
+
+<div class="card">
+  <h3>核心锚点（已核实）</h3>
+  <div class="chain">
+    <div class="row"><b>转场状态机</b>：<code>AppTransition</code>（AppTransition.java:158）<code>isReady()</code>（:350），默认时长 <code>DEFAULT_APP_TRANSITION_DURATION = 336ms</code>（:167）；Task/ActivityRecord 在切换时设置转场状态，遍历中检查 isReady 后启动动画。</div>
+    <div class="row"><b>核心机制——leash（缰绳）</b>：<code>SurfaceAnimator.startAnimation()</code>（SurfaceAnimator.java:134）→ <code>createAnimationLeash()</code>（:384）。在目标 Layer 与父 Layer 之间<b>临时插入一个可操控的中间 Layer</b>：动画只动 leash，原 Layer 不动；动画结束销毁 leash、提交最终位置。这是 04 篇的 Surface 树第一次被“动态插节点”，务必读透。</div>
+    <div class="row"><b>Shell 接管</b>：<code>TaskOrganizerController</code>（TaskOrganizerController.java:69）——SystemUI/Shell 经它接管 Task 层级、starting window、分屏与手势动画；应用侧对应 WindowContainerTransaction 事务 API。</div>
+    <div class="row"><b>RemoteAnimation</b>：AMS 把转场 leash 交给应用进程（如 Launcher）自己绘制，用于自定义返回桌面等动画。</div>
+  </div>
+
+  <div class="flow">
+    <span class="flow-box">原 Layer 树 A→B</span><span class="flow-arrow">→</span>
+    <span class="flow-box star">reparent B 到 leash</span><span class="flow-arrow">→</span>
+    <span class="flow-box">事务动画 leash（位移/alpha/裁剪）</span><span class="flow-arrow">→</span>
+    <span class="flow-box">finish 回调：销毁 leash、reparent 回位</span>
+  </div>
+</div>
+
+<div class="pitfall">
+  <p><span class="tag">🐛 实战问题</span></p>
+  <ul>
+    <li><strong>动画 leash 泄漏/残留</strong>：动画被 cancel 时 finishedCallback 没执行，画面卡在半透明或错位的中间层——Winscope 里能直接看到多出的 leash Layer。</li>
+    <li>starting window 与 app transition 不同步，启动时“闪两次”。</li>
+    <li>手势返回动画过程中快速操作导致层级状态错乱。</li>
+    <li>自定义 overridePendingTransition / RemoteAnimation 不生效：被 TaskOrganizer 截胡，或窗口/Task 的前置条件不满足。</li>
+  </ul>
+</div>
+
+<div class="lab"><p><span class="tag">🧪 动手实验</span> ① tracing 录一次 Activity 跳转，在 Winscope 里数出 leash 的创建与销毁时刻；② 开发者选项把“窗口动画缩放”调到 ×10 慢放，对照 AppTransition/SurfaceAnimator 的代码分支看。</p></div>
+
+<!-- ============================================================ -->
+
+<h2 id="p-vsync">七、阶段 4+：vsync 与 Choreographer（对应 10 篇，已落盘）</h2>
+
+<div class="annotation">
+  <p><span class="tag">为什么补这一层</span> 09 篇讲「动画在 vsync-sf 上跑」、04 篇讲「每帧提交 SF」，但 vsync 本身属于显示子系统。10 篇按依赖顺序补齐：VSyncPredictor 模型（中断采样→软件预测→fence 纠偏）→ app/sf 两条相位 → EventThread 按连接分发 → 三层按需（应用 / 分发 / 硬件）→ Choreographer 的 doFrame 五段式 → WMS 在 android.anim 线程用 getSfInstance 接入。</p>
+</div>
+
+<div class="card">
+  <p><b>已落盘</b>：<a href="10-显示子系统的节拍.html">10 显示子系统的节拍：vsync 与 Choreographer</a>（锚点 102/102 已核实）</p>
+  <div class="row"><b>核心锚点</b>：<code>SurfaceFlinger#onComposerHalVsync()</code>（SurfaceFlinger.cpp:1718）→ <code>Scheduler#addResyncSample()</code>（Scheduler.cpp:548）→ <code>VSyncReactor#addHwVsyncTimestamp()</code>（VSyncReactor.cpp:170）→ <code>Choreographer#doFrame()</code>（Choreographer.java:701）→ <code>WindowAnimator#animate()</code>（WindowAnimator.java:128）。</div>
+  <div class="row"><b>实战问题</b>：静止界面发热（某连接保持 Periodic）→ 看 EventThread dump 的 <code>vsyncRequest</code>；转场首帧卡 → 看 early 档是否生效。</div>
+</div>
+
+<h2 id="p-ime">八、阶段 5：IME 与壁纸专项（对应 11 篇，建议 1 周）</h2>
+
+<div class="annotation">
+  <p><span class="tag">为什么单独学</span> 这是 WMS 里唯二“<b>反向跟踪目标窗口</b>”的特殊系统——别的窗口只管自己，IME 和壁纸要先回答“我现在该对着谁”。理解它们，就摸到了 policy 灵活性的上限。</p>
+</div>
+
+<div class="card">
+  <h3>核心锚点（已核实）</h3>
+  <div class="chain">
+    <div class="row"><b>IME 服务</b>：<code>InputMethodManagerService.startInputOrWindowGainedFocus()</code>（IMMS.java:3261，焦点变化→重新绑定编辑器）、<code>showCurrentInputLocked()</code>（:3114）。</div>
+    <div class="row"><b>WMS 侧</b>：<code>ImeContainer</code>（类定义嵌在 DisplayContent.java 内）、IME 目标窗口与相对 Z 序（03 篇 assignRelativeLayerForIme 见过）、<code>ImeInsetsSourceProvider</code>（与阶段 3 同一条线：谁拿到 IME 控制权，谁收到 inset 并能驱动动画）。</div>
+    <div class="row"><b>壁纸</b>：<code>WallpaperController</code>（WallpaperController.java:60）：壁纸目标窗口选择、与桌面滚动联动（xOffset/yOffset）、壁纸窗口在 layer 表中的固定层（01 篇 wallpaper layer）。</div>
+  </div>
+</div>
+
+<div class="pitfall">
+  <p><span class="tag">🐛 实战问题</span></p>
+  <ul>
+    <li><strong>输入法不弹出</strong>：焦点没真正切换（startInputOrWindowGainedFocus 没被调到）、mCurToken 为 null、ImeContainer 不可见。</li>
+    <li>IME 盖住输入框：insets 通知没下发或客户端没消费；多屏时 IME 跟错 display。</li>
+    <li>壁纸纯黑/不跟桌面滑动：wallpaper target 没选对、壁纸进程死了没重连、与 FLAG_SHOW_WHEN_LOCKED 冲突。</li>
+    <li>第三方键盘/语音输入切换竞态。</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p-multi">九、阶段 6：多显示与多窗口（对应 12 篇，按需，3–4 天）</h2>
+
+<div class="card">
+  <ul>
+    <li><strong>多 Display</strong>：RootWindowContainer 下多个 DisplayContent 的管理、DisplayWindowSettings 持久化、display 0 与虚拟屏/外屏的焦点和 IME 归属规则。</li>
+    <li><strong>多窗口</strong>：windowingMode（fullscreen/freeform/pinned）、TaskPositioner 处理自由窗口的拖动 resize；分屏在 12 上由 Shell（SystemUI）经 TaskOrganizer 实现——WMS 只提供容器与策略钩子，不要在 WMS 里找分屏动画。</li>
+    <li><strong>画中画</strong>：pinned Task 的生命周期与进入/退出动画钩子——已单独成篇，见 <a href="13-画中画.html">13 画中画 PiP：一次跨 ATMS / WMCore / WM Shell 的窗口模式迁移</a>（锚点 42/42 已核实）。</li>
+  </ul>
+</div>
+
+<div class="pitfall">
+  <p><span class="tag">🐛 实战问题</span> 外屏黑屏/尺寸错误、freeform 窗口抢焦点、PIP 生命周期异常、Activity 在多屏下被 recreate、投屏 VirtualDisplay 上 Surface 有了但输入路由不过去。</p>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p-lock">九、贯穿线：线程与锁模型（建议每个阶段都回看一次）</h2>
+
+<div class="card">
+  <div class="chain">
+    <div class="row"><b>全局唯一锁</b>：<code>WindowManagerGlobalLock</code>（<code>ActivityTaskManagerService.java:362</code> 声明 <code>mGlobalLock</code>，:370 <code>mGlobalLockWithoutBoost</code> 是同一把）。WMS/ATMS/DisplayContent 几乎所有状态变更都在这把锁内。</div>
+    <div class="row"><b>三类线程</b>：① Binder 线程持锁执行 addWindow/relayout 等入口；② system_server 的 <code>mH</code> Handler 把收尾工作串行化出锁执行；③ Animation 线程跑 <code>performSurfacePlacement</code>（03 篇 requestTraversal 的 Handler.post 边界）。</div>
+    <div class="row"><b>输入是另一条“近无锁”链路</b>：InputMonitor 只在持 WMS 锁时快照一份窗口列表交给 native，之后 InputDispatcher 用自己的锁独立分发——所以输入看到的窗口状态可能<b>“略旧”</b>，这是理解焦点/触摸怪问题的关键前提。</div>
+    <div class="row"><b>实战红线</b>：持 <code>mGlobalLock</code> 时做 Binder 跨进程调用（尤其回调 App）会引入卡顿甚至死锁。源码里大量使用“先清掉待办 → 出锁 → 再回调”的模式，读代码时看到 <code>mH.post</code> / 临时队列要立刻意识到这条边界。</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p-plan">十、节奏表与学习纪律</h2>
+
+<div class="card">
+  <table>
+    <tr><th>时间</th><th>阶段</th><th>产出</th></tr>
+    <tr><td>第 0 周（半天）</td><td>阶段 0 工具箱</td><td>能抓 tracing 并用 Winscope/Perfetto 回放</td></tr>
+    <tr><td>第 1–2 周</td><td>阶段 1 输入系统</td><td><strong>05 篇 HTML</strong> ✓ 已完成</td></tr>
+    <tr><td>第 3–4 周</td><td>阶段 2 生命周期（开篇）</td><td>06 篇 ✓ 窗口的诞生</td></tr>
+    <tr><td>第 5–6 周</td><td>阶段 2 生命周期（续）</td><td>07 篇</td></tr>
+    <tr><td>第 7 周</td><td>阶段 3 布局 / Insets / 旋转</td><td>08 篇</td></tr>
+    <tr><td>第 8 周</td><td>阶段 4 动画过渡</td><td>09 篇（重点画 leash 示意图）</td></tr>
+    <tr><td>第 8 周 +</td><td>阶段 4+ vsync / Choreographer</td><td>10 篇</td></tr>
+    <tr><td>第 9 周</td><td>阶段 5 IME / 壁纸</td><td>11 篇</td></tr>
+    <tr><td>按需</td><td>阶段 6 多屏多窗</td><td>12 篇</td></tr>
+    <tr><td>插队补篇</td><td>阶段 2 × 阶段 4 交叉</td><td><strong>13 篇</strong> ✓ 画中画 PiP（已落盘）</td></tr>
+  </table>
+
+  <div class="annotation">
+    <p><span class="tag">每阶段固定套路</span> 先 dumpsys / Winscope 观察现象 → 按调用链读代码（行号锚点都在本页）→ 用 adb 复现一个真实问题 → 写成系列文章。</p>
+  </div>
+  <div class="annotation star3">
+    <p><span class="tag">阅读纪律 ⚠</span> 每个方法名先 grep 行号再下结论；native（inputflinger / SF）与 Java 两侧都核；不凭高版本印象写 AOSP 12 的代码（12L 的 TaskFragment、13/14 的 Shell Transitions 都不属于本树）。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p-grep">十一、源码速查命令（WSL / aosp12）</h2>
+
+<div class="card">
+<p>以下命令只给检索模板，行号以你本机 grep 结果为准（源码根目录 <code>/home/book/aosp12</code>）。</p>
+<div class="code-block">
+  <div class="filename">bash · 定位类与方法</div>
+<pre><span class="cm"># 按类名找文件</span>
+grep -rln &#x27;class InputDispatcher&#x27; frameworks/native/services/inputflinger/ 2>/dev/null
+find frameworks -name &#x27;InputDispatcher.cpp&#x27; -o -name &#x27;AppTransition.java&#x27;
+
+<span class="cm"># 按方法名找定义与调用点（-n 带行号，直接喂给文章锚点）</span>
+grep -rn &#x27;findTouchedWindowTargetsLocked&#x27; frameworks/native/services/inputflinger/
+grep -rn &#x27;startAnimation(&#x27; frameworks/base/services/core/java/com/android/server/wm/SurfaceAnimator.java
+grep -rn &#x27;interceptKeyBeforeQueueing&#x27; frameworks/base/services/core/java/com/android/server/policy/
+
+<span class="cm"># 一处定义、全树调用点</span>
+grep -rn &#x27;openInputChannel&#x27; frameworks/base/services/core/java/com/android/server/wm/
+grep -rn &#x27;createAnimationLeash&#x27; frameworks/base/services/core/java/com/android/server/wm/</pre>
+</div>
+
+<div class="code-block">
+  <div class="filename">bash · 设备侧观察</div>
+<pre><span class="cm"># 窗口树 / 输入现场（输出存文件再对照字段读）</span>
+adb shell dumpsys window windows &gt; /tmp/win.txt
+adb shell dumpsys input | sed -n &#x27;1,120p&#x27;
+
+<span class="cm"># WindowTracing：复现 → 停止 → 拖到 https://ui.perfetto.dev 回放</span>
+adb shell cmd window tracing start
+<span class="cm"># ……旋转屏幕 / 跳转 Activity / 弹输入法……</span>
+adb shell cmd window tracing stop
+adb pull /data/misc/wmtrace/wm_trace.winscope .
+
+<span class="cm"># 用配置命令复现 bug，不动系统设置</span>
+adb shell cmd window size 1080x1920
+adb shell cmd window user-rotation lock 1
+adb shell cmd window reset</pre>
+</div>
+</div>
+
+<div class="card" style="text-align:center;color:var(--text2);font-size:.9rem;margin-top:30px;">
+  <p>本路线图基于 <code>android-12.0.0_r32</code>，全部行号锚点于 2026-10-15 在 <code>/home/book/aosp12</code> grep 核实。</p>
+  <p><a href="index.html">← 返回 Android 窗口层级系列首页</a> ｜ 上一篇：<a href="06-窗口的诞生.html">06 · 窗口的诞生</a></p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

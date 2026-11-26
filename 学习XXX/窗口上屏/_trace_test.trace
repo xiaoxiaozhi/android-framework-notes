@@ -1,0 +1,730 @@
+ done
+TRACE:
+# tracer: nop
+#
+# entries-in-buffer/entries-written: 716/716   #P:2
+#
+#                                          _-----=> irqs-off
+#                                         / _----=> need-resched
+#                                        | / _---=> hardirq/softirq
+#                                        || / _--=> preempt-depth
+#                                        ||| / _-=> migrate-disable
+#                                        |||| /     delay
+#           TASK-PID       TGID    CPU#  |||||  TIMESTAMP  FUNCTION
+#              | |           |       |   |||||     |         |
+          atrace-11464   (  11464) [001] ..... 54799.977691: tracing_mark_write: trace_event_clock_sync: parent_ts=54799.976562
+          atrace-11464   (  11464) [001] ..... 54799.977692: tracing_mark_write: trace_event_clock_sync: realtime_ts=1795404089772
+ ndroid.systemui-879     (    879) [001] ..... 54800.920557: tracing_mark_write: B|879|processInputEventForCompatibility
+ ndroid.systemui-879     (    879) [001] ..... 54800.920573: tracing_mark_write: E|879
+ ndroid.systemui-879     (    879) [001] ..... 54800.920592: tracing_mark_write: S|879|deliverInputEvent|1848975875
+ ndroid.systemui-879     (    879) [001] ..... 54800.920640: tracing_mark_write: B|879|deliverInputEvent src=0x1002 eventTimeNano=54800919000000 id=0x6e352203
+ ndroid.systemui-879     (    879) [001] ..... 54800.920689: tracing_mark_write: B|879|EarlyPostImeInputStage id=0x6e352203
+ ndroid.systemui-879     (    879) [001] ..... 54800.920692: tracing_mark_write: E|879
+ ndroid.systemui-879     (    879) [001] ..... 54800.920726: tracing_mark_write: B|879|NativePostImeInputStage id=0x6e352203
+ ndroid.systemui-879     (    879) [001] ..... 54800.920727: tracing_mark_write: E|879
+ ndroid.systemui-879     (    879) [001] ..... 54800.920731: tracing_mark_write: B|879|ViewPostImeInputStage id=0x6e352203
+ ndroid.systemui-879     (    879) [001] ..... 54800.920860: tracing_mark_write: E|879
+ ndroid.systemui-879     (    879) [001] ..... 54800.920862: tracing_mark_write: F|879|deliverInputEvent|1848975875
+ ndroid.systemui-879     (    879) [001] ..... 54800.920873: tracing_mark_write: E|879
+ framworkcontent-12964   (  12964) [000] ..... 54800.921174: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [000] ..... 54800.921190: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.921328: tracing_mark_write: S|12964|deliverInputEvent|-258514215
+ framworkcontent-12964   (  12964) [000] ..... 54800.921504: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54800919000000 id=0xf09762d9
+ framworkcontent-12964   (  12964) [000] ..... 54800.921647: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xf09762d9
+ framworkcontent-12964   (  12964) [000] ..... 54800.925226: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.925279: tracing_mark_write: B|12964|NativePostImeInputStage id=0xf09762d9
+ framworkcontent-12964   (  12964) [000] ..... 54800.925283: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.925296: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xf09762d9
+ framworkcontent-12964   (  12964) [000] ..... 54800.925677: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.925697: tracing_mark_write: B|12964|SyntheticInputStage id=0xf09762d9
+ framworkcontent-12964   (  12964) [000] ..... 54800.925699: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.925706: tracing_mark_write: F|12964|deliverInputEvent|-258514215
+ framworkcontent-12964   (  12964) [000] ..... 54800.925777: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.926170: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [000] ..... 54800.926269: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [001] ..... 54800.926547: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [001] ..... 54800.926553: tracing_mark_write: C|430|VSR-setPeriod|16666666
+    binder:430_5-1111    (    430) [001] ..... 54800.926556: tracing_mark_write: B|430|endPeriodTransition
+    binder:430_5-1111    (    430) [001] ..... 54800.926556: tracing_mark_write: E|430
+    binder:430_5-1111    (    430) [001] ..... 54800.926558: tracing_mark_write: B|430|setVsyncEnabled
+    binder:430_5-1111    (    430) [001] ..... 54800.926658: tracing_mark_write: E|430
+  surfaceflinger-430     (    430) [000] ..... 54800.926672: tracing_mark_write: B|430|setVsyncEnabled
+             app-453     (    430) [001] ..... 54800.926777: tracing_mark_write: C|430|VSP-mode|1
+             app-453     (    430) [001] ..... 54800.926779: tracing_mark_write: B|430|app alarm in 9905us; VSYNC in 42239us
+             app-453     (    430) [001] ..... 54800.926780: tracing_mark_write: E|430
+    binder:430_5-1111    (    430) [001] ..... 54800.926791: tracing_mark_write: E|430
+  surfaceflinger-430     (    430) [000] ..... 54800.927136: tracing_mark_write: C|430|HW_VSYNC_ON_4619827259835644672|1
+  surfaceflinger-430     (    430) [000] ..... 54800.927137: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54800.936721: tracing_mark_write: B|430|TimerIteration #0
+   TimerDispatch-452     (    430) [001] ..... 54800.936724: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54800.936735: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54800.936738: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54800.936743: tracing_mark_write: C|430|VSYNC-app|1
+   TimerDispatch-452     (    430) [001] ..... 54800.936776: tracing_mark_write: C|430|VSP-mode|1
+   TimerDispatch-452     (    430) [001] ..... 54800.936777: tracing_mark_write: B|430|app alarm in 16503us; VSYNC in 48836us
+   TimerDispatch-452     (    430) [001] ..... 54800.936778: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.936898: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.936904: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.936905: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.936906: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.936906: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.936908: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.936908: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.936909: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.936909: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.936910: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.936910: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.936911: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.936911: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.936912: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [000] ..... 54800.937692: tracing_mark_write: B|12964|Choreographer#onVsync 27306
+  HwBinder:430_1-449     (    430) [001] ..... 54800.937750: tracing_mark_write: B|430|onComposerHalVsync(16666666)
+ framworkcontent-12964   (  12964) [000] ..... 54800.937758: tracing_mark_write: E|12964
+  HwBinder:430_1-449     (    430) [001] ..... 54800.937782: tracing_mark_write: C|430|HW_VSYNC_4619827259835644672|1
+  HwBinder:430_1-449     (    430) [001] ..... 54800.937785: tracing_mark_write: B|430|VSR: adding sample
+  HwBinder:430_1-449     (    430) [001] ..... 54800.937787: tracing_mark_write: E|430
+  HwBinder:430_1-449     (    430) [001] ..... 54800.937787: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [000] ..... 54800.937803: tracing_mark_write: B|12964|Choreographer#doFrame 27306
+ framworkcontent-12964   (  12964) [000] ..... 54800.937878: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [000] ..... 54800.937957: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [000] ..... 54800.937960: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.937973: tracing_mark_write: S|12964|deliverInputEvent|-334952489
+ framworkcontent-12964   (  12964) [000] ..... 54800.937995: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54800928000000 id=0xec0907d7
+ framworkcontent-12964   (  12964) [000] ..... 54800.938015: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xec0907d7
+ framworkcontent-12964   (  12964) [000] ..... 54800.938022: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.938029: tracing_mark_write: B|12964|NativePostImeInputStage id=0xec0907d7
+ framworkcontent-12964   (  12964) [000] ..... 54800.938030: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.938037: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xec0907d7
+ framworkcontent-12964   (  12964) [000] ..... 54800.938081: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.938090: tracing_mark_write: B|12964|SyntheticInputStage id=0xec0907d7
+ framworkcontent-12964   (  12964) [000] ..... 54800.938092: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.938096: tracing_mark_write: F|12964|deliverInputEvent|-334952489
+ framworkcontent-12964   (  12964) [000] ..... 54800.938138: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.938158: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [000] ..... 54800.938305: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.938307: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [000] ..... 54800.938322: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [000] ..... 54800.938367: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [000] ..... 54800.938370: tracing_mark_write: E|430
+  HwBinder:430_1-449     (    430) [001] ..... 54800.952632: tracing_mark_write: B|430|onComposerHalVsync(16666666)
+  HwBinder:430_1-449     (    430) [001] ..... 54800.952640: tracing_mark_write: C|430|HW_VSYNC_4619827259835644672|0
+  HwBinder:430_1-449     (    430) [001] ..... 54800.952642: tracing_mark_write: B|430|VSR: adding sample
+  HwBinder:430_1-449     (    430) [001] ..... 54800.952644: tracing_mark_write: E|430
+  HwBinder:430_1-449     (    430) [001] ..... 54800.952644: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54800.953366: tracing_mark_write: B|430|TimerIteration #1
+   TimerDispatch-452     (    430) [001] ..... 54800.953369: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54800.953376: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54800.953378: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54800.953380: tracing_mark_write: C|430|VSYNC-app|0
+   TimerDispatch-452     (    430) [001] ..... 54800.953412: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54800.953413: tracing_mark_write: C|430|VSP-timePoint|54800985743012
+   TimerDispatch-452     (    430) [001] ..... 54800.953413: tracing_mark_write: C|430|VSP-prediction|54801002276610
+   TimerDispatch-452     (    430) [001] ..... 54800.953415: tracing_mark_write: B|430|app alarm in 16533us; VSYNC in 48866us
+   TimerDispatch-452     (    430) [001] ..... 54800.953415: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.953469: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.953474: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.953475: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.953476: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.953476: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.953476: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.953477: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.953479: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.953479: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.953480: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.953480: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.953481: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.953481: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.953481: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54800.953686: tracing_mark_write: B|12964|Choreographer#onVsync 27313
+ framworkcontent-12964   (  12964) [001] ..... 54800.953717: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.953732: tracing_mark_write: B|12964|Choreographer#doFrame 27313
+ framworkcontent-12964   (  12964) [001] ..... 54800.953750: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [001] ..... 54800.953804: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [001] ..... 54800.953807: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.953819: tracing_mark_write: S|12964|deliverInputEvent|-221967038
+ framworkcontent-12964   (  12964) [001] ..... 54800.953838: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54800944500000 id=0xf2c50d42
+ framworkcontent-12964   (  12964) [001] ..... 54800.953849: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xf2c50d42
+ framworkcontent-12964   (  12964) [001] ..... 54800.953856: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.953873: tracing_mark_write: B|12964|NativePostImeInputStage id=0xf2c50d42
+ framworkcontent-12964   (  12964) [001] ..... 54800.953875: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.953881: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xf2c50d42
+ framworkcontent-12964   (  12964) [001] ..... 54800.953917: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.953923: tracing_mark_write: B|12964|SyntheticInputStage id=0xf2c50d42
+ framworkcontent-12964   (  12964) [001] ..... 54800.953925: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.953927: tracing_mark_write: F|12964|deliverInputEvent|-221967038
+ framworkcontent-12964   (  12964) [001] ..... 54800.953977: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.953991: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [001] ..... 54800.954026: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.954027: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.954037: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [000] ..... 54800.954076: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [000] ..... 54800.954080: tracing_mark_write: E|430
+  HwBinder:430_1-449     (    430) [001] ..... 54800.969210: tracing_mark_write: B|430|onComposerHalVsync(16666666)
+  HwBinder:430_1-449     (    430) [001] ..... 54800.969220: tracing_mark_write: C|430|HW_VSYNC_4619827259835644672|1
+  HwBinder:430_1-449     (    430) [001] ..... 54800.969222: tracing_mark_write: B|430|VSR: adding sample
+  HwBinder:430_1-449     (    430) [001] ..... 54800.969224: tracing_mark_write: E|430
+  HwBinder:430_1-449     (    430) [001] ..... 54800.969225: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54800.970038: tracing_mark_write: B|430|TimerIteration #2
+   TimerDispatch-452     (    430) [001] ..... 54800.970040: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54800.970048: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54800.970050: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54800.970052: tracing_mark_write: C|430|VSYNC-app|1
+   TimerDispatch-452     (    430) [001] ..... 54800.970084: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54800.970085: tracing_mark_write: C|430|VSP-timePoint|54801002414645
+   TimerDispatch-452     (    430) [001] ..... 54800.970090: tracing_mark_write: C|430|VSP-prediction|54801018943276
+   TimerDispatch-452     (    430) [001] ..... 54800.970092: tracing_mark_write: B|430|app alarm in 16528us; VSYNC in 48861us
+   TimerDispatch-452     (    430) [001] ..... 54800.970092: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.970146: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.970152: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.970153: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.970154: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.970154: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.970155: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.970155: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.970156: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.970156: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.970162: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.970162: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.970167: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.970167: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.970226: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54800.970427: tracing_mark_write: B|12964|Choreographer#onVsync 27320
+ framworkcontent-12964   (  12964) [001] ..... 54800.970458: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.970474: tracing_mark_write: B|12964|Choreographer#doFrame 27320
+ framworkcontent-12964   (  12964) [001] ..... 54800.970491: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [001] ..... 54800.970543: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [001] ..... 54800.970546: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.970557: tracing_mark_write: S|12964|deliverInputEvent|-616753594
+ framworkcontent-12964   (  12964) [001] ..... 54800.970576: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54800962000000 id=0xdb3d1646
+ framworkcontent-12964   (  12964) [001] ..... 54800.970586: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xdb3d1646
+ framworkcontent-12964   (  12964) [001] ..... 54800.970621: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.970631: tracing_mark_write: B|12964|NativePostImeInputStage id=0xdb3d1646
+ framworkcontent-12964   (  12964) [001] ..... 54800.970633: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.970640: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xdb3d1646
+ framworkcontent-12964   (  12964) [001] ..... 54800.970675: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.970690: tracing_mark_write: B|12964|SyntheticInputStage id=0xdb3d1646
+ framworkcontent-12964   (  12964) [001] ..... 54800.970692: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.970695: tracing_mark_write: F|12964|deliverInputEvent|-616753594
+ framworkcontent-12964   (  12964) [001] ..... 54800.970740: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.970752: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [001] ..... 54800.970780: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.970782: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.970790: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [000] ..... 54800.970823: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [000] ..... 54800.970826: tracing_mark_write: E|430
+  HwBinder:430_1-449     (    430) [001] ..... 54800.985999: tracing_mark_write: B|430|onComposerHalVsync(16666666)
+  HwBinder:430_1-449     (    430) [001] ..... 54800.986008: tracing_mark_write: C|430|HW_VSYNC_4619827259835644672|0
+  HwBinder:430_1-449     (    430) [001] ..... 54800.986010: tracing_mark_write: B|430|VSR: adding sample
+  HwBinder:430_1-449     (    430) [001] ..... 54800.986012: tracing_mark_write: E|430
+  HwBinder:430_1-449     (    430) [001] ..... 54800.986013: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54800.986685: tracing_mark_write: B|430|TimerIteration #3
+   TimerDispatch-452     (    430) [001] ..... 54800.986688: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54800.986695: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54800.986696: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54800.986698: tracing_mark_write: C|430|VSYNC-app|0
+   TimerDispatch-452     (    430) [001] ..... 54800.986732: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54800.986733: tracing_mark_write: C|430|VSP-timePoint|54801019063444
+   TimerDispatch-452     (    430) [001] ..... 54800.986734: tracing_mark_write: C|430|VSP-prediction|54801035609942
+   TimerDispatch-452     (    430) [001] ..... 54800.986735: tracing_mark_write: B|430|app alarm in 16546us; VSYNC in 48879us
+   TimerDispatch-452     (    430) [001] ..... 54800.986736: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.986781: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.986786: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.986786: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.986788: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.986788: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.986789: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.986789: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.986789: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.986790: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.986790: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.986791: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.986792: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54800.986792: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54800.986792: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54800.987020: tracing_mark_write: B|12964|Choreographer#onVsync 27327
+ framworkcontent-12964   (  12964) [001] ..... 54800.987053: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.987070: tracing_mark_write: B|12964|Choreographer#doFrame 27327
+ framworkcontent-12964   (  12964) [001] ..... 54800.987087: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [001] ..... 54800.987143: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [001] ..... 54800.987145: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.987157: tracing_mark_write: S|12964|deliverInputEvent|-51707107
+ framworkcontent-12964   (  12964) [001] ..... 54800.987229: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54800978000000 id=0xfceb031d
+ framworkcontent-12964   (  12964) [001] ..... 54800.987241: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xfceb031d
+ framworkcontent-12964   (  12964) [001] ..... 54800.987248: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.987254: tracing_mark_write: B|12964|NativePostImeInputStage id=0xfceb031d
+ framworkcontent-12964   (  12964) [001] ..... 54800.987255: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.987261: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xfceb031d
+ framworkcontent-12964   (  12964) [001] ..... 54800.987295: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.987301: tracing_mark_write: B|12964|SyntheticInputStage id=0xfceb031d
+ framworkcontent-12964   (  12964) [001] ..... 54800.987302: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.987305: tracing_mark_write: F|12964|deliverInputEvent|-51707107
+ framworkcontent-12964   (  12964) [001] ..... 54800.987349: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.987361: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [001] ..... 54800.987399: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.987400: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54800.987408: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [001] ..... 54800.987449: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [001] ..... 54800.987452: tracing_mark_write: E|430
+  HwBinder:430_1-449     (    430) [001] ..... 54801.002617: tracing_mark_write: B|430|onComposerHalVsync(16666666)
+  HwBinder:430_1-449     (    430) [001] ..... 54801.002627: tracing_mark_write: C|430|HW_VSYNC_4619827259835644672|1
+  HwBinder:430_1-449     (    430) [001] ..... 54801.002631: tracing_mark_write: B|430|VSR: adding sample
+  HwBinder:430_1-449     (    430) [001] ..... 54801.002633: tracing_mark_write: E|430
+  HwBinder:430_1-449     (    430) [001] ..... 54801.002634: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.003365: tracing_mark_write: B|430|TimerIteration #4
+   TimerDispatch-452     (    430) [001] ..... 54801.003367: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.003375: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54801.003377: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.003379: tracing_mark_write: C|430|VSYNC-app|1
+   TimerDispatch-452     (    430) [001] ..... 54801.003411: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54801.003412: tracing_mark_write: C|430|VSP-timePoint|54801035742135
+   TimerDispatch-452     (    430) [001] ..... 54801.003413: tracing_mark_write: C|430|VSP-prediction|54801052276608
+   TimerDispatch-452     (    430) [001] ..... 54801.003414: tracing_mark_write: B|430|app alarm in 16534us; VSYNC in 48867us
+   TimerDispatch-452     (    430) [001] ..... 54801.003414: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.003458: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.003463: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.003463: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.003464: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.003464: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.003465: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.003465: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.003466: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.003466: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.003467: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.003467: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.003468: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.003468: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.003469: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54801.003680: tracing_mark_write: B|12964|Choreographer#onVsync 27334
+ framworkcontent-12964   (  12964) [001] ..... 54801.003713: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.003739: tracing_mark_write: B|12964|Choreographer#doFrame 27334
+ framworkcontent-12964   (  12964) [001] ..... 54801.003759: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [001] ..... 54801.003822: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [001] ..... 54801.003826: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.003837: tracing_mark_write: S|12964|deliverInputEvent|-58378677
+ framworkcontent-12964   (  12964) [001] ..... 54801.003856: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54800995000000 id=0xfc85364b
+ framworkcontent-12964   (  12964) [001] ..... 54801.003866: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xfc85364b
+ framworkcontent-12964   (  12964) [001] ..... 54801.003873: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.003878: tracing_mark_write: B|12964|NativePostImeInputStage id=0xfc85364b
+ framworkcontent-12964   (  12964) [001] ..... 54801.003880: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.003886: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xfc85364b
+ framworkcontent-12964   (  12964) [001] ..... 54801.003919: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.003925: tracing_mark_write: B|12964|SyntheticInputStage id=0xfc85364b
+ framworkcontent-12964   (  12964) [001] ..... 54801.003927: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.003929: tracing_mark_write: F|12964|deliverInputEvent|-58378677
+ framworkcontent-12964   (  12964) [001] ..... 54801.003977: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.003990: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [001] ..... 54801.004022: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.004024: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.004031: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [001] ..... 54801.004064: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [001] ..... 54801.004066: tracing_mark_write: E|430
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019381: tracing_mark_write: B|430|onComposerHalVsync(16666666)
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019390: tracing_mark_write: C|430|HW_VSYNC_4619827259835644672|0
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019392: tracing_mark_write: B|430|VSR: adding sample
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019395: tracing_mark_write: C|430|VSP-ts|54800935609946
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019395: tracing_mark_write: C|430|VSP-ts|54800952276612
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019396: tracing_mark_write: C|430|VSP-ts|54800968943278
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019396: tracing_mark_write: C|430|VSP-ts|54800985609944
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019397: tracing_mark_write: C|430|VSP-ts|54801002276610
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019397: tracing_mark_write: C|430|VSP-ts|54801018943276
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019398: tracing_mark_write: C|430|VSP-period|16666666
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019398: tracing_mark_write: C|430|VSP-intercept|0
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019399: tracing_mark_write: E|430
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019400: tracing_mark_write: B|430|setVsyncEnabled
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019439: tracing_mark_write: E|430
+  HwBinder:430_1-449     (    430) [001] ..... 54801.019440: tracing_mark_write: E|430
+  surfaceflinger-430     (    430) [000] ..... 54801.019495: tracing_mark_write: B|430|setVsyncEnabled
+  surfaceflinger-430     (    430) [000] ..... 54801.019557: tracing_mark_write: C|430|HW_VSYNC_ON_4619827259835644672|0
+  surfaceflinger-430     (    430) [000] ..... 54801.019558: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.020036: tracing_mark_write: B|430|TimerIteration #5
+   TimerDispatch-452     (    430) [001] ..... 54801.020038: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.020044: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54801.020047: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.020048: tracing_mark_write: C|430|VSYNC-app|0
+   TimerDispatch-452     (    430) [001] ..... 54801.020079: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54801.020080: tracing_mark_write: C|430|VSP-timePoint|54801052410367
+   TimerDispatch-452     (    430) [001] ..... 54801.020081: tracing_mark_write: C|430|VSP-prediction|54801068943274
+   TimerDispatch-452     (    430) [001] ..... 54801.020082: tracing_mark_write: B|430|app alarm in 16532us; VSYNC in 48866us
+   TimerDispatch-452     (    430) [001] ..... 54801.020083: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.020116: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.020120: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.020121: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.020121: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.020122: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.020122: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.020123: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.020123: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.020124: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.020124: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.020125: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.020125: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.020125: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.020126: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54801.020337: tracing_mark_write: B|12964|Choreographer#onVsync 27341
+ framworkcontent-12964   (  12964) [001] ..... 54801.020369: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.020386: tracing_mark_write: B|12964|Choreographer#doFrame 27341
+ framworkcontent-12964   (  12964) [001] ..... 54801.020403: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [001] ..... 54801.020460: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [001] ..... 54801.020463: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.020476: tracing_mark_write: S|12964|deliverInputEvent|-139788990
+ framworkcontent-12964   (  12964) [001] ..... 54801.020506: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54801012000000 id=0xf7aafd42
+ framworkcontent-12964   (  12964) [001] ..... 54801.020516: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xf7aafd42
+ framworkcontent-12964   (  12964) [001] ..... 54801.020524: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.020529: tracing_mark_write: B|12964|NativePostImeInputStage id=0xf7aafd42
+ framworkcontent-12964   (  12964) [001] ..... 54801.020531: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.020537: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xf7aafd42
+ framworkcontent-12964   (  12964) [001] ..... 54801.020573: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.020579: tracing_mark_write: B|12964|SyntheticInputStage id=0xf7aafd42
+ framworkcontent-12964   (  12964) [001] ..... 54801.020581: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.020583: tracing_mark_write: F|12964|deliverInputEvent|-139788990
+ framworkcontent-12964   (  12964) [001] ..... 54801.020637: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.020651: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [001] ..... 54801.020684: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.020686: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.020696: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [001] ..... 54801.020746: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [001] ..... 54801.020748: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.036696: tracing_mark_write: B|430|TimerIteration #6
+   TimerDispatch-452     (    430) [001] ..... 54801.036698: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.036707: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54801.036708: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.036710: tracing_mark_write: C|430|VSYNC-app|1
+   TimerDispatch-452     (    430) [001] ..... 54801.036741: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54801.036742: tracing_mark_write: C|430|VSP-timePoint|54801069071925
+   TimerDispatch-452     (    430) [001] ..... 54801.036744: tracing_mark_write: C|430|VSP-prediction|54801085609940
+   TimerDispatch-452     (    430) [001] ..... 54801.036745: tracing_mark_write: B|430|app alarm in 16538us; VSYNC in 48871us
+   TimerDispatch-452     (    430) [001] ..... 54801.036745: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.036794: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.036800: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.036801: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.036801: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.036802: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.036802: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.036803: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.036803: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.036804: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.036804: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.036804: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.036805: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.036805: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.036806: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54801.037010: tracing_mark_write: B|12964|Choreographer#onVsync 27348
+ framworkcontent-12964   (  12964) [001] ..... 54801.037038: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.037055: tracing_mark_write: B|12964|Choreographer#doFrame 27348
+ framworkcontent-12964   (  12964) [001] ..... 54801.037071: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [001] ..... 54801.037122: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [001] ..... 54801.037124: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.037136: tracing_mark_write: S|12964|deliverInputEvent|-931550312
+ framworkcontent-12964   (  12964) [001] ..... 54801.037156: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54801028000000 id=0xc879ab98
+ framworkcontent-12964   (  12964) [001] ..... 54801.037173: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xc879ab98
+ framworkcontent-12964   (  12964) [001] ..... 54801.037180: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.037186: tracing_mark_write: B|12964|NativePostImeInputStage id=0xc879ab98
+ framworkcontent-12964   (  12964) [001] ..... 54801.037187: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.037193: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xc879ab98
+ framworkcontent-12964   (  12964) [001] ..... 54801.037225: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.037231: tracing_mark_write: B|12964|SyntheticInputStage id=0xc879ab98
+ framworkcontent-12964   (  12964) [001] ..... 54801.037232: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.037235: tracing_mark_write: F|12964|deliverInputEvent|-931550312
+ framworkcontent-12964   (  12964) [001] ..... 54801.037282: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.037294: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [001] ..... 54801.037323: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.037324: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.037332: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [000] ..... 54801.037353: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [000] ..... 54801.037356: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.053402: tracing_mark_write: B|430|TimerIteration #7
+   TimerDispatch-452     (    430) [001] ..... 54801.053405: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.053415: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54801.053417: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.053420: tracing_mark_write: C|430|VSYNC-app|0
+   TimerDispatch-452     (    430) [001] ..... 54801.053457: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54801.053458: tracing_mark_write: C|430|VSP-timePoint|54801085786930
+   TimerDispatch-452     (    430) [001] ..... 54801.053458: tracing_mark_write: C|430|VSP-prediction|54801102276606
+   TimerDispatch-452     (    430) [001] ..... 54801.053460: tracing_mark_write: B|430|app alarm in 16489us; VSYNC in 48823us
+   TimerDispatch-452     (    430) [001] ..... 54801.053460: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.053506: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.053510: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.053511: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.053512: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.053512: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.053513: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.053513: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.053514: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.053514: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.053515: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.053515: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.053516: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.053516: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.053517: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54801.053784: tracing_mark_write: B|12964|Choreographer#onVsync 27355
+ framworkcontent-12964   (  12964) [001] ..... 54801.053825: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.053847: tracing_mark_write: B|12964|Choreographer#doFrame 27355
+ framworkcontent-12964   (  12964) [001] ..... 54801.053868: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [001] ..... 54801.053976: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [001] ..... 54801.053980: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.053996: tracing_mark_write: S|12964|deliverInputEvent|-110216232
+ framworkcontent-12964   (  12964) [001] ..... 54801.054025: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54801045000000 id=0xf96e3bd8
+ framworkcontent-12964   (  12964) [001] ..... 54801.054041: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xf96e3bd8
+ framworkcontent-12964   (  12964) [001] ..... 54801.054050: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.054060: tracing_mark_write: B|12964|NativePostImeInputStage id=0xf96e3bd8
+ framworkcontent-12964   (  12964) [001] ..... 54801.054062: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.054087: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xf96e3bd8
+ framworkcontent-12964   (  12964) [001] ..... 54801.054131: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.054140: tracing_mark_write: B|12964|SyntheticInputStage id=0xf96e3bd8
+ framworkcontent-12964   (  12964) [001] ..... 54801.054143: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.054146: tracing_mark_write: F|12964|deliverInputEvent|-110216232
+ framworkcontent-12964   (  12964) [001] ..... 54801.054211: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.054228: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [001] ..... 54801.054273: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.054275: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.054288: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [000] ..... 54801.054306: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [000] ..... 54801.054309: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.070091: tracing_mark_write: B|430|TimerIteration #8
+   TimerDispatch-452     (    430) [001] ..... 54801.070095: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.070106: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54801.070109: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.070112: tracing_mark_write: C|430|VSYNC-app|1
+   TimerDispatch-452     (    430) [001] ..... 54801.070152: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54801.070153: tracing_mark_write: C|430|VSP-timePoint|54801102482554
+   TimerDispatch-452     (    430) [001] ..... 54801.070155: tracing_mark_write: C|430|VSP-prediction|54801118943272
+   TimerDispatch-452     (    430) [001] ..... 54801.070156: tracing_mark_write: B|430|app alarm in 16460us; VSYNC in 48794us
+   TimerDispatch-452     (    430) [001] ..... 54801.070157: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.070219: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.070224: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.070225: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.070226: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.070227: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.070228: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.070228: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.070229: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.070229: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.070230: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.070230: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.070231: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.070231: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.070233: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54801.070483: tracing_mark_write: B|12964|Choreographer#onVsync 27362
+ framworkcontent-12964   (  12964) [001] ..... 54801.070520: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.070536: tracing_mark_write: B|12964|Choreographer#doFrame 27362
+ framworkcontent-12964   (  12964) [001] ..... 54801.070555: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [001] ..... 54801.070614: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [001] ..... 54801.070617: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.070628: tracing_mark_write: S|12964|deliverInputEvent|-782719953
+ framworkcontent-12964   (  12964) [001] ..... 54801.070649: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54801062000000 id=0xd158a42f
+ framworkcontent-12964   (  12964) [001] ..... 54801.070659: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xd158a42f
+ framworkcontent-12964   (  12964) [001] ..... 54801.070667: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.070672: tracing_mark_write: B|12964|NativePostImeInputStage id=0xd158a42f
+ framworkcontent-12964   (  12964) [001] ..... 54801.070674: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.070680: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xd158a42f
+ framworkcontent-12964   (  12964) [001] ..... 54801.070713: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.070718: tracing_mark_write: B|12964|SyntheticInputStage id=0xd158a42f
+ framworkcontent-12964   (  12964) [001] ..... 54801.070720: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.070722: tracing_mark_write: F|12964|deliverInputEvent|-782719953
+ framworkcontent-12964   (  12964) [001] ..... 54801.070775: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.070788: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [001] ..... 54801.070823: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.070825: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.070833: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [000] ..... 54801.070869: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [000] ..... 54801.070872: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.086727: tracing_mark_write: B|430|TimerIteration #9
+   TimerDispatch-452     (    430) [001] ..... 54801.086730: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.086742: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54801.086743: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.086746: tracing_mark_write: C|430|VSYNC-app|0
+   TimerDispatch-452     (    430) [001] ..... 54801.086781: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54801.086782: tracing_mark_write: C|430|VSP-timePoint|54801119110794
+   TimerDispatch-452     (    430) [001] ..... 54801.086783: tracing_mark_write: C|430|VSP-prediction|54801135609938
+   TimerDispatch-452     (    430) [001] ..... 54801.086785: tracing_mark_write: B|430|app alarm in 16499us; VSYNC in 48832us
+   TimerDispatch-452     (    430) [001] ..... 54801.086785: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.086831: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.086836: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.086837: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.086838: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.086838: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.086838: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.086839: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.086840: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.086840: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.086840: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.086841: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.086841: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.086842: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.086842: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54801.087049: tracing_mark_write: B|12964|Choreographer#onVsync 27369
+ framworkcontent-12964   (  12964) [001] ..... 54801.087081: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.087097: tracing_mark_write: B|12964|Choreographer#doFrame 27369
+ framworkcontent-12964   (  12964) [001] ..... 54801.087114: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [001] ..... 54801.087166: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [001] ..... 54801.087201: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.087240: tracing_mark_write: S|12964|deliverInputEvent|-743255698
+ framworkcontent-12964   (  12964) [001] ..... 54801.087262: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54801078000000 id=0xd3b2d16e
+ framworkcontent-12964   (  12964) [001] ..... 54801.087273: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xd3b2d16e
+ framworkcontent-12964   (  12964) [001] ..... 54801.087280: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.087286: tracing_mark_write: B|12964|NativePostImeInputStage id=0xd3b2d16e
+ framworkcontent-12964   (  12964) [001] ..... 54801.087288: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.087294: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xd3b2d16e
+ framworkcontent-12964   (  12964) [001] ..... 54801.087327: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.087333: tracing_mark_write: B|12964|SyntheticInputStage id=0xd3b2d16e
+ framworkcontent-12964   (  12964) [001] ..... 54801.087334: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.087337: tracing_mark_write: F|12964|deliverInputEvent|-743255698
+ framworkcontent-12964   (  12964) [001] ..... 54801.087384: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.087397: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [001] ..... 54801.087436: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.087437: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.087447: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [000] ..... 54801.087483: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [000] ..... 54801.087486: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.103359: tracing_mark_write: B|430|TimerIteration #10
+   TimerDispatch-452     (    430) [001] ..... 54801.103361: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.103370: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54801.103372: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.103374: tracing_mark_write: C|430|VSYNC-app|1
+   TimerDispatch-452     (    430) [001] ..... 54801.103412: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54801.103413: tracing_mark_write: C|430|VSP-timePoint|54801135742807
+   TimerDispatch-452     (    430) [001] ..... 54801.103414: tracing_mark_write: C|430|VSP-prediction|54801152276604
+   TimerDispatch-452     (    430) [001] ..... 54801.103415: tracing_mark_write: B|430|app alarm in 16533us; VSYNC in 48867us
+   TimerDispatch-452     (    430) [001] ..... 54801.103415: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.103451: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.103455: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.103456: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.103457: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.103457: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.103458: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.103458: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.103459: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.103459: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.103460: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.103461: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.103461: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.103461: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.103462: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54801.103642: tracing_mark_write: B|12964|Choreographer#onVsync 27376
+ framworkcontent-12964   (  12964) [001] ..... 54801.103672: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.103687: tracing_mark_write: B|12964|Choreographer#doFrame 27376
+ framworkcontent-12964   (  12964) [001] ..... 54801.103712: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [001] ..... 54801.103761: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [001] ..... 54801.103764: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.103775: tracing_mark_write: S|12964|deliverInputEvent|-686618648
+ framworkcontent-12964   (  12964) [001] ..... 54801.103793: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54801095000000 id=0xd71307e8
+ framworkcontent-12964   (  12964) [001] ..... 54801.103802: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xd71307e8
+ framworkcontent-12964   (  12964) [001] ..... 54801.103809: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.103815: tracing_mark_write: B|12964|NativePostImeInputStage id=0xd71307e8
+ framworkcontent-12964   (  12964) [001] ..... 54801.103817: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.103823: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xd71307e8
+ framworkcontent-12964   (  12964) [001] ..... 54801.103855: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.103860: tracing_mark_write: B|12964|SyntheticInputStage id=0xd71307e8
+ framworkcontent-12964   (  12964) [001] ..... 54801.103861: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.103863: tracing_mark_write: F|12964|deliverInputEvent|-686618648
+ framworkcontent-12964   (  12964) [001] ..... 54801.103911: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.103922: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [001] ..... 54801.103953: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.103954: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.103962: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [000] ..... 54801.103986: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [000] ..... 54801.103989: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.120076: tracing_mark_write: B|430|TimerIteration #11
+   TimerDispatch-452     (    430) [001] ..... 54801.120079: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.120090: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54801.120092: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.120095: tracing_mark_write: C|430|VSYNC-app|0
+   TimerDispatch-452     (    430) [001] ..... 54801.120133: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54801.120134: tracing_mark_write: C|430|VSP-timePoint|54801152463137
+   TimerDispatch-452     (    430) [001] ..... 54801.120135: tracing_mark_write: C|430|VSP-prediction|54801168943270
+   TimerDispatch-452     (    430) [001] ..... 54801.120136: tracing_mark_write: B|430|app alarm in 16480us; VSYNC in 48813us
+   TimerDispatch-452     (    430) [001] ..... 54801.120136: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.120205: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.120211: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.120211: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.120212: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.120213: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.120213: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.120214: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.120214: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.120214: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.120215: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.120215: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.120216: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.120216: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.120217: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54801.120485: tracing_mark_write: B|12964|Choreographer#onVsync 27383
+ framworkcontent-12964   (  12964) [001] ..... 54801.120521: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.120537: tracing_mark_write: B|12964|Choreographer#doFrame 27383
+ framworkcontent-12964   (  12964) [001] ..... 54801.120554: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [001] ..... 54801.120608: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [001] ..... 54801.120611: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.120622: tracing_mark_write: S|12964|deliverInputEvent|-70928423
+ framworkcontent-12964   (  12964) [001] ..... 54801.120652: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54801111000000 id=0xfbc5b7d9
+ framworkcontent-12964   (  12964) [001] ..... 54801.120663: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xfbc5b7d9
+ framworkcontent-12964   (  12964) [001] ..... 54801.120671: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.120676: tracing_mark_write: B|12964|NativePostImeInputStage id=0xfbc5b7d9
+ framworkcontent-12964   (  12964) [001] ..... 54801.120678: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.120684: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xfbc5b7d9
+ framworkcontent-12964   (  12964) [001] ..... 54801.120717: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.120723: tracing_mark_write: B|12964|SyntheticInputStage id=0xfbc5b7d9
+ framworkcontent-12964   (  12964) [001] ..... 54801.120725: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.120728: tracing_mark_write: F|12964|deliverInputEvent|-70928423
+ framworkcontent-12964   (  12964) [001] ..... 54801.120783: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.120795: tracing_mark_write: B|12964|Choreographer#scheduleVsyncLocked
+ framworkcontent-12964   (  12964) [001] ..... 54801.120862: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.120864: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.120872: tracing_mark_write: E|12964
+    binder:430_5-1111    (    430) [000] ..... 54801.120907: tracing_mark_write: B|430|requestNextVsync
+    binder:430_5-1111    (    430) [000] ..... 54801.120910: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54801.121215: tracing_mark_write: B|12964|processInputEventForCompatibility
+ framworkcontent-12964   (  12964) [001] ..... 54801.121219: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.121227: tracing_mark_write: S|12964|deliverInputEvent|-231962821
+ framworkcontent-12964   (  12964) [001] ..... 54801.121247: tracing_mark_write: B|12964|deliverInputEvent src=0x1002 eventTimeNano=54801120000000 id=0xf22c873b
+ framworkcontent-12964   (  12964) [001] ..... 54801.121254: tracing_mark_write: B|12964|EarlyPostImeInputStage id=0xf22c873b
+ framworkcontent-12964   (  12964) [001] ..... 54801.121259: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.121264: tracing_mark_write: B|12964|NativePostImeInputStage id=0xf22c873b
+ framworkcontent-12964   (  12964) [001] ..... 54801.121265: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.121269: tracing_mark_write: B|12964|ViewPostImeInputStage id=0xf22c873b
+ framworkcontent-12964   (  12964) [001] ..... 54801.121445: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.121463: tracing_mark_write: B|12964|SyntheticInputStage id=0xf22c873b
+ framworkcontent-12964   (  12964) [001] ..... 54801.121465: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.121467: tracing_mark_write: F|12964|deliverInputEvent|-231962821
+ framworkcontent-12964   (  12964) [001] ..... 54801.121480: tracing_mark_write: E|12964
+   TimerDispatch-452     (    430) [001] ..... 54801.136699: tracing_mark_write: B|430|TimerIteration #12
+   TimerDispatch-452     (    430) [001] ..... 54801.136702: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.136712: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54801.136714: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.136717: tracing_mark_write: C|430|VSYNC-app|1
+   TimerDispatch-452     (    430) [001] ..... 54801.136748: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54801.136749: tracing_mark_write: C|430|VSP-timePoint|54801169078788
+   TimerDispatch-452     (    430) [001] ..... 54801.136750: tracing_mark_write: C|430|VSP-prediction|54801185609936
+   TimerDispatch-452     (    430) [001] ..... 54801.136751: tracing_mark_write: B|430|app alarm in 16531us; VSYNC in 48864us
+   TimerDispatch-452     (    430) [001] ..... 54801.136751: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.136793: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.136797: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.136798: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.136798: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.136799: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.136799: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.136800: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.136800: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.136801: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.136801: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.136802: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.136802: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.136802: tracing_mark_write: B|430|generateTokenForPredictions
+             app-453     (    430) [000] ..... 54801.136803: tracing_mark_write: E|430
+ framworkcontent-12964   (  12964) [001] ..... 54801.137032: tracing_mark_write: B|12964|Choreographer#onVsync 27390
+ framworkcontent-12964   (  12964) [001] ..... 54801.137070: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.137087: tracing_mark_write: B|12964|Choreographer#doFrame 27390
+ framworkcontent-12964   (  12964) [001] ..... 54801.137104: tracing_mark_write: B|12964|input
+ framworkcontent-12964   (  12964) [001] ..... 54801.137119: tracing_mark_write: E|12964
+ framworkcontent-12964   (  12964) [001] ..... 54801.137123: tracing_mark_write: E|12964
+   TimerDispatch-452     (    430) [001] ..... 54801.153372: tracing_mark_write: B|430|TimerIteration #13
+   TimerDispatch-452     (    430) [001] ..... 54801.153376: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.153387: tracing_mark_write: B|430|cancel timer
+   TimerDispatch-452     (    430) [001] ..... 54801.153389: tracing_mark_write: E|430
+   TimerDispatch-452     (    430) [001] ..... 54801.153392: tracing_mark_write: C|430|VSYNC-app|0
+   TimerDispatch-452     (    430) [001] ..... 54801.153427: tracing_mark_write: C|430|VSP-mode|0
+   TimerDispatch-452     (    430) [001] ..... 54801.153428: tracing_mark_write: C|430|VSP-timePoint|54801185757590
+   TimerDispatch-452     (    430) [001] ..... 54801.153429: tracing_mark_write: C|430|VSP-prediction|54801202276602
+   TimerDispatch-452     (    430) [001] ..... 54801.153430: tracing_mark_write: B|430|app alarm in 16519us; VSYNC in 48852us
+   TimerDispatch-452     (    430) [001] ..... 54801.153431: tracing_mark_write: E|430
+             app-453     (    430) [000] ..... 54801.153481: tracing_mark_write: B|430|cancel timer
+             app-453     (    430) [000] ..... 54801.153484: tracing_mark_write: E|430

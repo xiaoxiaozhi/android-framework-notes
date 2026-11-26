@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Activity 启动流程：一条链与四个岔路口 — android-13.0.0_r84 源码深度分析</title>
+<style>
+:root{
+  --bg:#f4ecdd; --paper:#fbf6ea; --ink:#2c2620; --muted:#7a6f5f;
+  --accent:#b4552d; --accent-soft:#e8d9c8; --line:#d9cbb4;
+  --code-bg:#f7f1e4; --cm:#8a7a5f; --tree-ink:#3a3229;
+  --shadow:0 1px 3px rgba(80,60,30,.12);
+}
+[data-theme="dark"]{
+  --bg:#1d1916; --paper:#262019; --ink:#e8ddc9; --muted:#a99b82;
+  --accent:#e08a5b; --accent-soft:#3a2f24; --line:#463b2e;
+  --code-bg:#221c16; --cm:#9c8c6e; --tree-ink:#d9c9ac;
+  --shadow:0 1px 3px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Noto Serif SC","Source Han Serif SC","Songti SC","Microsoft YaHei",
+    "Segoe UI Symbol","Apple Symbols",serif;
+  line-height:1.8; font-size:16px;
+}
+.wrap{max-width:920px; margin:0 auto; padding:32px 22px 80px;}
+h1{font-size:1.9em; line-height:1.4; margin:.2em 0 .4em; color:var(--ink);}
+h2{font-size:1.35em; margin:1.8em 0 .7em; padding-bottom:.25em; border-bottom:2px solid var(--accent);}
+h3{font-size:1.12em; margin:1.4em 0 .5em;}
+p{margin:.6em 0;}
+a{color:var(--accent); text-decoration:none;} a:hover{text-decoration:underline;}
+.series{font-size:.85em; color:var(--muted); margin-bottom:6px; font-family:"Microsoft YaHei","Segoe UI Symbol","Apple Symbols",sans-serif;}
+.lead{background:var(--paper); border-left:4px solid var(--accent); padding:14px 18px; border-radius:6px; box-shadow:var(--shadow);}
+.card{background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:16px 20px; margin:18px 0; box-shadow:var(--shadow);}
+.toc{font-family:"Microsoft YaHei","Segoe UI Symbol","Apple Symbols",sans-serif; font-size:.95em;}
+.toc a{color:var(--tree-ink);} .toc ul{margin:.3em 0; padding-left:1.4em;}
+table{border-collapse:collapse; width:100%; margin:14px 0; font-size:.94em; background:var(--paper);}
+th,td{border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top;}
+th{background:var(--accent-soft);}
+.tag{display:inline-block; font-size:.78em; padding:1px 9px; border-radius:10px; background:var(--accent-soft); color:var(--accent); margin-right:6px; font-family:"Microsoft YaHei","Segoe UI Symbol","Apple Symbols",sans-serif;}
+.filename{font-family:Consolas,"Cascadia Mono","Segoe UI Symbol","Apple Symbols",monospace; font-size:.85em; color:var(--muted); margin:14px 0 0;}
+.code-block{background:var(--code-bg); border:1px solid var(--line); border-radius:6px; padding:12px 14px; overflow-x:auto; margin:4px 0 8px;}
+.code-block pre{margin:0; font-family:Consolas,"Cascadia Mono","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; line-height:1.65; white-space:pre;}
+.cm{color:var(--cm);}
+.kw{color:var(--accent);}
+.annotation{background:var(--accent-soft); border-radius:4px; padding:2px 5px;}
+.tree{font-family:Consolas,"Cascadia Mono","Segoe UI Symbol","Apple Symbols",monospace;
+  background:var(--code-bg); border:1px solid var(--line); border-radius:6px;
+  padding:12px 14px; overflow-x:auto; color:var(--tree-ink); font-size:.84em; line-height:1.7; white-space:pre;}
+.note{border-left:3px solid var(--line); padding:4px 14px; color:var(--muted); margin:12px 0;}
+.warn{border-left:3px solid var(--accent); padding:4px 14px; background:var(--accent-soft); border-radius:0 6px 6px 0;}
+details{border:1px solid var(--line); border-radius:6px; padding:8px 14px; margin:10px 0; background:var(--paper);}
+summary{cursor:pointer; color:var(--accent);}
+.ans{margin-top:8px;}
+footer{margin-top:48px; padding-top:16px; border-top:1px solid var(--line); color:var(--muted); font-size:.9em; font-family:"Microsoft YaHei","Segoe UI Symbol","Apple Symbols",sans-serif;}
+#themeBtn{position:fixed; right:22px; bottom:22px; border:1px solid var(--line); background:var(--paper); color:var(--ink);
+  border-radius:20px; padding:8px 14px; cursor:pointer; box-shadow:var(--shadow); font-size:.85em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="series">Android Framework 带学 01 ｜ Activity 启动 ｜ 基线 android-13.0.0_r84（/home/book/aosp13）｜ 配套阅读：ATMS 篇、AMS 篇</p>
+
+<h1 id="top">Activity 启动流程：一条链与四个岔路口</h1>
+
+<div class="lead" id="lead">
+Activity 启动是 framework 里唯一一条同时穿过四个服务的链：app 侧的 <span class="annotation">Activity</span> 把 Intent 交给 <span class="annotation">Instrumentation</span>，binder 进 system_server 后由 ATMS 验身份、<span class="annotation">ActivityStarter</span> 做全部准入与落栈决策，再由 AMS 决定要不要 fork 进程；新进程里 <span class="annotation">ActivityThread</span> 反射构造 Activity、回调 onCreate/onResume，窗口经 <span class="annotation">ViewRootImpl</span> 与 WMS 拿到第一帧。开发和定制里最常接到的四类反馈——「点了没反应」「白屏很久」「回到旧页面」「冷启动慢」——正好落在它的四个岔路口上，所以这条链的价值不在背流程，而在知道每个现象该往哪一行查。13 版有两个容易被 12 版经验带错的点：决策仍集中在 ActivityStarter，但「等 pause、预热 fork」这一段被移到 TaskFragment 里串行化；而 abort 的失败对外一律报成功，这意味着你只能信状态快照，不能信返回值。下面是一份 18 行、逐行现地核过的骨架，加上与另一份外部骨架的逐条对账：它有三处比我强，也有五处会让读者去查错的行。
+</div>
+
+<div class="card toc" id="toc">
+<strong>目录</strong>
+<ul>
+  <li><a href="#p0">0.0 名词表</a></li>
+  <li><a href="#p1">1. 骨架（24 行，已核）</a></li>
+  <li><a href="#p2">2. 方法逐个看</a></li>
+  <li><a href="#p3">3. 这份骨架怎么读</a></li>
+  <li><a href="#p4">4. 分块走读：闸门、预热、假成功、进程分叉</a></li>
+  <li><a href="#p4-5">4.5 支线：Activity1 的 pause</a></li>
+  <li><a href="#p5">5. 四个决策点</a></li>
+  <li><a href="#p6">6. 两份骨架对账</a></li>
+  <li><a href="#quiz">🛠 三道判据题</a></li>
+  <li><a href="#lab">🛠 L0 实践题</a></li>
+</ul>
+</div>
+
+
+<h2 id="p0">0.0 名词表</h2>
+<div class="card">
+<table>
+<tr><th>名词</th><th>一句话解释</th></tr>
+<tr><td>ActivityRecord</td><td>Activity 在 system_server 里的「档案」：先于进程和窗口存在，<code>dumpsys activity</code> 里看到的就是它。</td></tr>
+<tr><td>Task / TaskFragment</td><td>后退栈及其分片。Task 不是线程；13 里「何时 resume、要不要等 pause」由 TaskFragment 负责。</td></tr>
+<tr><td>launchMode → flags</td><td>清单里的 launchMode 在 <code>startActivityInner()</code> 里被翻译成 <code>NEW_TASK</code>/<code>CLEAR_TOP</code> 等 flags，再拿去匹配 Task。</td></tr>
+<tr><td>allPausedComplete</td><td>全局「上一个 Activity 是否已经 pause 完」的闸门；没过就 return，等下一次 resume 触发。</td></tr>
+<tr><td>startProcessAsync</td><td>异步 fork 进程的入口（最终到 zygote）。调用点有两处：pause 等待期预热、以及确知无进程时正式起。</td></tr>
+<tr><td>ClientTransaction</td><td>system_server 发给 app 的「要做的事」批次（LaunchActivityItem 等），由 app 侧 ActivityThread 执行。</td></tr>
+<tr><td>TotalTime</td><td><code>am start -W</code> 的数字，起点是 <code>ActivityStarter#execute()</code> 的通知处，终点是首帧画完，因此**包含等 pause 的时间**。</td></tr>
+</table>
+</div>
+
+<h2 id="p1">1. 骨架（24 行，已核）</h2>
+<div class="tree">
+Activity#startActivity() → 发起请求                                    wm/Activity.java:5929
+ └─ Instrumentation#execStartActivity() → 同步 binder 跨进程          app/Instrumentation.java:1798
+     └─ ATMS#startActivityAsUser() ← 验包名/uid、定 userId            wm/ActivityTaskManagerService.java:1238
+         └─ ActivityStarter#execute() → 计时起点；解析走 PMS          wm/ActivityStarter.java:647
+             └─ ActivityStarter#executeRequest() ← 五道门禁，任一不过即 abort  wm/ActivityStarter.java:849
+                 ├─ 启动权限 / Intent 防火墙 / 权限策略               wm/ActivityStarter.java:1014
+                 ├─ 后台启动限制 → BackgroundActivityStartController 判 BAL  wm/ActivityStarter.java:1031 / wm/BackgroundActivityStartController.java:152
+                 │   └─ BLOCK 且 new task/uid 不在 task → 打 "Abort background…"  wm/ActivityStarter.java:1789
+                 ├─ 任一不过 → START_ABORTED，对外仍映射成功          wm/ActivityStarter.java:1096
+                 └─ 通过 → new ActivityRecord.Builder() → 服务端档案  wm/ActivityStarter.java:1187
+                     └─ ActivityStarter#startActivityInner() → 定 Task、挂栈  wm/ActivityStarter.java:1543
+                         ├─ ActivityStarter#getReusableTask() → 复用   wm/ActivityStarter.java:1567
+                         ├─ null → ActivityStarter#computeTargetTask() → 新建  wm/ActivityStarter.java:1578
+                         └─ 汇合 → RootWindowContainer#resumeFocusedTasksTopActivities()  wm/RootWindowContainer.java:2254
+                             └─ Task#resumeTopActivityUncheckedLocked() → InnerLocked(:5030)  wm/Task.java:4961
+                                 └─ TaskFragment#resumeTopActivity() ← allPausedComplete 闸门  wm/TaskFragment.java:1172
+                                     ├─ 有 pause 在等 → startProcessAsync() 提前预热  wm/TaskFragment.java:1271
+                                     ├─ next.attachedToProcess() → 进程在，直发 resume  wm/TaskFragment.java:1382
+                                     └─ ActivityTaskSupervisor#startSpecificActivity() ← 进程分叉  wm/ActivityTaskSupervisor.java:1039
+                                         ├─ wpc.hasThread() → 进程在 → realStartActivityLocked()  wm/ActivityTaskSupervisor.java:1047
+                                         └─ 否 → 进程不在 → startProcessAsync() → zygote fork  wm/ActivityTaskSupervisor.java:1065
+ ⋯ 换进程 ⋯ fork 返回后 realStart 由 attach 回环补发 → ClientTransaction  wm/RootWindowContainer.java:3611
+ ⇢ app 侧两项：handleLaunchActivity()→performLaunchActivity()；handleResumeActivity()→performResumeActivity()  app/ActivityThread.java:3753 ／ app/ActivityThread.java:4797
+     └─ wm.addView() → ViewRootImpl#setView() → 首帧                view/ViewRootImpl.java:1153
+</div>
+<p class="note">基线 <strong>AOSP 13</strong>（<code>android-13.0.0_r84</code>），24 行锚点全部在 13 树 grep 原文核对。门禁展开成四行：权限三连 / 后台限制（BAL）/ task 相关的第二个 abort 点 / abort 返回。<code>startActivityLocked()</code>（wm/ActivityStarter.java:1668）仍折在 <code>startActivityInner()</code> 那一行的文字里。未逐行读：<code>performResumeActivity()</code> 之后到首帧之间的 View 树细节。</p>
+
+<h2 id="p2">2. 方法逐个看</h2>
+<div class="card">
+<table>
+<tr><th>方法/类</th><th>谁调它</th><th>作用</th><th>下一步</th></tr>
+<tr><td>Activity#startActivity()</td><td>应用/代码</td><td>Intent 落到 <code>startActivityForResult</code> 链路，最终进 Instrumentation</td><td>Instrumentation#execStartActivity</td></tr>
+<tr><td>ATMS#startActivityAsUser()</td><td>binder 入口</td><td>验包名/uid、隔离检查、定 userId，然后取 Starter</td><td>ActivityStarter#execute</td></tr>
+<tr><td>ActivityStarter#execute()</td><td>ATMS</td><td>计时起点、解析 Intent、调 executeRequest</td><td>ActivityStarter#executeRequest</td></tr>
+<tr><td>ActivityStarter#executeRequest()</td><td>execute</td><td>四道门禁、建 ActivityRecord、转 startActivityUnchecked</td><td>ActivityStarter#startActivityInner</td></tr>
+<tr><td>ActivityStarter#startActivityInner()</td><td>startActivityUnchecked</td><td>翻 flags、选 Task、挂栈、触发 resume</td><td><a href="#p4-1">TaskFragment#resumeTopActivity</a></td></tr>
+<tr><td>Task#resumeTopActivityUncheckedLocked()</td><td>RootWindowContainer</td><td>挑出该 Task 的 TaskFragment 去 resume</td><td><a href="#p4-1">TaskFragment#resumeTopActivity</a></td></tr>
+<tr><td>TaskFragment#resumeTopActivity()</td><td>RootWindowContainer</td><td>pause 闸门、选 resume 还是先预热/起进程</td><td><a href="#p4-1">块A</a></td></tr>
+<tr><td>ActivityTaskSupervisor#startSpecificActivity()</td><td>TaskFragment / 可见性维护</td><td>按进程是否已有 binder 线程分叉</td><td><a href="#p4-4">块D</a></td></tr>
+<tr><td>ActivityThread#handleLaunchActivity()</td><td>ClientTransaction</td><td>反射构造 Activity、走生命周期、挂窗口</td><td><a href="#p3">首帧</a></td></tr>
+</table>
+</div>
+
+<h2 id="p3">3. 这份骨架怎么读</h2>
+<div class="card">
+<ol>
+<li><strong>一句话定位</strong>：从 <code>startActivity()</code> 到第一帧上屏；中途会在 TaskFragment 里等一次 pause，再决定进程是复用、预热还是新 fork。</li>
+<li><strong>三个接力边界</strong>：binder ① <code>execStartActivity()</code>［app/Instrumentation.java:1798］；socket+fork <code>startProcessAsync()</code>［wm/ActivityTaskManagerService.java:4867］，新进程从 <code>ActivityThread#main()</code>［app/ActivityThread.java:7869］重新开始，<span class="annotation">调用栈在这里断</span>；回环 <code>attachApplicationLocked()</code>［am/ActivityManagerService.java:4673］反向补发启动。</li>
+<li><strong>最小验证命令</strong>：<code>adb shell am start -W -n 包/.Activity</code>；精确分段用 events buffer：<code>adb shell logcat -b events -v threadtime -d | grep -E "wm_create_activity|wm_restart_activity|am_proc_start|am_proc_bound|wm_on_create_called|wm_on_resume_called|wm_activity_launch_time"</code>。main buffer 的 <code>START u0</code>/<code>Start proc</code>/<code>Displayed</code> 只能粗看有无新进程，不能定位。</li>
+<li><strong>本链最贵的一行</strong>：<code>TaskFragment#resumeTopActivity()</code>［wm/TaskFragment.java:1172］的 <code>allPausedComplete</code> 闸门——它决定这次启动是「等上一个 pause 完」还是「立刻走」，冷启动多出来的几百毫秒常落在这里。</li>
+<li><strong>可追问的三个名字</strong>：<code>getReusableTask()</code>［wm/ActivityStarter.java:2489］问复用判定的条件；<code>startSpecificActivity()</code>［wm/ActivityTaskSupervisor.java:1039］问「进程在但实例是新的」走哪条；<code>attachApplicationLocked()</code>［am/ActivityManagerService.java:4673］问进程起来后怎么把启动补回来。</li>
+</ol>
+</div>
+
+
+<h2 id="p4">4. 分块走读：闸门、预热、假成功、进程分叉</h2>
+<p>四块按「TaskFragment 决定何时能 resume → 等 pause 时先预热进程 → 拦下时对外怎么报 → 进程在不在」的顺序走。前三块都能用一条 logcat/dumpsys 命令验证，最后一块是唯一会换进程的地方。</p>
+
+<h3 id="p4-1">块A｜第1跳：allPausedComplete 闸门</h3>
+<p class="filename">wm/TaskFragment.java:1181-1188</p>
+<div class="code-block"><pre><span class="cm">// 进入本块：next 已选定，上一跳可能仍停在 RESUMED</span>
+<span class="kw">final boolean</span> allPausedComplete = mRootWindowContainer.allPausedActivitiesComplete();
+<span class="kw">if</span> (!allPausedComplete) {
+    <span class="cm">// ① why：pause 和 resume 必须串行，两个 Activity 同时 RESUMED 会让焦点/输入分裂</span>
+    ProtoLog.v(WM_DEBUG_STATES, <span class="cm">"resumeTopActivity: Skip resume: some activity pausing."</span>);
+    <span class="kw">return false</span>;   <span class="cm">// ② 不重试，等 pause 完成的回调再触发一次 resume</span>
+}
+</pre></div>
+<p><strong>这段在干什么：</strong>进入时 <code>next</code> 已经是「该被 resume 的那一个」，但这一步不推进任何状态，只做一次全局检查：只要还有 Activity 在处理 pause，就直接返回 false。出去时的状态没变，等待方是 pause 完成后的下一次 resume 调用。</p>
+<p><strong>设计意图：</strong>用「返回 false + 外部重入」代替「阻塞等锁」。framework 不能在持 <code>mGlobalLock</code> 时睡等 app 回 pause 结果，否则整机窗口事务都停摆；所以它把等待变成「这次不做，下次再来」。代价是启动耗时里多出一段不可见的等待——这正是 <code>TotalTime</code> 里那几百毫秒的常见来源。</p>
+<p class="warn"><strong>实战问题：</strong>冷启动偶发慢 300–800ms、且 trace 里 <code>resumeTopActivity</code> 被调用两次以上。因果：第一次撞上 <code>allPausedComplete=false</code> 提前返回，第二次才真正往下走。查法：<code>adb shell dumpsys activity activities | grep -E "ResumedActivity|mResumedActivity"</code> 看当时是否还有别的 Activity 处于 resumed/pausing；或在 <code>wm/TaskFragment.java:1182</code> 下断点，命中两次即为该路径。</p>
+<details><summary>🧠 思考（单块）</summary><div class="ans">如果把这里改成「等 pause 完成再继续」，在哪些场景会立刻暴露问题？提示：想一下 <code>mGlobalLock</code> 是谁的锁、pause 的结果由谁送回来。</div></details>
+
+<h3 id="p4-2">块B｜第2跳：pause 等待期提前 fork</h3>
+<p class="filename">wm/TaskFragment.java:1262-1274</p>
+<div class="code-block"><pre><span class="kw">if</span> (next.attachedToProcess()) {
+    next.app.updateProcessInfo(<span class="kw">false</span>, <span class="kw">true</span>, <span class="kw">false</span>, <span class="kw">false</span>);
+} <span class="kw">else if</span> (!next.isProcessRunning()) {
+    <span class="cm">// ① why 原文注释：起进程是异步的，既然已经知道它没在跑，就提前起，
+    //   省掉「等当前 Activity pause 完」的那段空转</span>
+    <span class="kw">final boolean</span> isTop = <span class="kw">this</span> == taskDisplayArea.getFocusedRootTask();
+    mAtmService.startProcessAsync(next, <span class="kw">false</span> <span class="cm">/* knownToBeDead */</span>, isTop,
+            isTop ? HostingRecord.HOSTING_TYPE_NEXT_TOP_ACTIVITY
+                  : HostingRecord.HOSTING_TYPE_NEXT_ACTIVITY);
+}
+</pre></div>
+<p><strong>这段在干什么：</strong>进入时 <code>next</code> 还没进程；这一跳不 resume，只把 fork 请求发出去，让 zygote 在「等 pause」的同一段时间里把进程拉起来。出去时进程处于 starting，Activity 仍是 stopped。</p>
+<p><strong>设计意图：</strong>把两个独立耗时（pause 回环、进程 fork）重叠。反过来设计——等 pause 完再起进程——冷启动会稳定多花一次 fork+attach 的时间。注意这里的前提是 <code>!isProcessRunning()</code>：如果进程正在启动中，不会重复发。</p>
+<p class="warn"><strong>实战问题：</strong><code>logcat</code> 里 <code>Start proc</code> 出现得比 <code>Displayed</code> 早很多、但用户仍觉得慢。因果：进程已预热，慢在 app 侧 <code>Application.onCreate</code> 或首帧。查法：<code>adb shell logcat -d | grep -E "Start proc|Displayed|ActivityTaskManager: START"</code> 对齐三条时间戳；若 <code>Start proc</code> 与 <code>START u0</code> 几乎同时，说明走了本块预热；若 <code>Start proc</code> 明显晚于 pause 结束，说明预热没走（当时没有可 pause 的 Activity）。</p>
+<details><summary>🧠 思考（单块）</summary><div class="ans">这里只预热、不 realStart，那么进程 attach 回来之后，是谁把「启动」这件事补上的？在骨架里找那一行。</div></details>
+
+
+<h3 id="p4-3">块C｜第3跳：abort 对外一律报成功</h3>
+<p class="filename">wm/ActivityStarter.java:1262-1264</p>
+<div class="code-block"><pre><span class="kw">static int</span> getExternalResult(<span class="kw">int</span> result) {
+    <span class="cm">// ① why：兼容老 API 语义——调用方拿到非 SUCCESS 会当异常处理，
+    //   但启动被拦（后台限制/权限/Controller 否决）属于「正常拒绝」</span>
+    <span class="kw">return</span> result != START_ABORTED ? result : START_SUCCESS;
+}
+</pre></div>
+<p><strong>这段在干什么：</strong>进入时是内部结果码（可能 <code>START_ABORTED</code>，产生点在 <code>:1096</code>、<code>:1789</code>、<code>:1828</code>）；出去时被折成 <code>START_SUCCESS</code>。调用方完全看不出这次没起来。</p>
+<p><strong>设计意图：</strong>把「拒绝」和「出错」分开：出错要抛/返回错误，拒绝只是「不给你起」，对 app 表现为「已受理但什么也没发生」。这就是企业管控、儿童模式、后台启动限制能做到「静默」的原因。</p>
+<p class="warn"><strong>实战问题：</strong>点了图标没反应，<code>startActivity()</code> 没抛异常、也没进 <code>onCreate</code>。因果：abort 被折叠成成功。查法：<code>adb shell logcat -s ActivityTaskManager | grep "START u0"</code> 有记录但无后续 <code>Displayed</code>；再看 <code>adb shell logcat | grep -iE "abort|background start|denied"</code>。判据是「有 START、无新 Task、无 Displayed」，三者同时成立才归因到本块。</p>
+<details><summary>🧠 思考（单块）</summary><div class="ans">如果业务方非要区分「被拦」和「成功」，能拿到哪些信号？提示：想想 <code>ActivityResult</code> 回调、<code>dumpsys activity activities</code> 的 task 数量、以及 <code>am start -W</code> 的 Status 字段。</div></details>
+
+<h3 id="p4-4">块D｜第4跳：进程分叉</h3>
+<p class="filename">wm/ActivityTaskSupervisor.java:1039-1052</p>
+<div class="code-block"><pre><span class="kw">void</span> startSpecificActivity(ActivityRecord r, <span class="kw">boolean</span> andResume, <span class="kw">boolean</span> checkConfig) {
+    <span class="kw">final</span> WindowProcessController wpc =
+            mService.getProcessController(r.processName, r.info.applicationInfo.uid);
+    <span class="kw">boolean</span> knownToBeDead = <span class="kw">false</span>;
+    <span class="kw">if</span> (wpc != <span class="kw">null</span> &amp;&amp; wpc.hasThread()) {
+        <span class="cm">// ① 有 binder 线程：直接发 ClientTransaction，本方法内完成</span>
+        realStartActivityLocked(r, wpc, andResume, checkConfig);
+        <span class="kw">return</span>;
+    }
+    <span class="cm">// … 省略：knownToBeDead 判定与参数整理（进程存在但线程未就绪时走这里）</span>
+    mService.startProcessAsync(r, knownToBeDead, isTop, hostingRecord);
+    <span class="cm">// ② 没线程：发 fork 请求就返回；真正的 realStart 发生在 attachApplication 回环里</span>
+}
+</pre></div>
+<p><strong>这段在干什么：</strong>进入时拿到该 Activity 的进程记录；有 binder 线程就在本方法内直接 realStart（热启动），没有就只发 fork 请求然后返回（冷启动）。出去时两种情况形态完全不同：一个是「事务已发」，一个是「进程在起」。</p>
+<p><strong>设计意图：</strong>把「进程就绪」这件事抽成同一个入口，避免调用方到处判断。代价是读栈的人容易误以为 fork 是 <code>startProcessAsync()</code> 的调用子节点——它不是，真正的 realStart 在新进程 attach 之后从 <code>RootWindowContainer</code> 那一侧进来（<code>:3611</code>）。</p>
+<p class="warn"><strong>实战问题：</strong>「图标闪一下消失」。因果：本方法走了 fork 分支，但进程起来后 attach 失败或 Application 崩溃，realStart 永远没发生。查法：<code>adb shell logcat -d | grep -E "Start proc|am_proc_start|FATAL|am_crash"</code>；判据是「有 Start proc、无对应 Displayed、有 crash 记录」。断点应打在 <code>:1047</code>（有线程）与 <code>:1065</code>（无线程）两处，看实际走哪条。</p>
+<details><summary>🧠 思考（单块）</summary><div class="ans">热启动时 <code>realStartActivityLocked()</code> 在 <code>TaskFragment</code> 的 resume 流程里也会被调（<code>:1382</code> 那条分支之后）。同一个方法有两个入口，这会不会导致同一次启动发两次事务？靠什么字段防重？</div></details>
+
+
+<h3 id="p4-5">支线｜Activity1 的 pause 为什么不在主干上</h3>
+<p>主干到「定 Task、起进程」为止都只关心 Activity2。Activity1 的 pause 是一条<strong>并发支线</strong>：它的终点不是 Activity2 的首帧，而是让 <code>:1182</code> 的闸门变成 true。把它画进主干会得出「pause 完才 fork」的错关系——实际两者是重叠的（这正是 <code>:1271</code> 提前预热的意义）。</p>
+<div class="tree">TaskFragment#resumeTopActivity() → mResumedActivity 还活着，先暂停它      wm/TaskFragment.java:1172
+ └─ TaskFragment#startPausing() → 发 PauseActivityItem，记录转 PAUSING     wm/TaskFragment.java:1571
+     └─ app 侧 ActivityThread#handlePauseActivity() → onPause()            app/ActivityThread.java:4964
+         └─ 回执 ActivityRecord#activityPaused() ← 状态转 PAUSED           wm/ActivityRecord.java:6238
+             └─ RootWindowContainer#allPausedActivitiesComplete() 为 true → 再进 resumeTopActivity  wm/RootWindowContainer.java:3209</div>
+<p><strong>接力边界：</strong>第三行跨进程（binder 到 app），第四行是回执；回执由 <code>ActivityClientController#activityPaused()</code>［wm/ActivityClientController.java:184］接住，再落到 ActivityRecord。这条支线的主干只留两个接触点：入口 <code>:1172</code>、出口 <code>:1182</code>。</p>
+<div class="card">
+<table>
+<tr><th>你的目的</th><th>要不要展开这条支线</th></tr>
+<tr><td>背名词表、回答「启动经过哪些方法」</td><td>不要，主干留等待点即可</td></tr>
+<tr><td>排查白屏 / 上屏慢</td><td><strong>要</strong>：Activity1 的界面在 pause 完成前一直显示，pause 慢会直接推迟 <code>:1182</code> 放行</td></tr>
+<tr><td>排查「图标闪一下 / 点了没反应」</td><td>不要，那是 abort 与起进程两条</td></tr>
+<tr><td>做转场动画、启动保留上一页</td><td><strong>要</strong>：Activity1 的 pause 时机决定 transition 何时开始</td></tr>
+</table>
+</div>
+<p class="warn"><strong>同进程与跨进程的差别：</strong>同进程时 pause 只是一次本地事务，<code>:1182</code> 通常一次就过，感觉不到它存在；跨进程（Activity2 在新进程）时，Activity1 的 pause 与 Activity2 的 fork 并行——若 <code>Start proc</code> 明显早于 pause 结束，说明走了 <code>:1271</code> 的预热，属正常且更快。查当时有没有卡在 pause：<code>adb shell dumpsys activity activities | grep -E "mResumedActivity|state=|pausing"</code>；<code>state=PAUSING</code> 仍挂着且目标没 realStart，就是 <code>:1182</code> 在反复返回 false。</p>
+
+<h2 id="p5">5. 四个决策点</h2>
+<div class="card">
+<table>
+<tr><th>决策</th><th>位置</th><th>两种结果</th><th>怎么看</th></tr>
+<tr><td>目标是谁</td><td>wm/ActivityStarter.java:670</td><td>解析到 ActivityInfo / 找不到类</td><td>logcat <code>START ... cmp=</code> 的组件名</td></tr>
+<tr><td>放不放行</td><td>wm/ActivityStarter.java:1096</td><td>继续 / abort（对外报成功）</td><td>有 START、无新 Task、无 Displayed</td></tr>
+<tr><td>复用还是新建 Task</td><td>wm/ActivityStarter.java:1567 / 1578</td><td>复用已有 / 新 Task</td><td><code>dumpsys activity activities | grep -c "Task{"</code> 前后对比</td></tr>
+<tr><td>起不起进程</td><td>wm/ActivityTaskSupervisor.java:1039</td><td>有线程 → realStart / 无线程 → fork</td><td>logcat 有无 <code>Start proc</code></td></tr>
+</table>
+</div>
+
+
+<h2 id="p6">6. 两份骨架对账</h2>
+<p>外部那份骨架（另一个模型生成）同样基于 13 树，行号大部分真实存在。逐条核完的结论是：<strong>它的下半场比我第一版强，上半场有会让读者查错行的锚点，且终点缺失</strong>。下面只列有证据的差异，不评风格。</p>
+
+<h3>它赢的三处</h3>
+<div class="card">
+<table>
+<tr><th>内容</th><th>为什么比我第一版强</th></tr>
+<tr><td><code>wm/TaskFragment.java:1182</code> 的 <code>allPausedComplete</code> 闸门</td><td>我第一版把整段 resume 压成了一行，讲得出「走到哪」，讲不出「为什么冷启动慢」；这一行才是耗时的落点。</td></tr>
+<tr><td><code>wm/TaskFragment.java:1271</code> 的提前预热</td><td>原文注释写明「start-process 是异步的，提前起以省掉等 pause 的时间」。这是 13 里冷启动真正省时间的一手，我漏了。</td></tr>
+<tr><td><code>wm/RootWindowContainer.java:3611</code> + <code>am/ActivityManagerService.java:4673</code> 的 attach 回环</td><td>把「fork 之后 realStart 从哪来」画出来了。没有这个回环，冷启动的栈在主路径上是断的。</td></tr>
+</table>
+</div>
+
+<h3>它错/漏的五处</h3>
+<div class="card">
+<table>
+<tr><th>它的写法</th><th>核对结果</th></tr>
+<tr><td><code>startActivity(Intent)</code> → <code>app/Activity.java:5502</code></td><td><code>:5502</code> 是 <code>startActivityForResult(Intent,int,Bundle)</code>；<code>startActivity(Intent)</code> 在 <code>:5929</code>。差 427 行，按表去查会找不到。</td></tr>
+<tr><td><code>null → setNewTask() 新建 Task</code> @ <code>:1627</code></td><td><code>:1627</code> 是 <code>setNewTask(taskToAffiliate)</code> 的<strong>调用点</strong>（定义 <code>:2693</code>），语义是「把记录关联到新 Task」。真正决定新建的是 <code>computeTargetTask()</code>——调用 <code>:1578</code>、定义 <code>:1722</code>，整份骨架里没出现。</td></tr>
+<tr><td>三个同级 <code>└─</code>：复用 / setNewTask / startActivityLocked</td><td>读起来像三选一，实际是「判断 → 两分支 → <strong>汇合</strong> → 再走一步」。第三个再用 <code>└─</code>，层级就断了。</td></tr>
+<tr><td>「无进程 → startSpecificActivity()」@ <code>:1045</code></td><td><code>:1045</code> 是 <code>if (wpc != null &amp;&amp; wpc.hasThread())</code>，属<strong>有进程</strong>那条；<code>startSpecificActivity</code> 是统一入口（定义 <code>:1039</code>），1047 有线程直接 realStart，1065 才 fork。</td></tr>
+<tr><td>终点停在 <code>realStartActivityLocked() → ClientTransaction</code></td><td>没有 <code>handleLaunchActivity()</code>、<code>performLaunchActivity()</code>、<code>onResume</code>、首帧。于是「启动完成」没有形态，白屏类问题在这份骨架上无处安放；也缺 abort 分支（<code>:1096</code>）与计时起点。</td></tr>
+</table>
+</div>
+
+<p class="warn"><strong>以后自己判骨架，四条就够：</strong>① 每个 <code>File.java:行号</code> 打开原文看方法名对不对；② 分支行是「并列」还是「汇合」，三个同级 <code>└─</code> 就要问一句；③ 末尾有没有终点形态（首帧？事务？）；④ 有没有一条 25 分钟内能跑出来的判据。</p>
+
+<h2 id="quiz">🛠 三道判据题：症状 → 命令 → 归因</h2>
+<p class="note">不出「请解释 X」这种题——那种题只验记忆。每题给一个真实症状，你要用命令把范围切到某一段，最后产出一句能写进笔记的归因。</p>
+
+<details><summary>题 1｜两次冷启动，TotalTime 一个 480ms、一个 890ms，慢在哪一段？</summary>
+<div class="ans">
+<p><strong>触发（events buffer 才是时间线）：</strong></p>
+<div class="code-block"><pre>adb logcat -b events -c
+adb shell am force-stop com.example.framworkcontent
+adb shell am start -W -n com.example.framworkcontent/.WindowDemoActivity
+adb logcat -b events -v threadtime -d |
+  Select-String "wm_create_activity|wm_restart_activity|am_proc_start|am_proc_bound|wm_on_create_called|wm_on_resume_called|wm_activity_launch_time" |
+  Select-String "com.example.framworkcontent"</pre></div>
+<p class="note">按<strong>包名</strong>过滤，不要按 Activity 名：<code>am_proc_bound</code> 的字段只有 <code>[User, PID, ProcessName]</code>，没有 Activity 名，按 Activity 名过滤会把它整行丢掉，attach 这段就看不见了。</p>
+<p><strong>判据（按相邻两个时间戳切段）：</strong></p>
+<table>
+<tr><th>段</th><th>含义</th><th>大了说明</th></tr>
+<tr><td><code>wm_create_activity</code> → <code>am_proc_start</code></td><td>准入/决策 → fork 完成（zygote 已回报 pid）</td><td>等 pause、门禁、解析、fork 往返慢</td></tr>
+<tr><td><code>am_proc_start</code> → <code>am_proc_bound</code></td><td>进程初始化 → attachApplication 接回 system_server</td><td>进程自身启动慢（so 加载、ART、多线程）</td></tr>
+<tr><td><code>am_proc_bound</code> → <code>wm_on_create_called</code></td><td>bindApplication + Application.onCreate + 实例化</td><td>Application/Provider 初始化重</td></tr>
+<tr><td><code>wm_on_create_called</code> → <code>wm_on_resume_called</code></td><td>onCreate/onStart 自身</td><td>app 初始化重（读配置、建 DB、DI）</td></tr>
+<tr><td><code>wm_on_resume_called</code> → <code>wm_activity_launch_time</code></td><td>布局 → 绘制 → 首帧</td><td>布局层级深、主线程卡、GPU/SF</td></tr>
+</table>
+<p class="note"><strong>两个容易漏的标签：</strong><code>wm_restart_activity</code> 是进程重建时的实际启动项（force-stop 之后再点最常见，此时 <code>wm_create_activity</code> 与它都会出现）；<code>am_proc_bound</code> 表示进程已 attach 完成，比 <code>am_proc_start</code> 更接近「进程可用」这个时刻。</p>
+<p><strong>顺带一个判据：</strong><code>am_proc_start</code> 的第五个字段是 hosting type。看到 <code>next-top-activity</code> 就说明这次走了 <code>TaskFragment.java:1271</code> 的「pause 等待期提前 fork」；看到 <code>top-activity</code> 则是走 <code>ActivityTaskSupervisor.java:1065</code> 的正式起进程。不用读代码就能判断预热有没有生效。</p>
+<p><strong>产出：</strong>一句归因，如「慢在 am_proc_bound→on_create_called，属 Application 初始化而不是等 pause」。<strong>锚点：</strong>wm/ActivityStarter.java:1187（记录创建）、am/ProcessList.java:2599（fork 日志点）</p>
+<p><strong>为什么这题值得做：</strong>它把「冷启动优化」从一句口号变成四选一；选错方向，改代码就是白改。</p>
+</div></details>
+
+<details><summary>题 2｜点了图标没反应：没崩、没新界面、<code>startActivity()</code> 也没抛异常。三分钟内归因到哪一类？</summary>
+<div class="ans">
+<p><strong>触发：</strong></p>
+<div class="code-block"><pre>adb logcat -c
+adb shell am start -W -n 包名/.Activity
+adb shell logcat -d | grep -E "START u0|Start proc|Displayed|FATAL"
+adb shell dumpsys activity activities | grep -c "Task{"</pre></div>
+<p><strong>判据：</strong></p>
+<table>
+<tr><th>观察到的组合</th><th>归因</th></tr>
+<tr><td>连 <code>START u0</code> 都没有</td><td>没到 ATMS：调用方没真正发起、uid/包名不匹配，或被上层先行拦下</td></tr>
+<tr><td>有 START、Task 数不变、无 Displayed，且命中 <code>Abort background activity starts</code></td><td>后台启动限制被拦（wm/ActivityStarter.java:1789 → :1096 → :1264）</td></tr>
+<tr><td>同上，但没有那条关键字</td><td>其他门禁：启动别人的权限、Intent 防火墙、Controller/Interceptor 否决（wm/ActivityStarter.java:1096 → :1264）</td></tr>
+<tr><td>有 <code>Start proc</code>、无 Displayed、有 FATAL</td><td>进程起来了但 Application/Activity 初始化崩溃</td></tr>
+<tr><td>START、Task、Displayed 全有，界面还是不见</td><td>不在这条链上，转窗口/焦点（另一条线）</td></tr>
+</table>
+<p class="note">后台限制这条的判定在 <code>shouldAbortBackgroundActivityStart()</code>（wm/ActivityStarter.java:1031）→ <code>BackgroundActivityStartController#checkBackgroundActivityStart()</code>（wm/BackgroundActivityStartController.java:152）；「new task 且 uid 不在 task 里」这类情况会在 <code>:1789</code> 打出 <code>Abort background activity starts from …</code>。其余门禁不会打这条关键字，所以用它做第一刀。</p>
+<p><strong>产出：</strong>一句归因，如「有 START 无新 Task → abort 静默失败」。<strong>锚点：</strong>wm/ActivityStarter.java:1096</p>
+<p><strong>为什么这题值得做：</strong>线上「点了没反应」十有八九落在这张表的第二、三行，先分表再读代码，比上来就翻 ActivityThread 快十倍。</p>
+</div></details>
+
+<details><summary>题 3｜拿到一份 atrace / 一段堆栈，怎么判断这次是冷启动还是热启动，realStart 在哪一段？</summary>
+<div class="ans">
+<p><strong>触发：</strong>抓一份带 wm 与 am 类别的 trace（或直接用 events buffer 里的 <code>am_proc_start</code> 替代）：</p>
+<div class="code-block"><pre>adb shell atrace -t 5 wm am -a 包名 &gt; t.txt
+# 或
+adb shell logcat -b events -v threadtime -d | grep -E "am_proc_start|wm_on_create_called"</pre></div>
+<p><strong>判据：</strong>看有没有「新进程诞生」这一段，以及 realStart 相对它的位置：</p>
+<table>
+<tr><th>形态</th><th>结论</th></tr>
+<tr><td>有 zygote fork / <code>am_proc_start</code>，且 realStart 出现在 attach 之后（跨进程的另一段）</td><td>冷启动，realStart 由 attach 回环补发（wm/RootWindowContainer.java:3611）</td></tr>
+<tr><td>没有 fork，realStart 在 resume 流程内立刻发生</td><td>热启动，走已有 binder 线程（wm/ActivityTaskSupervisor.java:1047）</td></tr>
+</table>
+<p><strong>产出：</strong>一句归因，如「冷启动，realStart 在 attach 段，不在 resume 段」。<strong>锚点：</strong>wm/RootWindowContainer.java:3611</p>
+<p><strong>为什么这题值得做：</strong>读 trace 时最容易犯的错，就是在 fork 之后继续顺着同一段栈往下找 realStart——它根本不在那儿。</p>
+</div></details>
+
+<h2 id="lab">🛠 L0 实践题（25 分钟，零编译）</h2>
+<div class="filename">冷启动 vs 热启动：差在哪个分支</div>
+<div class="code-block"><pre><span class="cm"># 触发</span>
+adb shell am force-stop com.example.framworkcontent
+adb logcat -c
+adb shell am start -W -n com.example.framworkcontent/.WindowDemoActivity   <span class="cm"># 冷</span>
+adb shell am start -W -n com.example.framworkcontent/.WindowDemoActivity   <span class="cm"># 热</span>
+adb shell logcat -d | grep -iE <span class="cm">"Start proc|Displayed"</span>
+</pre></div>
+<p><strong>判据：</strong>冷启动那轮出现 <code>Start proc ... com.example.framworkcontent</code>，热启动那轮没有；两次 <code>TotalTime</code> 差一个数量级。</p>
+<p><strong>锚点：</strong><code>wm/TaskFragment.java:1271</code>、<code>wm/ActivityTaskSupervisor.java:1065</code>。</p>
+<p><strong>产出：</strong>一句结论——「冷热差落在 TaskFragment 的进程分支：冷启动在 pause 等待期预热 fork，热启动走 <code>attachedToProcess()</code> 直发 resume」。</p>
+
+<footer>
+<p><a href="../index.html">← 学习站首页</a> ｜ <a href="../Android-Framework学习路线图.html">学习路线图</a></p>
+<p>下篇预告：把 <code>TaskFragment#resumeTopActivity()</code> 的 pause 闸门逐行拆开——为什么「跳过」比「等待」更快，以及两次 resume 调用在 trace 里长什么样。</p>
+</footer>
+
+</div>
+<button id="themeBtn" title="主题切换">🌗 auto</button>
+<script>
+(function(){
+  var KEY='awt_theme';
+  var btn=document.getElementById('themeBtn');
+  var order=['auto','light','dark'];
+  function apply(m){
+    if(m==='auto'){
+      var h=new Date().getHours();
+      document.documentElement.setAttribute('data-theme',(h>=7&&h<19)?'light':'dark');
+    }else{ document.documentElement.setAttribute('data-theme',m); }
+    btn.textContent='🌗 '+m;
+  }
+  var mode=localStorage.getItem(KEY)||'auto'; apply(mode);
+  btn.addEventListener('click',function(){
+    mode=order[(order.indexOf(mode)+1)%order.length];
+    localStorage.setItem(KEY,mode); apply(mode);
+  });
+  setInterval(function(){ if(mode==='auto') apply('auto'); },60000);
+})();
+</script>
+</body>
+</html>
+

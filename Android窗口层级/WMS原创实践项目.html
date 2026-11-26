@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WMS 原创实践项目：六个自造实验（用实现验证理解）— AOSP 12</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .card.c1 { border-left:4px solid var(--accent); }
+    .card.c2 { border-left:4px solid var(--accent2); }
+    .card.c3 { border-left:4px solid var(--accent3); }
+    .card.c4 { border-left:4px solid var(--tag-text); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .think .qtag { color:var(--accent3); font-weight:bold; }
+    .analogy { border-left:4px solid var(--accent2); background:var(--bg-card); border:1px solid var(--border); border-left-width:4px; padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .analogy .tag { color:var(--accent2); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:10px 16px; margin:14px 0; font-size:.9rem; color:var(--text2); }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:14px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-size:.82rem; font-weight:bold; margin-right:8px; }
+    .deliver { border:1px solid var(--accent2); border-radius:8px; padding:12px 18px; margin:14px 0; background:var(--bg-card); font-size:.92rem; }
+    .deliver .tag { color:var(--accent2); }
+    .src { font-size:.85rem; color:var(--text2); border-left:3px solid var(--h2-border); padding-left:12px; margin:10px 0; }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } table { font-size:.8rem; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🧪 WMS 原创实践项目：六个自造实验</h1>
+<p class="subtitle">用「自己实现 + 实测校验」验证理解，而不是抄作业 · 全部锚点已在 AOSP 12 源码树核实</p>
+<p class="series">📚 Android 窗口层级专题 · 自造项目篇 ｜ 配套 <a href="index.html">00–06 篇</a> ｜ 姊妹篇：<a href="WMS实践项目清单.html">马老师实战作业清单</a> ｜ 上位：<a href="../../Android-Framework学习路线图.html">Framework 路线图（B 赛道）</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p0">〇、我出的题和马老师那套有什么不同</a>
+  <a href="#p1">一、六题总览</a>
+  <a href="#p2">L1 Z 序预言机（构造性·最硬核）</a>
+  <a href="#p3">L2 Dump 考古器（工具性·最实用）</a>
+  <a href="#p4">L3 What-if 破坏实验室（方法论·最提效）</a>
+  <a href="#p5">L4 窗口泄漏猎犬（实战性·最贴近工作）</a>
+  <a href="#p6">L5 时序图自动生成器（可视化·最好玩）</a>
+  <a href="#p7">L6 输入命中预言机（进阶·闭环 05 篇）</a>
+  <a href="#p8">七、微项目：六个 1–2 小时的快赢</a>
+  <a href="#p9">八、怎么算做完（硬指标）</a>
+  <a href="#p10">九、锚点索引（全部已核实）</a>
+</div>
+
+<!-- ═══════════════ 〇 ═══════════════ -->
+
+<h2 id="p0">〇、我出的题和马老师那套有什么不同</h2>
+
+<div class="card">
+  <p>马老师那套（见 <a href="WMS实践项目清单.html">实践项目清单</a>）是<strong>「别人的 bug，你去修」</strong>——优点是贴近真实工作，缺点是<strong>依赖现成的复现环境和参考文章</strong>，而且你只能沿着他给的路径走。</p>
+  <p>我给你出的是另一类：<strong>「你把系统的一个机制，自己重新造一遍，再拿真机验证」</strong>。</p>
+
+  <table>
+    <tr><th></th><th>马老师型（修 bug）</th><th>我出的型（造机制）</th></tr>
+    <tr><td>起点</td><td>别人踩的坑</td><td>一条源码机制</td></tr>
+    <tr><td>动作</td><td>定位 → 修复</td><td><strong>预测 → 实现 → 实测 → 对不上就回头</strong></td></tr>
+    <tr><td>做题时会发现</td><td>工具不熟</td><td><strong>自己哪块理解是错的</strong>（这就是价值）</td></tr>
+    <tr><td>对理解的检验强度</td><td>中（可能靠猜）</td><td><strong>高</strong>（预测错了立刻暴露）</td></tr>
+    <tr><td>可复现性</td><td>依赖特定环境/bug</td><td>随时可做，环境就是你手上的 AOSP 12</td></tr>
+    <tr><td>产物</td><td>patch / 报告</td><td><strong>可运行的工具 / 引擎 / 数据集</strong></td></tr>
+  </table>
+
+  <div class="analogy">
+    <span class="tag">一句话区别</span> 马老师教你<strong>当医生</strong>（病人来了开刀）；我教你<strong>当制图师</strong>（把整个地形亲自走一遍画出来）。<strong>两者都要做</strong>——但只做前者，你的理解永远是「碎片 + 补丁」，不成体系。
+  </div>
+
+  <div class="annotation"><span class="tag">前提</span> 六题全部基于你手头的 <code>/home/book/aosp12</code>，且<strong>每条源码锚点我都已 grep 核实过</strong>（见第九章索引），你照做不会扑空。</div>
+</div>
+
+<!-- ═══════════════ 一 ═══════════════ -->
+
+<h2 id="p1">一、六题总览</h2>
+
+<div class="card">
+  <table>
+    <tr><th>#</th><th>项目</th><th>一句话</th><th>类型</th><th>周期</th><th>核心产物</th></tr>
+    <tr><td><strong>L1</strong></td><td>Z 序预言机</td><td>自己重写 WMS 的层级算法，预测 mLayer</td><td>构造</td><td>3–5 天</td><td>可运行引擎 + 预测/实测对照表</td></tr>
+    <tr><td><strong>L2</strong></td><td>Dump 考古器</td><td>让 dump 能回答「这个字段谁写的」</td><td>工具</td><td>1 周</td><td>字段→源码映射表 + 查询脚本</td></tr>
+    <tr><td><strong>L3</strong></td><td>What-if 破坏实验室</td><td>先预测后实验：改一行系统会怎样</td><td>方法</td><td>持续</td><td>预测vs实际 对照表（≥8 个实验）</td></tr>
+    <tr><td><strong>L4</strong></td><td>窗口泄漏猎犬</td><td>把「has leaked window」变成可量化检测</td><td>实战</td><td>1 周</td><td>检测脚本 + 复现的泄漏案例</td></tr>
+    <tr><td><strong>L5</strong></td><td>时序图自动生成器</td><td>从 trace 自动画 addWindow→relayout→finishDraw</td><td>可视化</td><td>1–2 周</td><td>生成器 + 自动产出的时序图</td></tr>
+    <tr><td><strong>L6</strong></td><td>输入命中预言机</td><td>预测触摸归谁，和 dumpsys input 对答案</td><td>进阶</td><td>1–2 周</td><td>命中预测器 + 实测对比</td></tr>
+  </table>
+
+  <div class="tree">难度与依赖
+L3（改一行看后果）─── 最容易起步，可与其他并行
+   │
+L1（重写 Z 序）────── 需要 02/03 篇基础，最硬核
+   │
+L2（dump 考古）────── 需要读过 06 篇全链路
+   │
+L4（泄漏猎犬）─────── 需要 AMS 生命周期（可先做简化版）
+   │
+L5（时序图生成）───── 需要会用 Perfetto / WindowTracing
+   │
+L6（输入预言机）───── 需要 05 篇 + getTouchableRegion 细节</div>
+
+  <div class="hint">💡 <strong>建议起手</strong>：L3（当天就能出第一个实验）→ L1（真正的分水岭）→ L4（最能写进简历）。</div>
+</div>
+
+<!-- ═══════════════ L1 ═══════════════ -->
+
+<h2 id="p2">二、L1 Z 序预言机（构造性 · 最硬核）</h2>
+
+<div class="card c1">
+  <div class="annotation star3"><span class="tag">一句话</span> 把 WMS 决定「谁盖谁」的那套算法<strong>自己实现一遍</strong>，然后拿去预测真机上任意窗口组合的最终层级；<strong>预测错一个数，就代表你有一处理解是错的理解</strong>。</div>
+
+  <h3>为什么这题值钱</h3>
+  <p>Z 序是 WMS 里最容易被"背下来"却又最容易理解错的部分。你 02/03 篇读过它，但读过 ≠ 能算。这题会逼你分清三件事：</p>
+  <ul>
+    <li><code>mBaseLayer</code>（粗层）怎么来的 —— 由 type 映射 + 乘法偏移</li>
+    <li><code>mSubLayer</code>（层内细分）只在子窗口场景用</li>
+    <li>最终 <code>mLayer</code> 是遍历时<strong>两趟分配</strong>出来的，不是算出来的</li>
+  </ul>
+
+  <h3>源码依据（我已核实）</h3>
+  <div class="src">
+    <code>WindowManagerService.java:343</code> <code>TYPE_LAYER_MULTIPLIER = 10000</code>；
+    <code>:347</code> <code>TYPE_LAYER_OFFSET = 1000</code><br>
+    <code>WindowManagerPolicy.java:466</code> <code>getWindowLayerLw(win)</code>；<code>:520</code> <code>getWindowLayerFromTypeLw(type, canAddInternalSystemWindow, roundedCornerOverlay)</code> —— 那张 <code>switch(type)</code> 大表就是层级字典<br>
+    <code>WindowState.java:1104 / :1117</code> 子窗口抄父层、否则自己算 <code>mBaseLayer</code><br>
+    <code>WindowContainer.java:2290</code> <code>assignChildLayers(Transaction)</code> —— <strong>两趟循环</strong>（第一趟跳过 <code>needsZBoost()</code> 的子节点，第二趟补上），<code>WindowState.java:5648</code> <code>assignLayer(t, layer)</code>
+  </div>
+
+  <h3>做什么</h3>
+  <div class="step">
+    <p><span class="no">1</span><strong>抄字典</strong>：把 <code>getWindowLayerFromTypeLw</code> 的 <code>switch</code> 表整理成数据（type → 层号），别用 if-else 硬编码，要能配置。</p>
+    <p><span class="no">2</span><strong>实现两级层</strong>：<code>mBaseLayer = policyLayer(type) * 10000 + 1000</code>；子窗口改为继承父的 <code>mBaseLayer</code>，自己只填 <code>mSubLayer</code>。</p>
+    <p><span class="no">3</span><strong>实现两趟分配</strong>：按 DFS 序遍历树，第一趟给「不需要 Z 提升」的节点依次发号，第二趟给 <code>needsZBoost</code> 的补号。这一步是本题的<strong>真正考点</strong>——很多人第一次写会漏掉 <code>needsZBoost</code> 导致顺序全错。</p>
+    <p><span class="no">4</span><strong>喂真实输入</strong>：写个解析器，从 <code>dumpsys window windows</code> 里抽出每个窗口的 <code>type</code> / 父子关系 / 当前 <code>mLayer</code>。</p>
+    <p><span class="no">5</span><strong>对答案</strong>：你的预测序列 vs dump 里的真实 <code>mLayer</code>，逐个比对，<strong>要求完全一致</strong>（不是"差不多"）。</p>
+  </div>
+
+  <div class="deliver">
+    <span class="tag">交付物</span>
+    <ul style="margin:8px 0 0">
+      <li>一个可运行的「Z 序预言机」（语言随意，Python 够用）</li>
+      <li><strong>至少 3 组场景的对照表</strong>：普通 App / 弹了 Dialog / 有 IME 或状态栏</li>
+      <li>一份<strong>「我错在哪」记录</strong>：第一次预测必然有偏差，把每处偏差记下并说明原因（这份记录的价值 > 引擎本身）</li>
+    </ul>
+  </div>
+
+  <div class="pitfall"><span class="tag">🐛 必定会踩</span> ① 忘了 <code>canAddInternalSystemWindow</code> 会让 alert 类窗口层号发生变化（<code>WindowManagerPolicy.java:520</code> 的第三个参数）；② 误以为 <code>mLayer</code> 是构造时就定好的——它是遍历时由 <code>assignChildLayers</code> 发的；③ <code>needsZBoost</code> 的来源（<code>WindowContainer.java:2318</code> 附近）没搞清。</div>
+
+  <div class="think"><span class="qtag">🧠 做完你就懂了</span> 为什么 WMS 不直接给每个窗口算一个全局 z 值，而是「粗层 + 遍历时局部发号」？—— 想通这个，你对「树」这个数据结构的选择就真理解了（回到 01 篇「为什么非得是树」）。</div>
+</div>
+
+<!-- ═══════════════ L2 ═══════════════ -->
+
+<h2 id="p3">三、L2 Dump 考古器（工具性 · 最实用）</h2>
+
+<div class="card c2">
+  <div class="annotation star3"><span class="tag">一句话</span> 现在 dump 里的一个字段，你要问「这是啥意思」只能去翻源码；这题让你建一张<strong>「字段 → 哪行代码写的」映射表</strong>，让 dump 从「看的」变成「查的」。</div>
+
+  <h3>为什么这题值钱</h3>
+  <p>B 岗排障时最耗时的动作就是「看到字段 A 不对，但它从哪来？」。这张表建完，你以后查任何窗口问题都快一倍。<strong>而且它只能靠真读源码建出来——没法抄。</strong></p>
+
+  <h3>做什么</h3>
+  <div class="step">
+    <p><span class="no">1</span>把 <code>dumpsys window windows</code> 的 WindowState 段全字段抓下来（几十个：<code>mLayer</code> / <code>mBaseLayer</code> / <code>mSubLayer</code> / <code>mFrame</code> / <code>mRequestedWidth</code> / <code>isReadyForDisplay</code> / <code>mViewVisibility</code> / <code>mHasSurface</code> / <code>relayoutCalled</code> / <code>isDrawn</code> …）。</p>
+    <p><span class="no">2</span>逐个到源码里找<strong>「谁给它赋的值」</strong>，记下 <code>文件:行号</code>。比如 <code>mLayer</code> → <code>WindowState.assignLayer()</code>（<code>:5648</code>）；<code>relayoutCalled</code> → <code>relayoutWindow</code> 里置位。</p>
+    <p><span class="no">3</span>把表做成<strong>可查询的</strong>：输入字段名，输出「源码位置 + 什么条件下会变成这个值 + 看到异常值说明什么」。</p>
+    <p><span class="no">4</span>加一个<strong>「红绿灯」判断</strong>：哪些字段组合代表异常（例：<code>relayoutCalled=false</code> + <code>isDrawn=false</code> 但 <code>mHasSurface=true</code>）。</p>
+  </div>
+
+  <div class="deliver">
+    <span class="tag">交付物</span>
+    <ul style="margin:8px 0 0">
+      <li><strong>字段字典</strong>（≥30 个字段，每个带源码行号）——推荐直接做成你 06 篇的续篇附录</li>
+      <li>一个 <code>explain-field.py</code>：输入 dump 文件 + 字段名，输出解释</li>
+      <li>一份「异常字段组合速查」（≥5 条：组合 → 指向的问题）</li>
+    </ul>
+  </div>
+
+  <div class="pitfall"><span class="tag">🐛 坑</span> 别只看<strong>声明处</strong>（<code>## 字段的诞生</code>要找到真正语义上的「谁决定它」）。例如 <code>mFrame</code> 声明在字段区，但决定它的是 <code>computeFrameAndUpdateSourceFrame()</code>（<code>WindowState.java:1262</code>）→ <code>computeFrame()</code>（<code>:1274</code>）。</div>
+
+  <div class="think"><span class="qtag">🧠 做完了你会得到什么</span> 这张表本身就是你的<strong>私人速查手册</strong>——以后看任何人的 dump、任何论坛的日志、任何 bugreport，都能立刻翻译成源码语言。</div>
+</div>
+
+<!-- ═══════════════ L3 ═══════════════ -->
+
+<h2 id="p4">四、L3 What-if 破坏实验室（方法论 · 最提效）</h2>
+
+<div class="card c3">
+  <div class="annotation star3"><span class="tag">一句话</span> 每次都<strong>先写下预测，再改代码、编译、观察</strong>，最后解释偏差。这是最反直觉、但学习效率最高的一种练习——因为你亲手制造的「坑」，完全可控、可复现、可反复。</div>
+
+  <h3>为什么这题值钱</h3>
+  <p>读源码时，我们常有一种自信：「我知道这行是干嘛的」。<strong>改掉它、看系统怎么坏</strong>——是对这种自信最狠的检验。真到工作时，你对「改这行有多大副作用」的判断力，就是靠这些实验堆出来的。</p>
+
+  <h3>实验题库（至少挑 8 个做，每个都要先写预测）</h3>
+  <table>
+    <tr><th>#</th><th>改什么</th><th>先预测</th><th>锚点</th></tr>
+    <tr><td>1</td><td><code>TYPE_LAYER_MULTIPLIER</code> 10000 → 100</td><td>层与层之间会怎样？子窗口还排得开吗？</td><td>WMS.java:343</td></tr>
+    <tr><td>2</td><td>把 <code>parentWindow.addChild(this, …)</code> 移到构造函数<strong>最前面</strong></td><td>会崩吗？崩在哪（注释已经预告了）</td><td>WindowState.java:1153</td></tr>
+    <tr><td>3</td><td>把 <code>mWindowMap.put</code> 移到 <code>mToken.addWindow</code> <strong>之后</strong></td><td>树插入时的回调还能查到 win 吗？</td><td>WMS.java:1763/1774</td></tr>
+    <tr><td>4</td><td>删掉客户端 <code>requestLayout()</code> 的前置调用</td><td>首帧会晚一帧还是彻底不画？</td><td>ViewRootImpl.java:1096</td></tr>
+    <tr><td>5</td><td>把子窗口的 <code>mSubLayer</code> 全部置 0</td><td>Dialog 还压得住父窗口吗？菜单顺序如何</td><td>WindowState.java:1110</td></tr>
+    <tr><td>6</td><td><code>needsZBoost</code> 恒返回 false</td><td>哪个常见场景会立刻错乱？</td><td>WindowContainer.java:2318</td></tr>
+    <tr><td>7</td><td>让 <code>assignChildLayers</code> 只用一趟</td><td>和实验 6 的差异在哪？</td><td>WindowContainer.java:2290</td></tr>
+    <tr><td>8</td><td>把输入窗口的 trustedOverlay 判断去掉</td><td>谁能拦到触摸？</td><td>WindowState.java:1075</td></tr>
+    <tr><td>9</td><td>自己找一个：你认为「这行不可能被改」的地方</td><td>——</td><td>——</td></tr>
+  </table>
+
+  <div class="deliver">
+    <span class="tag">交付物</span>
+    <ul style="margin:8px 0 0">
+      <li><strong>「预测 vs 实际」对照表</strong>（≥8 行，每行：改了什么 / 我预测 / 实际现象 / 差异原因）</li>
+      <li>其中<strong>至少 2 条是你预测错了</strong>——预测全对说明题目选得太简单</li>
+      <li>一份 git stash 记录（每次实验留下可回滚的 patch）</li>
+    </ul>
+  </div>
+
+  <div class="pitfall"><span class="tag">🐛 坑</span> ① <strong>一定要先写预测</strong>，不然就退化成「随便改改看现象」，学习价值归零；② 改系统导致起不来时，用 <code>adb sync</code> 单模块回滚，别重新全编（<code>aosp12 13 14模拟器如何进行单模块更新</code> 那篇马老师文有讲）。</div>
+
+  <div class="think"><span class="qtag">🧠 进阶</span> 每个实验加一句「这个常量/顺序是<strong>为了保护什么</strong>」。这句话就是你面试时能讲的设计直觉。</div>
+</div>
+
+<!-- ═══════════════ L4 ═══════════════ -->
+
+<h2 id="p5">五、L4 窗口泄漏猎犬（实战性 · 最贴近工作）</h2>
+
+<div class="card c4">
+  <div class="annotation star3"><span class="tag">一句话</span> 把那句人人都见过的崩溃文案 <code>has leaked window</code>，升级成一个<strong>能提前告警的检测工具</strong>：Activity 反复进出，看窗口树里的节点数是不是只增不减。</div>
+
+  <h3>源码依据</h3>
+  <div class="src"><code>WindowManagerGlobal.java:480</code> —— 「<code>… has leaked window …</code>」抛出的位置。围绕它，你能摸出「客户端三本账」和「服务端窗口树」两边的清理时机（呼应 06 篇块 C）。</div>
+
+  <h3>做什么</h3>
+  <div class="step">
+    <p><span class="no">1</span>写一个<strong>计数脚本</strong>：从 dump 里统计 WindowState / ActivityRecord / Task 的数量，按包名分组。</p>
+    <p><span class="no">2</span><strong>造一个泄漏</strong>：Activity 里 <code>show()</code> 一个 Dialog 但 <code>onDestroy</code> 不做 <code>dismiss</code>，然后反复进出。观察三者的数量曲线。</p>
+    <p><span class="no">3</span><strong>对比实验</strong>：正常 dismiss vs 不 dismiss，画两条曲线，找出「只增不减」的信号。</p>
+    <p><span class="no">4</span><strong>扩大战果</strong>：把检测套到别的资源上——<code>SurfaceControl</code> 数、InputChannel 数、Session 名下的 window 计数（<code>windowAddedLocked</code>）。</p>
+  </div>
+
+  <div class="deliver">
+    <span class="tag">交付物</span>
+    <ul style="margin:8px 0 0">
+      <li><code>leak-hound.py</code>：跑一遍输出「可疑只增不减的窗口类对象」</li>
+      <li>一个<strong>你亲手复现的泄漏案例</strong>（含最小 demo + dump 证据 + 曲线）</li>
+      <li>一份「窗口类泄漏的三种成因 + 各自怎么查」</li>
+    </ul>
+  </div>
+
+  <div class="pitfall"><span class="tag">🐛 坑</span> 别把「后台保留的 Task」当泄漏——<strong>这正是</strong>你在马老师 P1 作业里会看到的现象（后台 kill 后 AR/Task 还在）。先把「设计如此」和「真泄漏」分清，这题才算做对。</div>
+
+  <div class="think"><span class="qtag">🧠 与 P1 的关系</span> 做完 P1（存活策略）再做 L4（泄漏检测），你会同时掌握「什么叫正常的留存」和「什么叫异常的堆积」——<strong>这一对概念，是稳定性岗的入门门槛</strong>。</div>
+</div>
+
+<!-- ═══════════════ L5 ═══════════════ -->
+
+<h2 id="p6">六、L5 时序图自动生成器（可视化 · 最好玩）</h2>
+
+<div class="card c1">
+  <div class="annotation star3"><span class="tag">一句话</span> 你 06 篇里的 addWindow → relayout → finishDraw 时序图是<strong>手画的</strong>；这题让机器<strong>从 trace 里自动画出来</strong>。</div>
+
+  <h3>源码依据</h3>
+  <div class="src"><code>WindowTracing.java:98</code> <code>startTrace(pw)</code> / <code>:116</code> <code>stopTrace(pw)</code>；内部用 <code>TraceBuffer mBuffer</code>（<code>:67 / :94</code>）。对应命令：<code>adb shell cmd window tracing start/stop</code>。<br>（Winscope 用的就是这套 proto trace。）</div>
+
+  <h3>做什么</h3>
+  <div class="step">
+    <p><span class="no">1</span><strong>先手工抓一次</strong>：开 tracing → 启动一个 App → 关 tracing，拿到原始数据。先看懂它的格式（哪怕只是文本）。</p>
+    <p><span class="no">2</span><strong>解析</strong>：把「时间戳 + 窗口 + 事件类型」抽成结构化数据。</p>
+    <p><span class="no">3</span><strong>生成时序图</strong>：输出 Mermaid <code>sequenceDiagram</code> 或纯 HTML（你已有现成页面风格），参与者用【App / Session / WMS / SF】，事件按时间排。</p>
+    <p><span class="no">4</span><strong>对照检验</strong>：拿自动生成的图和你 06 篇手画的图对比，<strong>找出你手画时遗漏或搞错的步骤</strong>——这才是本题真正的收获。</p>
+  </div>
+
+  <div class="deliver">
+    <span class="tag">交付物</span>
+    <ul style="margin:8px 0 0">
+      <li>一个 <code>trace2seq.py</code>：输入 trace，输出时序图</li>
+      <li>至少两份自动生成的时序图（启动一个 App / 弹一个 Dialog）</li>
+      <li><strong>「手画图 vs 机器图」差异清单</strong>——这就是你 06 篇的勘误表</li>
+    </ul>
+  </div>
+
+  <div class="pitfall"><span class="tag">🐛 坑</span> ① proto trace 是二进制格式，先确认你拿到的是文本还是 proto，别一开始就去写 proto 解析器；② trace 里大量长尾事件会淹没主线，先做<strong>「只看关键事件的过滤器」</strong>，再加事件。</div>
+</div>
+
+<!-- ═══════════════ L6 ═══════════════ -->
+
+<h2 id="p7">七、L6 输入命中预言机（进阶 · 闭环 05 篇）</h2>
+
+<div class="card c2">
+  <div class="annotation star3"><span class="tag">一句话</span> 给定窗口树 + 一个触摸坐标，<strong>预测事件会落到哪个窗口</strong>；然后用 <code>dumpsys input</code> 对答案。这是 05 篇的实操闭环。</div>
+
+  <h3>源码依据（我已核实）</h3>
+  <div class="src">
+    <code>InputMonitor.java:270</code> <code>populateInputWindowHandle(handle, …)</code> —— 把窗口的触摸属性（touchable region / focusable / flags / 父子链）交给 InputDispatcher；<br>
+    <code>WindowState.java:3649</code> <code>getTouchableRegion(Region outRegion)</code>；<code>:3713</code> <code>subtractTouchExcludeRegionIfNeeded()</code>（触摸排除区）。
+  </div>
+
+  <h3>做什么</h3>
+  <div class="step">
+    <p><span class="no">1</span>从 <code>dumpsys input</code> 的 window handle 列表里抽出每个窗口的：touchable region、layer、flags（是否 focusable / 是否 not touch modal）。</p>
+    <p><span class="no">2</span>实现命中测试：从最上层往下找第一个「包含该点 且 可触摸」的窗口。</p>
+    <p><span class="no">3</span>预测 vs 实测：用 <code>input tap x y</code> 真点一下，看事件实际归谁，对比你的预测。</p>
+    <p><span class="no">4</span><strong>故意制造反例</strong>：加一个 <code>FLAG_NOT_FOCUSABLE | FLAG_NOT_TOUCH_MODAL</code> 的悬浮窗，看它是否只吃自己的区域。</p>
+  </div>
+
+  <div class="deliver">
+    <span class="tag">交付物</span>
+    <ul style="margin:8px 0 0">
+      <li><code>hit-oracle.py</code>：输入 dump + 坐标，输出预期归属窗口</li>
+      <li>≥ 3 组对比（普通界面 / 有悬浮窗 / 有 IME）</li>
+      <li>一份「预测错误原因分类」（touchable region 算错 / 排除区 / flag 理解错）</li>
+    </ul>
+  </div>
+
+  <div class="think"><span class="qtag">🧠 闭环价值</span> 把 05 篇的「InputDispatcher 怎么找窗口」从<strong>描述</strong>变成<strong>你能算</strong>。以后遇到「点了没反应」「点错窗口」这类 bug，你的定位速度会快一个量级。</div>
+</div>
+
+<!-- ═══════════════ 微项目 ═══════════════ -->
+
+<h2 id="p8">八、微项目：六个 1–2 小时的快赢</h2>
+
+<div class="card">
+  <p>没整块时间时，先做这些。每个都只有一个小问题，但都能立刻打通一个卡点。</p>
+  <table>
+    <tr><th>#</th><th>微项目</th><th>干嘛</th><th>锚点</th></tr>
+    <tr><td>1</td><td>层号手算表</td><td>列出你手机上当前 10 个窗口的 type → 预期 mBaseLayer → 和 dump 对</td><td>WindowManagerPolicy.java:520</td></tr>
+    <tr><td>2</td><td>子窗口寻父链</td><td>开一个 Dialog，从 dump 确认「它的树父节点是父 WindowState 不是 WindowToken」</td><td>WindowState.java:1153</td></tr>
+    <tr><td>3</td><td>上树≠显示 三字段</td><td>找 <code>relayoutCalled / isDrawn / mHasSurface</code> 三字段，构造「已上树未显示」的现场</td><td>WindowState.java</td></tr>
+    <tr><td>4</td><td>frame 诞生点</td><td>在 <code>computeFrame</code> 下一行加日志，看 frame 第一次变成非零</td><td>WindowState.java:1274</td></tr>
+    <tr><td>5</td><td>Token 两种身份</td><td>dump 里辨认：ActivityRecord.Token vs IWindow，各自出现在哪</td><td>06 篇</td></tr>
+    <tr><td>6</td><td>Z 序两趟验证</td><td>找到 <code>assignChildLayers</code> 的两趟循环，说出第二趟是为了谁</td><td>WindowContainer.java:2290</td></tr>
+  </table>
+</div>
+
+<!-- ═══════════════ 硬指标 ═══════════════ -->
+
+<h2 id="p9">九、怎么算做完（硬指标）</h2>
+
+<div class="card">
+  <table>
+    <tr><th>#</th><th>指标</th><th>不达标的样子</th></tr>
+    <tr><td>1</td><td><strong>预测准</strong>：L1/L6 的预测与实测一致（不是「差不多」）</td><td>「大体上对，个别差一点」——那就说明理解还不完整</td></tr>
+    <tr><td>2</td><td><strong>有代码</strong>：产物是可运行的东西，不是一份笔记</td><td>只有 md 文档</td></tr>
+    <tr><td>3</td><td><strong>有差异记录</strong>：至少写下一处「我以为 X，实际 Y」</td><td>全部一次做对（要么题目太简单，要么没认真预测）</td></tr>
+    <tr><td>4</td><td><strong>能复用</strong>：工具在下次真问题时能直接拿出来用</td><td>做完就丢的「练习题」</td></tr>
+  </table>
+  <div class="annotation star3"><span class="tag">最硬的一条</span> <strong>把项目产出写成文章</strong>。你已经有 00–06 篇，L1–L6 每个项目天然就是一篇：L1→Z 序篇、L2→dump 字段篇、L3→「如果我改了这行」、L4→窗口泄漏篇、L5→trace 篇、L6→命中测试篇。写完，你的知识就从「知道」变成了「资产」。</div>
+</div>
+
+<!-- ═══════════════ 锚点索引 ═══════════════ -->
+
+<h2 id="p10">十、锚点索引（全部已核实）</h2>
+
+<div class="card">
+  <div class="code-block">
+    <div class="filename">AOSP 12 · grep 核实（2026-10-18）</div>
+    <pre><span class="cm"># Z 序算法（L1）</span>
+WMS.java:343              TYPE_LAYER_MULTIPLIER = 10000
+WMS.java:347              TYPE_LAYER_OFFSET = 1000
+WindowManagerPolicy.java:466   getWindowLayerLw(WindowState)
+WindowManagerPolicy.java:520   getWindowLayerFromTypeLw(type, canAddInternalSystemWindow, roundedCornerOverlay)
+WindowState.java:1104/1117     mBaseLayer 计算（子窗 / 普通窗两分支）
+WindowContainer.java:2290      assignChildLayers(t) 两趟分配
+WindowContainer.java:2310      assignChildLayers()
+WindowContainer.java:2318      needsZBoost()
+WindowState.java:5648          assignLayer(Transaction, int)
+
+<span class="cm"># dump 字段（L2）</span>
+WindowState.java:1262          computeFrameAndUpdateSourceFrame()
+WindowState.java:1274          computeFrame()
+
+<span class="cm"># 窗口泄漏（L4）</span>
+WindowManagerGlobal.java:480   「… has leaked window …」
+
+<span class="cm"># trace（L5）</span>
+WindowTracing.java:98          startTrace(PrintWriter)
+WindowTracing.java:116         stopTrace(PrintWriter)
+WindowTracing.java:67/94       TraceBuffer mBuffer
+
+<span class="cm"># 输入命中（L6）</span>
+InputMonitor.java:270          populateInputWindowHandle(handle, w)
+WindowState.java:3649          getTouchableRegion(Region)
+WindowState.java:3713          subtractTouchExcludeRegionIfNeeded(Region)
+
+<span class="cm"># 验证命令</span>
+adb shell dumpsys window windows | grep -E "mLayer|mBaseLayer|mSubLayer"
+adb shell dumpsys input | grep -A5 "WindowHandle"
+adb shell cmd window tracing start / stop</pre>
+  </div>
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android 窗口层级专题 · 自造项目篇 | <strong>WMS 原创实践项目：六个自造实验</strong></p>
+  <p>基于 AOSP 12 · 锚点均已 grep 核实（2026-10-18） · 自造而非搬运</p>
+  <p style="margin-top:10px;"><a href="index.html">🏠 系列导航</a> &nbsp;|&nbsp; <a href="WMS实践项目清单.html">🛠️ 马老师实战作业清单</a> &nbsp;|&nbsp; <a href="WMS学习路线图.html">🗺️ WMS 学习路线图</a> &nbsp;|&nbsp; <a href="../../Android-Framework学习路线图.html">🧭 Framework 路线图（B 赛道）</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📌 差别一句话：马老师的是「修别人的 bug」，这套是「自己把机制造一遍再验证」。</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>输入事件的分发与窗口命中：InputDispatcher 全链路（WMS 学习 05）</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:30px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .step-box { background:var(--step-bg); border:1px solid var(--step-border); border-radius:8px; padding:18px 22px; margin:16px 0; }
+    .step-num { display:inline-block; background:var(--accent); color:#fff; width:28px; height:28px; border-radius:50%; text-align:center; line-height:28px; font-weight:bold; font-size:.85rem; margin-right:8px; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .flow { display:flex; flex-wrap:wrap; align-items:center; gap:6px 4px; margin:16px 0; font-family:"SF Mono","Fira Code",monospace; font-size:.78rem; }
+    .flow-box { background:var(--code-bg); border:1px solid var(--border); border-radius:6px; padding:5px 10px; white-space:nowrap; }
+    .flow-box.star { border-color:var(--accent); background:var(--tag-bg); }
+    .flow-arrow { color:var(--text2); font-size:1.1rem; }
+    .tree { font-family:"SF Mono","Fira Code","Consolas",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .tree .nl { color:var(--accent3); font-weight:600; } .tree .nl2 { color:var(--accent2); } .tree .dim { color:var(--text2); } .tree .hl { background:var(--tag-bg); border-radius:3px; padding:0 3px; }
+    .chain { counter-reset:step; margin:14px 0; padding-left:4px; }
+    .chain .row { position:relative; padding:8px 12px 8px 44px; margin-bottom:6px; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; font-size:.88rem; }
+    .chain .row::before { counter-increment:step; content:counter(step); position:absolute; left:10px; top:9px; width:22px; height:22px; line-height:22px; text-align:center; background:var(--accent3); color:#fff; border-radius:50%; font-size:.75rem; font-weight:bold; }
+    .chain .row b { color:var(--accent2); }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .lab { border-left:4px solid var(--accent2); padding:10px 16px; margin:12px 0; background:var(--code-bg); border-radius:6px; font-size:.92rem; }
+    .lab .tag { color:var(--accent2); }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin-bottom:10px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>👆 输入事件的分发与窗口命中：InputDispatcher 全链路</h1>
+<p class="subtitle">手指点下去，事件怎么沿同一棵窗口树找到目标窗口 · InputReader → InputDispatcher → InputChannel · AOSP 12 源码深度拆解</p>
+<p class="series">📚 Android 窗口层级专题 05 ｜ 基于 <code>android-12.0.0_r32</code> ｜ 上篇：<a href="04-像素怎样上屏.html">← 04 像素怎样上屏</a> ｜ 下篇：<a href="06-窗口的诞生.html">06 窗口的诞生 →</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p1">一、全景：一次触摸的三段旅程</a>
+  <a href="#p2">二、接上“电话线”：InputChannel 的建立</a>
+  <a href="#p3">三、交底：WMS 把可输入窗口表交给 InputDispatcher</a>
+  <a href="#p4">四、事件从哪来：InputReader 与 EventHub</a>
+  <a href="#p5">五、命中测试：事件到底归谁</a>
+  <a href="#p6">六、焦点：按键类事件的前提</a>
+  <a href="#p7">七、分发到 App：从 socketpair 到 ViewRootImpl</a>
+  <a href="#p8">八、ANR：两种超时，两套重载</a>
+  <a href="#p9">九、实战排障手册与完整调用堆栈</a>
+  <a href="#p10">十、源码速查与自测</a>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p1">一、全景：一次触摸的三段旅程</h2>
+
+<div class="card">
+  <p>前四篇我们把“树的静态结构”和“树怎么变成像素”讲完了。这一篇回答一个新问题：<strong>你手指在屏幕上点一下，系统怎么知道该把这个事件发给哪个窗口？</strong></p>
+  <p>答案藏在一条跨越三个进程的链路上：内核 → <strong>InputReader</strong>（system_server 的 InputReader 线程）→ <strong>InputDispatcher</strong>（同一进程的 InputDispatcher 线程）→ 通过每个窗口专属的管道 <strong>InputChannel</strong> → App 进程 → <strong>ViewRootImpl</strong> 派发给 View。而“发给哪个窗口”这个判断，正是建立在窗口树 + 焦点 + 触摸区域之上的。</p>
+
+  <div class="flow">
+    <span class="flow-box">手指 / 触控芯片</span><span class="flow-arrow">→</span>
+    <span class="flow-box">内核 evdev</span><span class="flow-arrow">→</span>
+    <span class="flow-box">EventHub</span><span class="flow-arrow">→</span>
+    <span class="flow-box">InputReader</span><span class="flow-arrow">→</span>
+    <span class="flow-box star">InputDispatcher<br>命中测试</span><span class="flow-arrow">→</span>
+    <span class="flow-box">InputChannel</span><span class="flow-arrow">→</span>
+    <span class="flow-box">InputEventReceiver</span><span class="flow-arrow">→</span>
+    <span class="flow-box">ViewRootImpl</span>
+  </div>
+
+  <p>把这条链路按“进程”和“谁提供数据”拆开，就是下面这张时间轴。请先记住三个关键角色：<strong>WMS</strong>（持锁时把窗口的可输入信息快照给输入系统）、<strong>InputReader</strong>（读设备）、<strong>InputDispatcher</strong>（做命中测试并分发）。</p>
+
+  <table>
+    <tr><th>阶段</th><th>所在进程 / 线程</th><th>做什么</th><th>关键入口（本树已核实）</th></tr>
+    <tr><td>① 建管道</td><td>system_server（WMS）</td><td>每个窗口创建一对 InputChannel，一端留给自己，一端交给 App</td><td><code>WMS.addWindow()</code> :1687 → <code>WindowState.openInputChannel()</code> :2689</td></tr>
+    <tr><td>② 交底</td><td>system_server（持 WMS 锁）</td><td>把“哪些窗口能收事件、区域在哪、能不能聚焦”快照给 InputDispatcher</td><td><code>InputMonitor.updateInputWindowsLw()</code> :338 → <code>populateInputWindowHandle()</code> :270</td></tr>
+    <tr><td>③ 读设备</td><td>InputReader 线程</td><td>从 EventHub 取原始 evdev 事件，加工成规范化 MotionEvent / KeyEvent</td><td><code>InputReader.cpp</code> :108 <code>mEventHub->getEvents()</code></td></tr>
+    <tr><td>④ 命中</td><td>InputDispatcher 线程</td><td>按窗口表做命中测试，找出目标窗口（或找不到 → ANR）</td><td><code>dispatchOnceInnerLocked()</code> :683 → <code>findTouchedWindowTargetsLocked()</code> :1900</td></tr>
+    <tr><td>⑤ 分发</td><td>InputDispatcher → App</td><td>经 InputChannel（socketpair）把事件发给 App</td><td>App：<code>InputEventReceiver</code> → <code>ViewRootImpl.deliverInputEvent()</code> :8520</td></tr>
+  </table>
+
+  <div class="annotation">
+    <p><span class="tag">一句话模型</span> 窗口树决定“有谁是候选”，<strong>焦点 / 触摸区域 / 图层遮挡</strong>决定“这次事件归谁”。前者在 WMS，后者在 InputDispatcher。二者通过 ② 的“交底”解耦——这也解释了为什么输入系统看到的窗口状态总可能“略旧一点”。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p2">二、接上“电话线”：InputChannel 的建立</h2>
+
+<div class="card">
+  <p>一个窗口要被输入系统找到并投递事件，前提是它<strong>有一条自己的管道</strong>——<code>InputChannel</code>。它不是普通对象，其内部是一对 socketpair（双向管道）：一端归 system_server 的 InputDispatcher，另一端随 Binder 交给 App。</p>
+  <p>管道在 <code>addWindow</code> 阶段就建好了（还记得 02 篇吗？addWindow 只造逻辑节点、不造 Surface，但<strong>会造 InputChannel</strong>）。</p>
+
+  <div class="code-block">
+    <div class="filename">WindowManagerService.java:1687 / WindowState.java:2689</div>
+    <pre><span class="cm">// WMS.addWindow()（:1457）内：</span>
+<span class="kw">final boolean</span> openInputChannels = (outInputChannel != <span class="kw">null</span>
+        && (attrs.inputFeatures &amp; INPUT_FEATURE_NO_INPUT_CHANNEL) == <span class="num">0</span>);
+<span class="kw">if</span> (openInputChannels) {
+    win.<span class="fn">openInputChannel</span>(outInputChannel);   <span class="cm">// :1690</span>
+}
+<span class="cm">// —— WindowState.openInputChannel()（:2689）：</span>
+<span class="kw">if</span> (mInputChannel != <span class="kw">null</span>) {                    <span class="cm">// :2690 幂等：已有就复用</span>
+    mInputChannel.<span class="fn">copyTo</span>(outInputChannel);
+    <span class="kw">return</span>;
+}
+<span class="kw">try</span> {
+    mInputChannel = mWmService.mInputManager.<span class="fn">createInputChannel</span>(name); <span class="cm">// :2694</span>
+    mInputChannelToken = mInputChannel.getToken();                        <span class="cm">// :615</span>
+    mInputChannel.<span class="fn">setToken</span>(...);
+}</pre>
+  </div>
+
+  <div class="chain">
+    <div class="row"><b>Java 侧建对</b>：<code>InputChannel.openInputChannelPair(name)</code>（InputChannel.java:109）→ 调 native <code>nativeOpenInputChannelPair</code>（:61）建出一对 socketpair。实际入口是 <code>InputManagerService.createInputChannel</code>，与会话绑定，可授权。</div>
+    <div class="row"><b>native 侧建通道</b>：<code>NativeInputManager::createInputChannel()</code>（com_android_server_input_InputManagerService.cpp:511）向 InputDispatcher 申请一个连接（Connection），返回 socket fd。</div>
+    <div class="row"><b>一端交给 App</b>：addWindow 返回时，App 通过 Binder 拿到那个 fd，包装成 <code>InputChannel</code>，由 <code>ViewRootImpl</code> 创建 <code>InputEventReceiver</code>（InputEventReceiver.java:38）挂在 App 自己的 Looper 上等事件。</div>
+    <div class="row"><b>句柄登记在 WindowState</b>：<code>mInputChannel</code>（WindowState.java:607）、<code>mInputChannelToken</code>（:615）——后面做权限校验、防止伪造事件时都要用 token。</div>
+  </div>
+
+  <div class="pitfall">
+    <p><span class="tag">🐛 实践含义</span> 没有 InputChannel 的窗口（<code>INPUT_FEATURE_NO_INPUT_CHANNEL</code>，如部分纯装饰窗口）永远收不到输入事件——这也是为什么有的“看得见但点不动”的层不是 bug，而是设计如此。WindowState.java:1932 的 <code>mInputChannel != null && mInputWindowHandle != null</code> 是判断“这个窗口在输入层面是否活着”的条件之一。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p3">三、交底：WMS 把可输入窗口表交给 InputDispatcher</h2>
+
+<div class="card">
+  <p>InputDispatcher 不在 WMS 线程里，也不持 WMS 锁。它要判断“点下去该给谁”，就必须拿到一份窗口的“可输入画像”。这份画像由 <code>InputMonitor</code>（InputMonitor.java:72）在<strong>持 WMS 锁时</strong>生成，然后交给 native。</p>
+  <p>画像的载体是 <code>InputWindowHandle</code>（<code>android.view.InputWindowHandle</code>，InputWindowHandle.java:33）。每个 WindowState 从出生就带着一个包装：<code>mInputWindowHandle</code>（WindowState.java:606），构造在 :1065 <code>new InputWindowHandleWrapper(new InputWindowHandle(...))</code>，随后逐字段填充 name / 包名 / type / owner uid……</p>
+
+  <div class="chain">
+    <div class="row"><b>触发时机</b>：任何影响输入的变化（窗口增删、焦点变、布局变、可见性变）都会标记 input windows 需要更新；在遍历收尾阶段（03 篇的 <code>performSurfacePlacement</code>）统一刷一次，避免频繁跨进程。</div>
+    <div class="row"><b>入口</b>：<code>InputMonitor.updateInputWindowsLw(force)</code>（:338）→ 内部 <code>updateInputWindows(inDrag)</code>（:490）→ 逐窗口 <code>populateInputWindowHandle(handle, w)</code>（:582 / 公共版 :270）。</div>
+    <div class="row"><b>填什么</b>：<code>populateInputWindowHandle</code>（:270）把窗口的输入属性拷进 handle：<strong>touchable region（可点区域）</strong>、focusable、可见性、图层 Z（用于遮挡判断）、displayId、owner pid/uid、是否可信 overlay 等。</div>
+    <div class="row"><b>过河</b>：把整个 handle 列表交给 <code>InputManagerService.setInputWindows</code>，经 JNI <code>com_android_server_input_InputManagerService.cpp</code>（NativeInputManager，:253）→ InputDispatcher。</div>
+    <div class="row"><b>事务化</b>：输入窗口信息与 Surface 一起走 <code>mInputTransaction</code>（InputMonitor.java:93）——虽然叫 SurfaceControl.Transaction，但 <code>updateInputWindowsImmediately(t)</code>（:360）证明它被用来保证“窗口的可见性变化”与“输入区域变化”<strong>原子生效</strong>，避免屏幕已经变了但输入区域还是旧的。</div>
+  </div>
+
+  <div class="annotation">
+    <p><span class="tag">为什么解耦</span> InputDispatcher 每帧都可能做命中测试，不可能每次都去拿 WMS 的全局锁（那会把系统拖垮）。所以采用“<strong>快照</strong>”策略：WMS 锁内生成，出锁后 native 自己用。代价是——事件到达时看到的窗口表可能是几十毫秒前的。这就是“输入慢半拍”类问题的温床。</p>
+  </div>
+
+  <h3>附带的其他“输入交底”</h3>
+  <table>
+    <tr><th>接口</th><th>锚点</th><th>作用</th></tr>
+    <tr><td><code>setInputWindows</code></td><td>InputMonitor → IMS → NativeInputManager</td><td>窗口可输入画像（核心）</td></tr>
+    <tr><td><code>setFocusedApplication(displayId, InputApplicationHandle)</code></td><td>InputManagerService.java:1735</td><td>告知“哪个 App 拥有焦点”，用于 ANR 归因（无焦点窗口时甩给谁）</td></tr>
+    <tr><td><code>setInputDispatchMode(enabled, frozen)</code></td><td>InputManagerService.java:1757</td><td>全局冻结/禁用输入（如开机向导、锁屏转场）</td></tr>
+    <tr><td><code>monitorInput</code> / <code>pilferPointers</code></td><td>InputManagerService.java:698 / native :531</td><td>监视模式与指针“抱走”（手势导航、无障碍）</td></tr>
+    <tr><td><code>notifyNoFocusedWindowAnr</code></td><td>native IMS :802</td><td>无焦点窗口超时时回调 system_server</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p4">四、事件从哪来：InputReader 与 EventHub</h2>
+
+<div class="card">
+  <p>链条上游：<code>InputManagerService.start()</code>（InputManagerService.java:476）启动后，native 侧会跑起 <strong>InputReader 线程</strong>。它循环不已地：</p>
+
+  <div class="chain">
+    <div class="row"><b>取原始事件</b>：<code>InputReader.cpp</code> 的 <code>loopOnce()</code> 调 <code>mEventHub->getEvents(timeoutMillis, mEventBuffer, EVENT_BUFFER_SIZE)</code>（:108）。<code>EventHub</code> 是本机 evdev 设备的统一入口，负责打开 /dev/input/event*、epoll 等待、设备热插拔。</div>
+    <div class="row"><b>加工</b>：InputReader 把原始事件交给各 <code>InputMapper</code>（触摸屏→MultiTouchInputMapper、键盘→KeyboardInputMapper、鼠标→CursorInputMapper），归一化成标准 <code>MotionEvent</code> / <code>KeyEvent</code>。</div>
+    <div class="row"><b>入队</b>：加工后的事件推给 InputDispatcher 的 <code>mInboundQueue</code>，并唤醒 Dispatcher 线程。</div>
+  </div>
+
+  <p>这里有一个<strong>大量源码/文档都略过、但实际很关键</strong>的环节：按键类事件在“入队”之前要先问系统策略——这就是 <code>interceptKeyBeforeQueueing</code>。</p>
+
+  <div class="code-block">
+    <div class="filename">PhoneWindowManager.java:3383 · InputManagerService.java:2810</div>
+    <pre><span class="cm">// PhoneWindowManager.interceptKeyBeforeQueueing()（:3383）</span>
+<span class="cm">// 在事件“入队前”拦截：电源/音量/Home/媒体键等系统键</span>
+<span class="cm">// 返回值决定：继续下发 / 只给系统 / 直接吞掉（polished flags）</span>
+
+<span class="cm">// 触摸类的非交互拦截（如屏幕关闭时的双击亮屏）</span>
+<span class="kw">public int</span> <span class="fn">interceptMotionBeforeQueueingNonInteractive</span>(...); <span class="cm">// :3964</span>
+
+<span class="cm">// 链路：InputReader → PhoneWindowManager(native回调) → InputDispatcher 入队</span>
+<span class="cm">// Java 桥：InputManagerService.interceptKeyBeforeQueueing()（:2810）</span>
+<span class="cm">//   → mWindowManagerCallbacks.interceptKeyBeforeQueueing()（接口 :3108）</span></pre>
+  </div>
+
+  <div class="pitfall">
+    <p><span class="tag">🐛 实践含义</span> 音量键/电源键在 App 里 <code>onKeyDown</code> 收不到，就是因为它们在这里被 policy 先截走了。想让 App 收到媒体键，得走 <code>MediaSession</code>，而不是在 View 层监听。同理，<strong>“屏幕关闭时触摸唤醒延迟”</strong>这类问题往往出在 <code>interceptMotionBeforeQueueingNonInteractive</code> 的非交互路径，而非触摸屏本身。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p5">五、命中测试：事件到底归谁</h2>
+
+<div class="card">
+  <p>这是 InputDispatcher 的心脏。一个已入队的事件，经过 <code>dispatchOnceInnerLocked()</code>（InputDispatcher.cpp:683）被取出后，会按类型分成两条路：</p>
+
+  <div class="chain">
+    <div class="row"><b>按键类（KeyEvent，含方向键/滚轮）</b>：<code>findFocusedWindowTargetsLocked()</code>（定义 :1786，调用点 :1455 / :1562）——只看<strong>焦点窗口</strong>。</div>
+    <div class="row"><b>触摸类（MotionEvent）</b>：<code>findTouchedWindowTargetsLocked()</code>（定义 :1900，调用点 :1557）——看<strong>坐标落在哪些窗口的可点区域内</strong>，并做遮挡与分裂处理。</div>
+  </div>
+
+  <h3>5.1 触摸命中：touchable region 与“看到却点不到”</h3>
+  <p>每个窗口在交底时带上了自己的 <code>touchableRegion</code>。命中时逐窗口判断：</p>
+
+  <div class="code-block">
+    <div class="filename">InputDispatcher.cpp:1013（findTouchedWindowTargetsLocked 内核）</div>
+    <pre><span class="cm">// 窗口若能收触摸：</span>
+<span class="kw">if</span> (!flags.<span class="fn">test</span>(InputWindowInfo::Flag::NOT_TOUCHABLE)) {      <span class="cm">// :1013</span>
+    <span class="cm">// 关键：要么是本窗口内触摸模式（isTouchModal，触摸不会“穿透”到下层）</span>
+    <span class="cm">// 要么坐标真落在本窗口的可点区域里</span>
+    <span class="kw">if</span> (isTouchModal || windowInfo-><span class="fn">touchableRegionContainsPoint</span>(x, y)) {  <span class="cm">// :1016</span>
+        ...  <span class="cm">// 加入本次触摸的候选目标</span>
+    }
+}</pre>
+  </div>
+
+  <table>
+    <tr><th>概念</th><th>取法</th><th>实践含义</th></tr>
+    <tr><td><code>isTouchModal</code></td><td>窗口未设 <code>FLAG_NOT_TOUCH_MODAL</code></td><td>模态窗口：区域外的事件也不放行给下层（对话框就靠它拦住背景）</td></tr>
+    <tr><td><code>touchableRegion</code></td><td>默认=窗口 frame，可被裁切/异形修改</td><td>圆形/异形窗口、SurfaceView 挖洞靠它；算错就会“点到旁边却命中自己”或“点自己没反应”</td></tr>
+    <tr><td><code>NOT_TOUCHABLE</code></td><td>窗口设了 <code>FLAG_NOT_TOUCHABLE</code></td><td>完全透明不拦截（如纯显示层），但仍可有输入通道</td></tr>
+  </table>
+
+  <h3>5.2 遮挡：上层盖住了，下层就收不到</h3>
+
+  <div class="code-block">
+    <div class="filename">InputDispatcher.cpp:2520（遮挡判断）</div>
+    <pre><span class="cm">// 候选窗口是否被更高层的“不可穿透”窗口遮住：</span>
+<span class="kw">if</span> (... otherInfo->flags.<span class="fn">test</span>(InputWindowInfo::Flag::NOT_TOUCHABLE)) {  <span class="cm">// :2520</span>
+    <span class="cm">// 若上面的窗口可触摸（NOT_TOUCHABLE=false）且覆盖了该点，</span>
+    <span class="cm">// 则下层不能再收——即使它的 touchableRegion 含这个点</span>
+}</pre>
+  </div>
+
+  <div class="annotation">
+    <p><span class="tag">关键区分</span> 命中测试用的是<strong>窗口树 + 图层 Z</strong>（与 03 篇 assignChildLayers 算出来的 Z 一致），<strong>不是 View 树</strong>。一个覆盖在上面的透明悬浮窗（哪怕 View 是空的）只要可触摸，就会把下方 App 的点击吃掉——这是很多人把“点击被拦”当 bug 的根源。</p>
+  </div>
+
+  <h3>5.3 触摸分裂与多窗口</h3>
+  <p>触摸可能同时落在多个窗口（自由窗口、持续接收触摸的窗口），InputDispatcher 会把一次触摸“分裂”成多个目标（<code>mTempTouchState</code> 管理）。这就是为什么拖拽窗口时，底下的 App 也能同时收到事件（若它被标记为持续接收）。</p>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p6">六、焦点：按键类事件的前提</h2>
+
+<div class="card">
+  <p>按键事件没有“坐标”，只能发给当前有焦点的窗口。所以先把焦点算对。</p>
+  <p>焦点在 WMS 侧维护：<code>DisplayContent.findFocusedWindow()</code>（:3362）从窗口树自顶向下找第一个“可见且可聚焦”的窗口；<code>updateFocusedWindowLocked()</code>（:3387）在窗口可见性/层级变化时重算，并把旧焦点记到 <code>mLastFocus</code>（:503，:3481 <code>mLastFocus = mCurrentFocus</code>）。</p>
+
+  <div class="chain">
+    <div class="row"><b>谁会赢</b>：可见、可聚焦（非 NOT_FOCUSABLE）、且位于最上层的那个窗口（<code>findFocusedWindowIfNeeded()</code> :3357）。输入法、状态栏等系统窗口也有各自的可聚焦规则。</div>
+    <div class="row"><b>告知输入系统</b>：焦点变后，除了交底窗口表，还要 <code>setFocusedApplication()</code>（IMS:1735）告诉 InputDispatcher“哪个 App 拥有焦点”。</div>
+    <div class="row"><b>InputDispatcher 侧</b>：它不问 WMS，直接从“它自己维护的焦点记录”里取——<code>mFocusResolver.getFocusedWindowToken(displayId)</code>（InputDispatcher.cpp:1330），或按事件目标显示取（:1429）。这份记录的来源就是 ② / ⑤ 的交底。</div>
+    <div class="row"><b>焦点变了都会重算</b>：窗口被移除时（<code>mLastFocus</code> 失效 :1241）、转屏时、输入法弹起时，焦点都可能重算——这也是“输入法弹出后按键跑到了输入法”的原因。</div>
+  </div>
+
+  <div class="pitfall">
+    <p><span class="tag">🐛 实战问题</span> 悬浮窗设了 <code>FLAG_NOT_FOCUSABLE</code>，它不会被选为焦点窗口，<strong>无法接收按键</strong>（不能输入文字），但可以接收触摸。想要“能输入又不抢焦点”的需求，得额外处理（如与输入法交互）——这是 WMS 设计上的硬约束，不是配置坑。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p7">七、分发到 App：从 socketpair 到 ViewRootImpl</h2>
+
+<div class="card">
+  <p>命中测试得出目标后，就要把事件顺着 <code>InputChannel</code> 发出去。这一段的调用堆栈（已核实）：</p>
+
+  <div class="chain">
+    <div class="row"><b>按类型分发</b>：<code>InputDispatcher::dispatchKeyLocked()</code>（:1362，按键）/ <code>dispatchMotionLocked()</code>（:1529，触摸）→ 两者最后都汇到 <code>dispatchEventLocked()</code>（:1671）。</div>
+    <div class="row"><b>准备发送周期</b>：<code>dispatchEventLocked()</code> :1689 → <code>prepareDispatchCycleLocked()</code>（:2755，检查连接是否可用/ANR）。</div>
+    <div class="row"><b>入发送队列</b>：<code>enqueueDispatchEntryLocked()</code>（:2844）把事件封入连接的发件箱（逐目标一份，故一次触摸可分发给多个窗口），再 <code>startDispatchCycleLocked()</code>（:3073）真正通过 socketpair 把数据写出去。</div>
+    <div class="row"><b>App 接收</b>：写入 socketpair 后，App 进程的 <code>InputEventReceiver</code>（InputEventReceiver.java:38，基于自己的 Looper）被唤醒，回调到 <code>ViewRootImpl</code>。</div>
+    <div class="row"><b>App 派发</b>：<code>ViewRootImpl.enqueueInputEvent()</code>（:8438）→ <code>doProcessInputEvents()</code>（:8493）→ <code>deliverInputEvent()</code>（:8520，走 View 树/手势识别）。</div>
+    <div class="row"><b>回执</b>：App 处理完会回一个 finish 信号，InputDispatcher 的 <code>finishDispatchCycleLocked()</code>（:3287）→ <code>onDispatchCycleFinishedLocked()</code>（:5473）收尾，然后才发下一个。这就是“输入是同步往返”的含义。</div>
+  </div>
+
+  <div class="annotation">
+    <p><span class="tag">同步往返的含义</span> InputDispatcher 发完一个事件会<strong>等 App 回执</strong>再发下一个（同一连接内）。所以 App 主线程卡住，不只是“这一下没反应”，而是<strong>后续事件全堆在发件箱里</strong>，超过 5 秒就成了输入 ANR。注意：这个“等待”发生在 InputDispatcher 线程，阻塞的是那一条连接，不是整个输入系统。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p8">八、ANR：两种超时，两套重载</h2>
+
+<div class="card">
+  <p>输入 ANR（日志里的 <code>Input dispatching timed out</code>）其实分两类，排障时必须先分清：</p>
+
+  <table>
+    <tr><th>类型</th><th>含义</th><th>触发点</th><th>日志特征</th></tr>
+    <tr><td><strong>窗口无响应</strong></td><td>找到目标窗口了，发出去了，但 App 5 秒内没回执</td><td>连接超时 → <code>onAnrLocked(Connection)</code> :5515</td><td>“Waiting because no window has focus…”之外，直接指名窗口 + reason</td></tr>
+    <tr><td><strong>无焦点窗口</strong></td><td>事件到达时没有任何焦点窗口（启动/转屏空窗期）</td><td><code>processNoFocusedWindowAnrLocked()</code> :614 → <code>onAnrLocked(InputApplicationHandle)</code> :5550</td><td>“Application is not responding… no focused window”，甩锅给整个 App</td></tr>
+  </table>
+
+  <h3>超时阈值从哪来</h3>
+  <div class="code-block">
+    <div class="filename">InputDispatcher.cpp:102 · IInputConstants.aidl:26</div>
+    <pre><span class="cm">// 基值 5000ms，再乘厂商的 HwTimeoutMultiplier（默认 1，部分厂商调大以避误报）</span>
+<span class="kw">const</span> std::chrono::duration DEFAULT_INPUT_DISPATCHING_TIMEOUT = std::chrono::milliseconds(
+        android::os::IInputConstants::UNMULTIPLIED_DEFAULT_DISPATCHING_TIMEOUT_MILLIS *
+        <span class="fn">HwTimeoutMultiplier</span>());
+
+<span class="cm">// IInputConstants.aidl:26（Java 侧 InputConstants.java:22 同步）：</span>
+<span class="cm">// const int UNMULTIPLIED_DEFAULT_DISPATCHING_TIMEOUT_MILLIS = 5000; // 5 seconds</span>
+
+<span class="cm">// 每个窗口还可以自带更长的超时（如测试/无障碍）</span>
+<span class="cm">// getDispatchingTimeout(DEFAULT_INPUT_DISPATCHING_TIMEOUT) —— :678 / :4959</span></pre>
+  </div>
+
+  <h3>ANR 发生后发生什么</h3>
+  <div class="chain">
+    <div class="row"><b>native 上报</b>：<code>notifyWindowUnresponsive()</code>（:5642）经 policy 回调回 system_server；无焦点窗口走 <code>NativeInputManager::notifyNoFocusedWindowAnr</code>（native IMS :802）。</div>
+    <div class="row"><b>WMS 侧处理</b>：<code>WindowManagerService</code> 持有 <code>mAnrController</code>（:772，构造 :1389），焦点变化时处理（:4931 <code>onFocusChanged(newFocus)</code>）；<code>AnrController</code>（AnrController.java:46）决定是否要把超时的 App “切断输入并弹 ANR 框”。</div>
+    <div class="row"><b>弹框</b>：由 system_server 的 ANR 流程弹出“应用无响应”对话框，同时抓 trace（traces.txt）供分析。</div>
+  </div>
+
+  <div class="pitfall">
+    <p><span class="tag">🐛 实战区分</span> 看到 ANR 先看日志抄的是哪一行：<strong>窗口无响应</strong>→去查那个 App 主线程在干什么（trace 里找 Looper 阻塞）；<strong>无焦点窗口</strong>→去查为什么启动/转屏时迟迟没有焦点窗口（常见于启动慢、Activity 一直在 stopping、锁屏转场），<strong>往往不是输入的问题</strong>。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p9">九、实战排障手册与完整调用堆栈</h2>
+
+<div class="card">
+  <h3>9.1 常见症状 → 先查哪里</h3>
+  <table>
+    <tr><th>症状</th><th>优先怀疑</th><th>下手命令</th></tr>
+    <tr><td>点击完全无反应</td><td>焦点窗口不存在 / 被不可穿透层遮挡</td><td><code>dumpsys input</code>（看 focusedWindow、touchStates）</td></tr>
+    <tr><td>点到错误的窗口</td><td>touchableRegion 或被上层吃掉</td><td><code>dumpsys window</code> 看各窗口 frame/touchable，看是否多了一个透明可触摸层</td></tr>
+    <tr><td>按键没反应/进不了 App</td><td>FLAG_NOT_FOCUSABLE；事件被 policy 截走</td><td>看窗口 flags；音量/电源键本来就在 <code>interceptKeyBeforeQueueing</code> 截走</td></tr>
+    <tr><td>Input dispatching timed out</td><td>先区分两类 ANR（见第八章）</td><td><code>dumpsys input</code>（waitQueue）+ trace</td></tr>
+    <tr><td>触摸有延迟/慢半拍</td><td>交底快照与真实状态不一致</td><td>Winscope 对齐输入事件时间戳与窗口层级变化时刻</td></tr>
+  </table>
+
+  <h3>9.2 完整调用堆栈（从手指到 App 派发）</h3>
+  <p>与 03 篇一样，这里给出<strong>带文件:行号的完整堆栈</strong>，并标出两种“接力边界”：同线程直接调用、跨进程 socketpair 收发。</p>
+
+  <div class="code-block">
+    <div class="filename">输入事件全链路（三进程 · android-12.0.0_r32）</div>
+    <pre><span class="cm">【内核】</span> evdev 事件就绪
+ <span class="cm">↓</span>
+<span class="cm">【system_server / InputReader 线程】</span>
+ InputReader::loopOnce()                                  InputReader.cpp
+   └─ EventHub::getEvents()                               :108
+   └─ processEventsLocked() → InputMapper（触摸/键盘）
+   └─ 按键类：PhoneWindowManager::interceptKeyBeforeQueueing()  PhoneWindowManager.java:3383
+ <span class="cm">↓ 入队 mInboundQueue，唤醒 Dispatcher</span>
+<span class="cm">【system_server / InputDispatcher 线程】</span>
+ InputDispatcher::dispatchOnce()                          :572
+   └─ dispatchOnceInnerLocked()                           :683
+        ├─ 按键 → dispatchKeyLocked()                     :1362
+        │     └─ findFocusedWindowTargetsLocked()         :1786
+        └─ 触摸 → dispatchMotionLocked()                  :1529
+              └─ findTouchedWindowTargetsLocked()         :1900
+   └─ dispatchEventLocked()                               :1671
+        └─ prepareDispatchCycleLocked()                   :2755
+            └─ enqueueDispatchEntryLocked()               :2844
+                └─ startDispatchCycleLocked()             :3073
+ <span class="cm">↓ 写 socketpair</span>
+<span class="hl">【跨进程边界】</span> InputChannel（socketpair）
+ <span class="cm">↓</span>
+<span class="cm">【App 进程 / 主线程】</span>
+ InputEventReceiver 回调 → ViewRootImpl.enqueueInputEvent()  ViewRootImpl.java:8438
+   └─ doProcessInputEvents()                             :8493
+        └─ deliverInputEvent()                           :8520
+             └─ View 树 dispatchTouchEvent / onTouchEvent
+   └─ finishInputEvent()                                 :8567
+ <span class="cm">↓ 回执 socketpair</span>
+<span class="hl">【跨进程边界】</span>
+ <span class="cm">↓</span>
+<span class="cm">【InputDispatcher 线程】</span>
+ finishDispatchCycleLocked()                              :3287
+   └─ onDispatchCycleFinishedLocked()                     :5473
+        └─ doDispatchCycleFinishedLockedInterruptible()   :5726</pre>
+  </div>
+
+  <h3>9.3 “交底”侧堆栈（WMS → native）</h3>
+  <div class="code-block">
+    <div class="filename">窗口输入信息如何送到 InputDispatcher</div>
+    <pre><span class="cm">// 管道建立（addWindow 阶段）</span>
+WMS.addWindow() :1457
+  └─ WindowState.openInputChannel() :2689
+       └─ InputManagerService.createInputChannel() → NativeInputManager::createInputChannel() (JNI :511)
+
+<span class="cm">// 窗口表交底（遍历收尾阶段）</span>
+InputMonitor.updateInputWindowsLw() InputMonitor.java:338
+  └─ updateInputWindows(inDrag) :490
+      └─ populateInputWindowHandle(handle, w) :270   <span class="cm">// 填 touchableRegion / focusable / Z …</span>
+          └─ InputManagerService.setInputWindows() → JNI → InputDispatcher</pre>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+
+<h2 id="p10">十、源码速查与自测</h2>
+
+<div class="card">
+  <div class="code-block">
+    <div class="filename">WSL AOSP 12 输入系统关键定位</div>
+    <pre><span class="cm"># Java 侧：WMS 输入监视与窗口表交底</span>
+cat /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/InputMonitor.java
+<span class="cm"># 焦点</span>
+grep -n "findFocusedWindow\|updateFocusedWindowLocked" /home/book/aosp12/frameworks/base/services/core/java/com/android/server/wm/DisplayContent.java
+<span class="cm"># native 核心：命中测试与分发</span>
+grep -n "dispatchOnceInnerLocked\|findFocusedWindowTargetsLocked\|findTouchedWindowTargetsLocked" \
+   /home/book/aosp12/frameworks/native/services/inputflinger/dispatcher/InputDispatcher.cpp
+<span class="cm"># ANR</span>
+grep -n "processAnrsLocked\|onAnrLocked\|DEFAULT_INPUT_DISPATCHING_TIMEOUT" \
+   /home/book/aosp12/frameworks/native/services/inputflinger/dispatcher/InputDispatcher.cpp
+<span class="cm"># 真机/模拟器</span>
+adb shell dumpsys input | grep -A5 "FocusedWindow"
+adb shell getevent -lt /dev/input/event*</pre>
+  </div>
+
+  <h3>🧠 自测：6 个问题</h3>
+
+  <details><summary>1. 为什么 addWindow 阶段有 InputChannel，却还没有 Surface？</summary>
+  <div class="ans">InputChannel 是<strong>输入管道</strong>，属于“逻辑身份”的一部分，挂树时就得有；Surface 是<strong>图形资源</strong>，要到首次 relayout 才向 SF 申请。两者生命周期故意错开：窗口可以先“能接收输入”再“能显示”。</div></details>
+
+  <details><summary>2. 一次触摸能被几个窗口收到？</summary>
+  <div class="ans">可以多个。InputDispatcher 在 <code>findTouchedWindowTargetsLocked</code> 里可能得到多个目标（多窗口/持续接收触摸），在 <code>enqueueDispatchEntryLocked</code> 里逐目标各发一份——这就是“触摸分裂”。</div></details>
+
+  <details><summary>3. 按键事件发给谁，由什么决定？</summary>
+  <div class="ans">由<strong>焦点窗口</strong>决定（<code>findFocusedWindowTargetsLocked</code>）。焦点由 WMS 根据“可见且可聚焦且最上层”算出，再交底给 InputDispatcher。</div></details>
+
+  <details><summary>4. 一个透明悬浮窗为什么能吃掉下方 App 的点击？</summary>
+  <div class="ans">因为命中测试用的是<strong>窗口树 + 图层 Z</strong>，不看 View。“可触摸”（NOT_TOUCHABLE=false）的窗口一旦覆盖该点，遮挡判断会让下层收不到——哪怕它是个空 View。解决：给悬浮窗设 <code>FLAG_NOT_TOUCHABLE</code> 或缩小 touchableRegion。</div></details>
+
+  <details><summary>5. 日志里的两种“Input dispatching timed out”怎么区分？</summary>
+  <div class="ans">看是<strong>窗口无响应</strong>（onAnrLocked(Connection)，App 主线程卡了）还是<strong>无焦点窗口</strong>（processNoFocusedWindowAnrLocked，启动/转屏空窗期）——两者的排查方向完全不同。</div></details>
+
+  <details><summary>6. 为什么输入有时会“慢半拍”？</summary>
+  <div class="ans">因为窗口表是 WMS 在持锁时生成的<strong>快照</strong>，InputDispatcher 用它做命中测试，不实时回查。若屏幕已变但快照未刷，就会出现“点到了旧位置”。排这类问题要拿 Winscope 对齐事件时间戳与层级变化时刻。</div></details>
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android 窗口层级专题 | <strong>05 — 输入事件的分发与窗口命中：InputDispatcher 全链路</strong></p>
+  <p>基于 AOSP 12（android-12.0.0_r32）· WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实</p>
+  <p style="margin-top:10px;"><a href="04-像素怎样上屏.html">← 04 像素怎样上屏</a> &nbsp;|&nbsp; <strong>05 输入事件的分发与窗口命中 ← 你在这</strong> &nbsp;|&nbsp; <a href="06-窗口的诞生.html">06 窗口的诞生 →</a></p>
+  <p style="margin-top:8px;"><a href="index.html">🏠 系列导航</a> &nbsp;|&nbsp; <a href="WMS学习路线图.html">🗺️ 学习路线图</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📌 下篇预告：06 窗口的诞生 — addView → binder → addWindow → WindowState 上树（生命周期开篇）</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>渲染是什么：从编舞者 Choreographer 到屏幕上的像素（Android Framework 专题）</title>
+<style>
+    :root {
+      --bg: #efe7d8; --bg-card: #fbf6ea; --text: #2b2620; --text2: #5c5348; --border: #d9cbb4;
+      --accent: #a8492f; --accent2: #2f6b5a; --accent3: #7a5a3a; --code-bg: #f3ead9;
+      --kw: #8a3f5c; --fn: #a8492f; --cm: #4f7a5a; --tag-bg: #efe0c8; --tag-text: #8a4b2a;
+      --link: #2f5f7a; --h2-border: #d6c6ac; --hover-bg: #f0e6d3; --table-border: #d9cbb4;
+      --table-hdr: #e9ddc9; --theme-btn-bg: rgba(60,40,20,.08); --theme-btn-text: #3b3025;
+      --step-bg: #fbf2e0; --step-border: #d8b98a;
+      --tree-bg: #241f1a; --tree-text: #f3e7d0; --tree-dim: #b8a68a; --tree-loc: #d8b36a; --tree-border: #3a3128;
+    }
+    [data-theme="dark"] {
+      --bg: #14120f; --bg-card: #1f1b16; --text: #eadcc4; --text2: #b3a48d; --border: #3a3228;
+      --accent: #e08b5a; --accent2: #7fc3a6; --accent3: #c9a06a; --code-bg: #241f1a;
+      --kw: #d3a0c4; --fn: #e08b5a; --cm: #9ccf8a; --tag-bg: #33281c; --tag-text: #e0b070;
+      --link: #8fc3d9; --h2-border: #3a3228; --hover-bg: #2a241d; --table-border: #3a3228;
+      --table-hdr: #2a241d; --theme-btn-bg: rgba(255,220,160,.1); --theme-btn-text: #eadcc4;
+      --step-bg: #2a2216; --step-border: #6a5230;
+      --tree-bg: #0f0d0b; --tree-text: #f3e7d0; --tree-dim: #b8a68a; --tree-loc: #d8b36a; --tree-border: #3a3128;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+      background-color:#e6d6bb;
+      background-image:
+        radial-gradient(1200px 600px at 12% -8%, rgba(255,250,240,.85), transparent 60%),
+        radial-gradient(900px 500px at 100% 0%, rgba(168,73,47,.10), transparent 55%),
+        repeating-linear-gradient(0deg, rgba(110,80,45,.025) 0 1px, transparent 1px 4px),
+        linear-gradient(180deg, #e9dcc6 0%, #e4d5ba 45%, #dccbad 100%);
+      background-attachment:fixed; color:var(--text); line-height:1.9; padding:42px 20px;
+      transition:background .3s,color .3s;
+    }
+    [data-theme="dark"] body {
+      background-color:#14120f;
+      background-image:
+        radial-gradient(1000px 500px at 10% -10%, rgba(80,60,40,.25), transparent 60%),
+        linear-gradient(180deg, #17140f 0%, #14120f 50%, #100e0b 100%);
+    }
+    .container { max-width:1040px; margin:0 auto; padding:34px 38px 40px; background:rgba(255,251,242,.42); border:1px solid rgba(120,90,50,.18); border-radius:22px; box-shadow:0 30px 80px rgba(75,55,30,.18), inset 0 1px 0 rgba(255,255,255,.5); }
+    [data-theme="dark"] .container { background:rgba(25,21,16,.55); border-color:rgba(200,160,110,.15); box-shadow:0 30px 80px rgba(0,0,0,.45); }
+    h1,h2,h3 { font-family:"Noto Serif SC","Songti SC","STSong",serif; }
+    h1 { font-size:2rem; letter-spacing:.01em; margin-bottom:8px; color:var(--accent); border-bottom:3px double var(--accent); padding-bottom:14px; }
+    .subtitle { color:var(--text2); font-size:.94rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:30px; }
+    h2 { font-size:1.5rem; margin:44px 0 18px; padding-bottom:9px; padding-left:18px; border-bottom:1px solid var(--h2-border); color:var(--accent2); position:relative; }
+    h2::before { content:"◆"; position:absolute; left:0; top:.18em; color:var(--accent); font-size:.62em; }
+    h3 { font-size:1.16rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p,li { margin-bottom:10px; color:var(--text2); }
+    ul,ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { background:var(--code-bg); border-radius:4px; padding:1px 6px; font-family:"SF Mono","Fira Code","Cascadia Code",Consolas,monospace; font-size:.88em; color:var(--text); }
+    .card { background:linear-gradient(180deg, rgba(255,252,245,.97), rgba(249,242,229,.94)); border:1px solid rgba(120,90,50,.20); border-radius:14px; padding:24px 28px; margin-bottom:24px; box-shadow:0 12px 30px rgba(80,60,35,.09), inset 0 1px 0 rgba(255,255,255,.65); transition:background .3s,border .3s; }
+    [data-theme="dark"] .card { background:linear-gradient(180deg, #211d17, #1b1813); box-shadow:0 12px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.03); }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:linear-gradient(90deg, rgba(239,224,200,.75), rgba(251,246,234,.55)); padding:13px 18px; margin:15px 0; border-radius:8px; font-size:.93rem; color:var(--text); }
+    .annotation.star3 { border-left-color:var(--accent); background:linear-gradient(90deg, rgba(239,224,200,.95), rgba(251,246,234,.7)); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .step-box { background:var(--step-bg); border:1px solid var(--step-border); border-radius:9px; padding:14px 22px; margin:16px 0; color:var(--text); }
+    .step-num { display:inline-block; background:var(--accent); color:#fff; width:28px; height:28px; border-radius:50%; text-align:center; line-height:28px; font-weight:bold; font-size:.85rem; margin-right:8px; }
+    .code-block { background:var(--tree-bg); border:1px solid var(--tree-border); border-radius:10px; margin:16px 0; overflow-x:auto; }
+    .code-block .filename { padding:9px 16px; font-size:.82rem; color:var(--tree-dim); border-bottom:1px solid var(--tree-border); background:rgba(0,0,0,.18); font-family:"SF Mono","Fira Code",Consolas,monospace; }
+    .code-block pre { padding:15px 18px; font-family:"SF Mono","Fira Code","Cascadia Code",Consolas,monospace; font-size:.83rem; line-height:1.75; overflow-x:auto; white-space:pre-wrap; word-break:break-word; color:var(--tree-text); }
+    .kw { color:var(--kw); font-weight:600; }
+    .fn { color:var(--fn); font-weight:600; }
+    .cm { color:var(--cm); font-style:italic; }
+    .num { color:var(--tree-loc); }
+    table { width:100%; border-collapse:collapse; margin:18px 0; font-size:.88rem; background:rgba(255,252,245,.45); }
+    th,td { border:1px solid var(--table-border); padding:10px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; color:var(--text); letter-spacing:.02em; border-bottom:2px solid var(--accent3); }
+    tr:nth-child(even) td { background:rgba(255,255,255,.18); }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { background:var(--tree-bg); color:var(--tree-text); border:1px solid var(--tree-border); border-left:3px solid var(--accent); border-radius:12px; padding:18px 22px; margin:16px 0; font-family:"SF Mono","Fira Code","Cascadia Code",Consolas,monospace; font-size:.82rem; line-height:1.95; overflow-x:auto; white-space:pre; box-shadow:inset 0 0 0 1px rgba(255,255,255,.04), 0 10px 26px rgba(0,0,0,.12); }
+    .tree .dim { color:var(--tree-dim); }
+    .tree .hl { background:rgba(216,179,106,.18); color:#f7e7c8; border-radius:3px; padding:0 3px; }
+    .tree .loc { color:var(--tree-loc); }
+    details { background:var(--bg-card); border:1px solid var(--border); border-radius:9px; padding:12px 18px; margin:12px 0; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    details[open] summary { margin-bottom:10px; }
+    .ans { border-left:3px solid var(--accent2); padding:6px 14px; margin-top:8px; background:var(--code-bg); border-radius:5px; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:1px solid var(--border); background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 4px 16px rgba(0,0,0,.18); z-index:999; transition:all .3s; backdrop-filter:blur(6px); }
+    #theme-btn:hover { transform:scale(1.08); }
+    .toc { background:linear-gradient(180deg, #2b241c, #201a14); border:1px solid #4a3a28; border-left:4px solid var(--accent); border-radius:12px; padding:20px 26px; margin-bottom:26px; box-shadow:0 18px 40px rgba(0,0,0,.22); }
+    .toc strong { color:#e8b87a !important; }
+    .toc a { display:block; padding:3px 0; font-size:.92rem; color:#d8c3a2; }
+    .toc a:hover { color:#f0c88a; text-decoration:none; }
+    @media (max-width:640px) { body { padding:16px 10px; } .container { padding:20px 14px; border-radius:14px; } h1 { font-size:1.45rem; } .card { padding:17px; } .tree { font-size:.76rem; padding:14px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🎬 渲染是什么：从编舞者 Choreographer 到屏幕上的像素</h1>
+<p class="subtitle">Choreographer · ViewRootImpl · ThreadedRenderer · RenderThread · SurfaceFlinger · HWC · AOSP 12 全链路</p>
+<p class="series">📚 Android Framework 专题 · 渲染篇 ｜ 基于 <code>android-12.0.0_r32</code> ｜ 从零开始，不需要先读窗口系列 ｜ 延伸阅读：<a href="Android窗口层级/04-像素怎样上屏.html">04 像素怎样上屏</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📖 目录</strong>
+  <a href="#p0">零、从开机到第一帧：初始化全景</a>
+  <a href="#p1">一、一分钟建立直觉：渲染到底在干什么</a>
+  <a href="#p2">二、编舞者 Choreographer：每一帧的指挥</a>
+  <a href="#p2b">二·五、驱动机制：谁在推着这一帧走</a>
+  <a href="#p3">三、角色表：一帧里谁干什么</a>
+  <a href="#p3b">三·五、方法逐个看：每个方法到底做什么</a>
+  <a href="#p4">四、App 侧：View 树怎样变成 DisplayList</a>
+  <a href="#p5">五、过河：Buffer 怎样到 SurfaceFlinger</a>
+  <a href="#p6">六、层级树怎样被渲染：从 WindowState 到 Layer</a>
+  <a href="#p7">七、合成与上屏：HWC/GPU 的最后一公里</a>
+  <a href="#p8">八、完整时序：一帧的一生</a>
+  <a href="#p8b">八·五、稳态：点击之后，下一帧怎么来</a>
+  <a href="#p9">九、类速查表与自测</a>
+</div>
+
+<!-- ===== 0 ===== -->
+<h2 id="p0">零、从开机到第一帧：初始化全景</h2>
+<div class="card">
+  <p>这篇文章从零开始讲渲染，<strong>不假设你读过窗口层级系列</strong>。你不需要先知道 WMS、SurfaceFlinger 或 Choreographer；下面先把名词定清楚，再从开机讲到第一帧。</p>
+
+  <h3>0.0 先定名词：下面这些词分别是什么</h3>
+  <p>如果这些词你已经熟，可以跳过；如果没读过前篇，先用一分钟建立对应关系：</p>
+  <table>
+    <tr><th>名词</th><th>一句话</th><th>住在哪</th></tr>
+    <tr><td><strong>View / View 树</strong></td><td>按钮、文字、图片组成的 UI 树，描述“画什么”</td><td>App 进程</td></tr>
+    <tr><td><strong>Window / WindowState</strong></td><td>一块可显示区域；WindowState 是 WMS 里的逻辑对象，记录位置、层级、可见性</td><td>system_server</td></tr>
+    <tr><td><strong>Surface</strong></td><td>App 的画布/生产者端，App 往里面申请并提交 Buffer</td><td>App 进程</td></tr>
+    <tr><td><strong>SurfaceControl</strong></td><td>指向 SurfaceFlinger 中某个 Layer 的句柄，不是 Layer 本体</td><td>App / system_server</td></tr>
+    <tr><td><strong>Layer</strong></td><td>SurfaceFlinger 里的真实图层，决定位置、Z、alpha、裁剪</td><td>SurfaceFlinger 进程</td></tr>
+    <tr><td><strong>Buffer / GraphicBuffer</strong></td><td>一块共享内存，装这一帧的像素</td><td>跨进程共享</td></tr>
+    <tr><td><strong>Transaction</strong></td><td>一批图层状态变更（位置/Z/alpha/buffer），原子提交</td><td>App / system_server → SF</td></tr>
+    <tr><td><strong>VSYNC</strong></td><td>屏幕刷新的节拍信号，60Hz 约 16.6ms 一次</td><td>显示子系统</td></tr>
+    <tr><td><strong>Choreographer</strong></td><td>App 侧的帧调度器，收到 VSYNC 后按顺序跑回调</td><td>App 进程</td></tr>
+    <tr><td><strong>WMS</strong></td><td>WindowManagerService，管窗口树、布局、Z 序、输入窗口</td><td>system_server</td></tr>
+    <tr><td><strong>SurfaceFlinger</strong></td><td>合成器，收 Layer/Buffer，合成一帧交给显示控制器</td><td>SurfaceFlinger 进程</td></tr>
+    <tr><td><strong>BLAST</strong></td><td>Android 12 的 Buffer 提交机制，把 Buffer 打包进 Transaction</td><td>App 进程</td></tr>
+  </table>
+  <div class="annotation">
+    <strong>先记住三句话：</strong>View 树描述“画什么”；WindowState 描述“窗口放哪里”；Layer 描述“这一层怎么叠”。三棵树分别属于 App、system_server、SurfaceFlinger。
+  </div>
+
+  <h3>0.1 SurfaceFlinger 先起来</h3>
+  <div class="tree">
+SurfaceFlinger 启动
+├─ init.rc 拉起 surfaceflinger 服务
+├─ main_surfaceflinger.cpp:130
+│   └─ surfaceflinger::createSurfaceFlinger()
+│       └─ SurfaceFlingerFactory.cpp:26
+│           └─ new SurfaceFlinger(factory)
+├─ SurfaceFlinger::onFirstRef()                 [:491]
+└─ SurfaceFlinger::init()                       [:774]
+    ├─ 创建 SF 主线程
+    ├─ 初始化显示设备
+    └─ 启动调度器
+  </div>
+  <p>此刻它手里还没有任何 App 窗口，但已经准备好接收 Layer 和事务。</p>
+
+  <h3>0.2 WMS 建树根</h3>
+  <div class="tree">
+SystemServer 启动 WMS
+└─ 显示屏加入
+    └─ DisplayContent 构造
+        └─ SurfaceControl.Builder
+            ├─ setName("Root")
+            └─ setContainerLayer()
+                [DisplayContent.java:1061-1065]
+  </div>
+  <p>这就是 Surface 树的根——之后所有窗口图层都挂在它下面。</p>
+
+  <h3>0.3 App 进程起来，ViewRootImpl 诞生</h3>
+  <div class="tree">
+点击图标 → Zygote fork App 进程
+└─ ActivityThread.main()                       [:7793]
+    ├─ attach()                                [:7513] 绑定 AMS
+    ├─ handleBindApplication()                 [:6432] 创建 Application
+    └─ handleResumeActivity()                  [:4785] 执行 onResume
+        └─ WindowManagerGlobal.addView(decor)  [:321]
+            ├─ new ViewRootImpl()              [:389]
+            └─ root.setView(...)               [:399]
+  </div>
+  <p><strong>ViewRootImpl 是 App 侧渲染的总入口</strong>：它持有 View 树、Choreographer、ThreadedRenderer、WindowSession。</p>
+
+  <h3>0.4 setView 做三件事</h3>
+  <p>用带层级的写法，<code>setView()</code> 下面就是三条分支：</p>
+  <div class="tree">
+setView(view, attrs, panelParentView)              [ViewRootImpl.java:993]  // 入口：绑定 View + 建渲染器 + 注册窗口
+├─ ① 建渲染器                                      // 只有 mSurfaceHolder == null 才走
+│   └─ enableHardwareAcceleration(attrs)           [:1409]  // 创建/更新渲染器
+│       └─ ThreadedRenderer.create(...)            [ThreadedRenderer.java:231]  // native RenderProxy + RenderThread
+│           └─ native RenderProxy + RenderThread + EGL/CanvasContext
+│
+├─ ② 申请第一次布局                                // 让下一个 VSYNC 触发 traversal
+│   └─ requestLayout()                             [:1770]  // 标记需要 measure/layout/draw
+│       └─ scheduleTraversals()                    [:2097]  // 挂到 Choreographer
+│           └─ Choreographer.postCallback(          // 等下一个 VSYNC
+│                  CALLBACK_TRAVERSAL,
+│                  mTraversalRunnable)              [:2102]
+│
+└─ ③ 把窗口交给 WMS                                // 跨进程注册，拿回 SurfaceControl
+    └─ mWindowSession.addToDisplay(...)            // Binder 到 WMS.addWindow
+        └─ 首次布局：WMS.relayoutWindow()           [WMS.java:2210]  // 算 frame / 可见性
+            └─ createSurfaceControl()               [:2597]  // 决定建图层
+                └─ WindowStateAnimator.createSurfaceLocked()  [:304]  // 算参数
+                    └─ new WindowSurfaceController()          [:79]  // 建 SurfaceControl
+                        └─ SurfaceFlinger.createLayer()       [SurfaceFlinger.cpp:4289]  // SF 建 Layer
+  </div>
+  <div class="annotation">
+    <strong>三条分支的产出：</strong>① 渲染器；② 一次待执行的 traversal；③ WMS 里的窗口记录 + 一块 SurfaceControl。三件事都完成后，App 才具备“等 VSYNC 画第一帧”的条件。
+  </div>
+
+  <h3>0.5 第一帧的触发</h3>
+  <p>此时 App 还没有画任何东西。它在等 <strong>VSYNC</strong>：</p>
+  <div class="tree">
+VSYNC
+└─ Choreographer.doFrame()                     [:701]
+    └─ CALLBACK_TRAVERSAL
+        └─ TraversalRunnable
+            └─ ViewRootImpl.doTraversal()      [:2117]
+                └─ performTraversals()         [:2510]
+                    ├─ measure
+                    ├─ layout
+                    └─ draw
+                        └─ ThreadedRenderer.draw()   [:613]
+                            └─ RenderThread → GraphicBuffer
+                                └─ queueBuffer → BLAST
+                                    └─ SF commitTransaction()  [:3232]
+                                        └─ composite → present → 第一帧上屏
+  </div>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 初始化结论 ✦ ✦ ✦</span><br>
+    渲染不是从 <code>draw()</code> 开始的，而是从 <strong>SurfaceFlinger 启动 → DisplayContent 建 Root → App 进程启动 → ViewRootImpl 创建 → setView 申请布局 → 第一个 VSYNC</strong> 这一整条链开始的。少任何一环，第一帧都出不来。
+  </div>
+</div>
+
+<h2 id="p1">一、一分钟建立直觉：渲染到底在干什么</h2>
+<div class="card">
+  <p>先把“渲染”从黑话还原成一句话：<strong>把程序里“要画什么”的描述，变成屏幕上一帧一帧的像素。</strong></p>
+  <p>Android 里这件事分三段：</p>
+  <ol>
+    <li><strong>录制（Record）：</strong>App 把 View 树（按钮、文字、图片）录成一串绘制命令，叫 DisplayList。</li>
+    <li><strong>画布（Draw）：</strong>RenderThread 把这串命令交给 GPU，画进一块共享内存 GraphicBuffer。</li>
+    <li><strong>合成（Composite）：</strong>SurfaceFlinger 把多个窗口的 Buffer 按层级叠起来，交给 HWC/显示驱动，最后面板扫描发光。</li>
+  </ol>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 三棵树 ✦ ✦ ✦</span><br>
+    <strong>View 树</strong>（App 进程）：画什么。<br>
+    <strong>窗口树</strong>（system_server）：每个窗口在哪、谁在前、可见性。<br>
+    <strong>Layer 树</strong>（SurfaceFlinger 进程）：真实图层怎么叠、怎么裁剪、Z 值多少。<br>
+    渲染就是：View 树 → 每个窗口一张 Buffer；窗口树 → Layer 树；SF 把 Buffer 按 Layer 树合成上屏。
+  </div>
+
+  <p>60Hz 屏幕每 <strong>16.6ms</strong> 刷新一次；VSYNC 是节拍。所有绘制、布局、合成都要卡在这个节拍里，否则掉帧。</p>
+</div>
+
+<!-- ===== 2 ===== -->
+<h2 id="p2">二、编舞者 Choreographer：每一帧的指挥</h2>
+<div class="card">
+  <p><strong>Choreographer 不画任何东西。</strong>它是 App 进程里每个线程一个的“节拍调度器”：收到 VSYNC 后，按固定顺序执行这一帧该做的事。</p>
+  <p>为什么叫“编舞者”？因为它决定“谁先动、谁后动”：输入先处理，动画再更新，布局/绘制最后执行，提交收尾。顺序错了就会看到输入延迟、动画跳帧或画面撕裂。</p>
+
+  <div class="tree">
+VSYNC
+└─ Choreographer.doFrame()                     [:701]
+    ├─ 1. CALLBACK_INPUT              (0)      [:218] 处理输入
+    ├─ 2. CALLBACK_ANIMATION          (1)      [:225] 推进动画
+    ├─ 3. CALLBACK_INSETS_ANIMATION   (2)      [:241] Insets 动画
+    ├─ 4. CALLBACK_TRAVERSAL          (3)      [:248] measure/layout/draw
+    └─ 5. CALLBACK_COMMIT             (4)      [:260] 提交
+  </div>
+
+  <table>
+    <tr><th>顺序</th><th>回调类型</th><th>常量</th><th>做什么</th></tr>
+    <tr><td>1</td><td>INPUT</td><td><code>CALLBACK_INPUT = 0</code>（:218）</td><td>处理输入事件，保证点击/触摸最先响应</td></tr>
+    <tr><td>2</td><td>ANIMATION</td><td><code>CALLBACK_ANIMATION = 1</code>（:225）</td><td>推进动画，算出这一帧的属性值</td></tr>
+    <tr><td>3</td><td>INSETS_ANIMATION</td><td><code>CALLBACK_INSETS_ANIMATION = 2</code>（:241）</td><td>推进 Insets 动画（系统栏/IME）</td></tr>
+    <tr><td>4</td><td>TRAVERSAL</td><td><code>CALLBACK_TRAVERSAL = 3</code>（:248）</td><td>measure / layout / draw，ViewRootImpl 的主战场</td></tr>
+    <tr><td>5</td><td>COMMIT</td><td><code>CALLBACK_COMMIT = 4</code>（:260）</td><td>提交这一帧的渲染结果</td></tr>
+  </table>
+
+  <p>关键入口：<code>postCallback()</code>（:430）把任务挂到某个回调类型；<code>scheduleFrameLocked()</code>（:636）向系统申请下一个 VSYNC；<code>doFrame()</code>（:701）在 VSYNC 到来时按顺序执行；<code>FrameDisplayEventReceiver.onVsync()</code>（:981）是 VSYNC 的接收口。</p>
+
+  <div class="annotation">
+    <strong>一句话：</strong>Choreographer 是“帧的指挥官”，不是“画图的人”。它只负责在正确的节拍调用正确的回调；真正画图的是 ViewRootImpl、RenderThread 和 GPU。
+  </div>
+</div>
+
+<!-- ===== 3 ===== -->
+<h2 id="p2b">二·五、驱动机制：谁在推着这一帧走</h2>
+<div class="card">
+  <p>Choreographer 只是“节拍器”。真正让一帧开始的是两类信号：<strong>内容变了</strong> 和 <strong>VSYNC 到了</strong>。</p>
+
+  <table>
+    <tr><th>触发</th><th>典型来源</th><th>ViewRootImpl 里的动作</th><th>结果</th></tr>
+    <tr><td><code>invalidate()</code></td><td>View 内容变化、动画属性变化</td><td>标记 dirty，调用 <code>scheduleTraversals()</code></td><td>只重画，不一定重新 measure/layout</td></tr>
+    <tr><td><code>requestLayout()</code></td><td>View 尺寸/结构变化、addView/removeView</td><td>置 <code>mLayoutRequested</code>，调用 <code>scheduleTraversals()</code></td><td>measure → layout → draw 全走</td></tr>
+    <tr><td>VSYNC</td><td>DisplayEventReceiver</td><td><code>Choreographer.doFrame()</code></td><td>按顺序执行本帧回调</td></tr>
+  </table>
+
+  <div class="tree">
+invalidate() / requestLayout()                 [:1770]
+└─ ViewRootImpl.scheduleTraversals()           [:2097]
+    └─ Choreographer.postCallback(
+           CALLBACK_TRAVERSAL, mTraversalRunnable)   [:2102]
+        └─ scheduleFrameLocked()               [:636]
+            └─ 申请 VSYNC
+                └─ Choreographer.doFrame()     [:701]
+                    └─ doTraversal()           [:2117]
+                        └─ performTraversals() [:2510]
+  </div>
+
+  <div class="code-block">
+    <div class="filename">ViewRootImpl.java:2097-2115（节选）</div>
+    <pre>
+<span class="kw">void</span> <span class="fn">scheduleTraversals</span>() {
+    <span class="kw">if</span> (!mTraversalScheduled) {                 <span class="cm">// 防重入：一帧只排一次</span>
+        mTraversalScheduled = <span class="kw">true</span>;
+        mTraversalBarrier = mHandler.getLooper().getQueue().<span class="fn">postSyncBarrier</span>();  <span class="cm">// 同步屏障：让 traversal 优先</span>
+        mChoreographer.<span class="fn">postCallback</span>(                 <span class="cm">// 挂到下一帧</span>
+                Choreographer.CALLBACK_TRAVERSAL, mTraversalRunnable, <span class="kw">null</span>);
+    }
+}</pre>
+  </div>
+
+  <p>VSYNC 到来后：<code>Choreographer.doFrame()</code>（:701）→ <code>doCallbacks</code> → <code>mTraversalRunnable</code> → <code>doTraversal()</code>（:2117）→ <code>performTraversals()</code>（:2510）。</p>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 为什么要等 VSYNC ✦ ✦ ✦</span><br>
+    如果每次 <code>invalidate()</code> 都立刻画，一帧内可能画很多次，浪费 GPU，还会和屏幕扫描不同步。Choreographer 把这一帧内的多次请求合并成一次 traversal，等 VSYNC 来了再统一执行；这样画面更新和屏幕刷新对齐，不会撕裂。
+  </div>
+
+  <p>SurfaceFlinger 也有自己的 VSYNC 和调度器：App 画完把 Buffer 交给 SF，SF 在它自己的 VSYNC 里 commit/composite/present。两个循环通过 BLAST 事务和 frame timeline 对齐，不是同一个线程。</p>
+</div>
+
+<h2 id="p3">三、角色表：一帧里谁干什么</h2>
+<div class="card">
+  <p>把一帧拆成四条流水线：<strong>调度 → 录制 → 绘制 → 合成</strong>。每条流水线由不同进程里的类负责。</p>
+
+  <table>
+    <tr><th>类</th><th>所在进程/线程</th><th>职责</th><th>关键入口</th></tr>
+    <tr><td><code>Choreographer</code></td><td>App，UI 线程</td><td>按 VSYNC 调度 input/animation/traversal/commit</td><td><code>doFrame():701</code></td></tr>
+    <tr><td><code>ViewRootImpl</code></td><td>App，UI 线程</td><td>执行 View 树的 measure/layout/draw</td><td><code>performTraversals():2510</code></td></tr>
+    <tr><td><code>ThreadedRenderer</code></td><td>App，UI 线程</td><td>把 View 树录成 RenderNode/DisplayList，交给 RenderThread</td><td><code>draw():613</code> / <code>syncAndDrawFrame():634</code></td></tr>
+    <tr><td><code>RenderThread</code></td><td>App，渲染线程</td><td>同步 DisplayList、发 GPU 命令、dequeue/queueBuffer</td><td><code>RenderThread.cpp</code></td></tr>
+    <tr><td><code>RenderNode</code></td><td>App</td><td>一棵 View 子树的绘制命令容器（DisplayList）</td><td><code>beginRecording():394</code> / <code>endRecording():426</code></td></tr>
+    <tr><td><code>Surface</code> / <code>BLASTBufferQueue</code></td><td>App</td><td>生产者队列：申请 GraphicBuffer、提交这一帧</td><td><code>onFrameAvailable():546</code></td></tr>
+    <tr><td><code>SurfaceFlinger</code></td><td>SF 进程</td><td>收事务、按 Z 合成所有 Layer、present</td><td><code>commitTransaction():3232</code></td></tr>
+    <tr><td><code>HWComposer</code> / HWC</td><td>SF / HAL</td><td>硬件叠加；层数超限时回退 GPU 合成</td><td><code>HWComposer</code></td></tr>
+  </table>
+
+  <div class="annotation">
+    <strong>进程边界很重要：</strong>Choreographer、ViewRootImpl、ThreadedRenderer、RenderThread 都在 App 进程；窗口树在 system_server；Layer 树和合成在 SurfaceFlinger 进程。跨进程传的是 <strong>SurfaceControl 句柄</strong>和 <strong>GraphicBuffer</strong>，不是 View 对象。
+  </div>
+</div>
+
+<!-- ===== 4 ===== -->
+<h2 id="p3b">三·五、方法逐个看：每个方法到底做什么</h2>
+<div class="card">
+  <p>下面按“初始化 → 调度 → 布局/绘制 → 合成”四段，把关键方法逐个列出来。看的时候盯住三列：<strong>谁调它、它做什么、它把控制权交给谁</strong>。</p>
+
+  <h3>3.5.1 初始化与调度</h3>
+  <table>
+    <tr><th>方法</th><th>类</th><th>谁调它</th><th>作用</th><th>下一步</th></tr>
+    <tr><td><code>main()</code> :7793</td><td><code>ActivityThread</code></td><td>Zygote</td><td>App 进程入口：创建 ActivityThread、主线程 Looper</td><td><code>attach()</code></td></tr>
+    <tr><td><code>attach()</code> :7513</td><td><code>ActivityThread</code></td><td><code>main()</code></td><td>通过 Binder 绑定 AMS，建立 ApplicationThread 通道</td><td>AMS 回调</td></tr>
+    <tr><td><code>handleBindApplication()</code> :6432</td><td><code>ActivityThread</code></td><td>AMS</td><td>创建 Application/Context，调用 Application.onCreate</td><td><code>handleResumeActivity()</code></td></tr>
+    <tr><td><code>handleResumeActivity()</code> :4785</td><td><code>ActivityThread</code></td><td>AMS</td><td>执行 Activity.onResume，然后 <code>wm.addView(decor, l)</code></td><td><code>addView()</code></td></tr>
+    <tr><td><code>addView()</code> :321</td><td><code>WindowManagerGlobal</code></td><td><code>handleResumeActivity()</code></td><td>创建 <code>ViewRootImpl</code>，登记 decor view</td><td><code>setView()</code></td></tr>
+    <tr><td><code>ViewRootImpl()</code> :766</td><td><code>ViewRootImpl</code></td><td><code>addView()</code></td><td>初始化 AttachInfo、Choreographer、ViewRootHandler</td><td><code>setView()</code></td></tr>
+    <tr><td><code>setView()</code> :993</td><td><code>ViewRootImpl</code></td><td><code>addView()</code></td><td>绑定 View，建渲染器，申请首次布局，登记窗口</td><td><code>requestLayout()</code></td></tr>
+    <tr><td><code>enableHardwareAcceleration()</code> :1409</td><td><code>ViewRootImpl</code></td><td><code>setView()</code></td><td>创建 ThreadedRenderer / RenderThread / EGL 环境</td><td>硬件渲染器</td></tr>
+    <tr><td><code>requestLayout()</code> :1770</td><td><code>ViewRootImpl</code></td><td>View / setView</td><td>标记需要重新 measure/layout/draw</td><td><code>scheduleTraversals()</code></td></tr>
+    <tr><td><code>scheduleTraversals()</code> :2097</td><td><code>ViewRootImpl</code></td><td>requestLayout / invalidate</td><td>post <code>CALLBACK_TRAVERSAL</code>，设置 sync barrier</td><td><code>Choreographer.postCallback()</code></td></tr>
+    <tr><td><code>postCallback()</code> :430</td><td><code>Choreographer</code></td><td><code>scheduleTraversals()</code></td><td>把 traversal 挂到指定帧回调类型</td><td><code>scheduleFrameLocked()</code></td></tr>
+    <tr><td><code>scheduleFrameLocked()</code> :636</td><td><code>Choreographer</code></td><td><code>postCallback()</code></td><td>向 DisplayEventReceiver 申请下一个 VSYNC</td><td>VSYNC</td></tr>
+    <tr><td><code>doFrame()</code> :701</td><td><code>Choreographer</code></td><td>VSYNC</td><td>按 INPUT→ANIMATION→TRAVERSAL→COMMIT 执行回调</td><td><code>doTraversal()</code></td></tr>
+    <tr><td><code>doTraversal()</code> :2117</td><td><code>ViewRootImpl</code></td><td><code>Choreographer</code></td><td>移除 sync barrier，执行这一帧的 traversal</td><td><code>performTraversals()</code></td></tr>
+  </table>
+
+  <h3>3.5.2 布局与绘制</h3>
+  <table>
+    <tr><th>方法</th><th>类</th><th>谁调它</th><th>作用</th><th>下一步</th></tr>
+    <tr><td><code>performTraversals()</code> :2510</td><td><code>ViewRootImpl</code></td><td><code>doTraversal()</code></td><td>一帧总调度：决定是否 measure/layout/draw，处理 relayout</td><td>三个 perform</td></tr>
+    <tr><td><code>performMeasure()</code> :3602</td><td><code>ViewRootImpl</code></td><td><code>performTraversals()</code></td><td>递归测量 View 树，算出每个 View 的尺寸</td><td><code>performLayout()</code></td></tr>
+    <tr><td><code>performLayout()</code> :3665</td><td><code>ViewRootImpl</code></td><td><code>performTraversals()</code></td><td>递归摆放 View，算出每个 View 的位置</td><td><code>performDraw()</code></td></tr>
+    <tr><td><code>performDraw()</code> :4128</td><td><code>ViewRootImpl</code></td><td><code>performTraversals()</code></td><td>绘制 View 树；硬件加速时委托 ThreadedRenderer</td><td><code>ThreadedRenderer.draw()</code></td></tr>
+    <tr><td><code>draw()</code> :613</td><td><code>ThreadedRenderer</code></td><td><code>performDraw()</code></td><td>录制根 DisplayList，然后同步给 RenderThread</td><td><code>updateRootDisplayList()</code></td></tr>
+    <tr><td><code>updateRootDisplayList()</code> :538</td><td><code>ThreadedRenderer</code></td><td><code>draw()</code></td><td>遍历 View 树，把绘制动作录进 RenderNode</td><td><code>RenderNode.beginRecording()</code></td></tr>
+    <tr><td><code>beginRecording()</code> :394 / <code>endRecording()</code> :426</td><td><code>RenderNode</code></td><td>View.draw / ThreadedRenderer</td><td>开始/结束录制一棵子树的绘制命令</td><td>DisplayList</td></tr>
+    <tr><td><code>syncAndDrawFrame()</code> :634</td><td><code>ThreadedRenderer</code></td><td><code>draw()</code></td><td>把 DisplayList 同步给 RenderThread，等待 GPU 绘制</td><td><code>RenderThread</code></td></tr>
+    <tr><td><code>drawFrame()</code></td><td><code>RenderThread</code>/<code>CanvasContext</code></td><td><code>syncAndDrawFrame()</code></td><td>执行 GPU 命令，画进 GraphicBuffer，queueBuffer</td><td><code>BLASTBufferQueue</code></td></tr>
+  </table>
+
+  <h3>3.5.3 窗口与合成</h3>
+  <table>
+    <tr><th>方法</th><th>类</th><th>谁调它</th><th>作用</th><th>下一步</th></tr>
+    <tr><td><code>relayoutWindow()</code> :2210</td><td><code>WindowManagerService</code></td><td><code>performTraversals()</code></td><td>算 frame/可见性，决定是否建/更新 Surface</td><td><code>createSurfaceControl()</code></td></tr>
+    <tr><td><code>createSurfaceControl()</code> :2597</td><td><code>WindowManagerService</code></td><td><code>relayoutWindow()</code></td><td>委托 WindowStateAnimator 建图层，回填 SurfaceControl</td><td><code>createSurfaceLocked()</code></td></tr>
+    <tr><td><code>createSurfaceLocked()</code> :304</td><td><code>WindowStateAnimator</code></td><td><code>createSurfaceControl()</code></td><td>计算 flags/尺寸/格式，new WindowSurfaceController</td><td><code>WindowSurfaceController()</code></td></tr>
+    <tr><td><code>WindowSurfaceController()</code> :79</td><td><code>WindowSurfaceController</code></td><td><code>createSurfaceLocked()</code></td><td>用 SurfaceControl.Builder 建图层，挂到父容器</td><td><code>SurfaceFlinger.createLayer()</code></td></tr>
+    <tr><td><code>onFrameAvailable()</code> :546</td><td><code>BLASTBufferQueue</code></td><td>生产者 queueBuffer</td><td>收到新 Buffer，打包进 SurfaceControl.Transaction</td><td><code>SurfaceFlinger</code></td></tr>
+    <tr><td><code>createLayer()</code> :4289</td><td><code>SurfaceFlinger</code></td><td>WindowSurfaceController / App</td><td>创建 BufferStateLayer 或 ContainerLayer，挂进 Layer 树</td><td>Layer 句柄</td></tr>
+    <tr><td><code>commitTransaction()</code> :3232</td><td><code>SurfaceFlinger</code></td><td>SF 主线程</td><td>应用所有事务：位置、Z、alpha、buffer</td><td>composite</td></tr>
+    <tr><td><code>composite</code> / <code>present</code></td><td><code>SurfaceFlinger</code> + HWC</td><td>SF</td><td>HWC/GPU 合成，交给显示控制器扫描上屏</td><td>屏幕像素</td></tr>
+    <tr><td><code>init()</code> :774</td><td><code>SurfaceFlinger</code></td><td>开机 init</td><td>初始化 SF 线程、显示设备、调度器</td><td>等待 Layer/事务</td></tr>
+  </table>
+
+  <div class="annotation">
+    <strong>读表方法：</strong>先看“谁调它”确定上下游，再看“作用”确定它解决什么问题，最后看“下一步”把链串起来。这张表就是整套渲染逻辑的骨架。
+  </div>
+</div>
+
+<h2 id="p4">四、App 侧：View 树怎样变成 DisplayList</h2>
+<div class="card">
+  <p>Choreographer 的 TRAVERSAL 回调最终落到 <code>ViewRootImpl.performTraversals()</code>（:2510）。它做三件事：</p>
+  <div class="tree">
+ViewRootImpl.performTraversals()                [:2510]
+├─ performMeasure()                            [:3602]
+│   └─ 递归测量：每个 View 多大
+├─ performLayout()                             [:3665]
+│   └─ 递归摆放：每个 View 在哪
+└─ performDraw()                               [:4128]
+    └─ ThreadedRenderer.draw()                 [:4418 / :613]
+        ├─ updateRootDisplayList()             [:538]
+        │   └─ RenderNode.beginRecording()/endRecording()  [:394/426]
+        └─ syncAndDrawFrame()                  [:634]
+            └─ RenderThread → GPU → GraphicBuffer
+  </div>
+  <p>DisplayList 里是“画什么”的命令（画矩形、贴图、变换），<strong>不是像素</strong>。真正的 GPU 绘制发生在 RenderThread：它同步 DisplayList，调用 Skia/GL/Vulkan，把命令画进 <code>GraphicBuffer</code>。</p>
+
+  <div class="code-block">
+    <div class="filename">ThreadedRenderer.java:613-634（节选）</div>
+    <pre>
+<span class="kw">void</span> <span class="fn">draw</span>(View view, AttachInfo attachInfo, DrawCallbacks callbacks) {
+    <span class="fn">updateRootDisplayList</span>(view, callbacks);   <span class="cm">// ① 录制 DisplayList</span>
+    <span class="kw">int</span> syncResult = <span class="fn">syncAndDrawFrame</span>(frameInfo); <span class="cm">// ② 交给 RenderThread</span>
+}</pre>
+  </div>
+
+  <p>DisplayList 里是“画什么”的命令（画矩形、贴图、变换），<strong>不是像素</strong>。真正的 GPU 绘制发生在 RenderThread：它同步 DisplayList，调用 Skia/GL/Vulkan，把命令画进 <code>GraphicBuffer</code>。</p>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 为什么要两个线程 ✦ ✦ ✦</span><br>
+    UI 线程负责 measure/layout/录制，RenderThread 负责 GPU 绘制。这样 UI 线程可以继续处理下一帧的输入和布局，不必等 GPU 画完；两块工作流水线化，才能在一帧 16.6ms 内完成。
+  </div>
+</div>
+
+<!-- ===== 5 ===== -->
+<h2 id="p5">五、过河：Buffer 怎样到 SurfaceFlinger</h2>
+<div class="card">
+  <p>RenderThread 画完后，像素在一块 <code>GraphicBuffer</code> 里。它通过 <code>Surface</code>（生产者端）<code>queueBuffer</code> 归还队列；Android 12 默认走 <strong>BLAST</strong>：</p>
+
+  <div class="tree">
+RenderThread → GraphicBuffer
+└─ Surface.queueBuffer
+    └─ BLASTBufferQueue.onFrameAvailable()     [:546]
+        └─ setBuffer + SurfaceControl.Transaction
+            └─ SurfaceFlinger
+                ├─ WMS 几何事务：position / Z / alpha / visibility
+                └─ commitTransaction()         [:3232]
+                    └─ composite → present
+  </div>
+
+  <p><span class="tag">关键</span> SF 收到的不是“View 树”，而是“哪块 Buffer 放到哪个 Layer 上”。View 的 measure/layout/draw 全部在 App 进程完成。</p>
+</div>
+
+<!-- ===== 6 ===== -->
+<h2 id="p6">六、层级树怎样被渲染：从 WindowState 到 Layer</h2>
+<div class="card">
+  <p>现在回答核心问题：<strong>窗口层级树是怎么变成屏幕画面的？</strong> 分两段，不要混在一起：</p>
+
+  <table>
+    <tr><th>阶段</th><th>输入</th><th>输出</th><th>谁做</th></tr>
+    <tr><td>① App 绘制</td><td>每个窗口的 View 树</td><td>每个窗口一块 GraphicBuffer</td><td>App 进程（ViewRootImpl + RenderThread + GPU）</td></tr>
+    <tr><td>② 图层合成</td><td>所有窗口的 Buffer + Layer 树</td><td>一帧屏幕像素</td><td>SurfaceFlinger + HWC/GPU</td></tr>
+  </table>
+
+  <p>关键认知：<strong>SurfaceFlinger 完全不知道 View、measure、layout 这些概念。</strong>它只看到 Layer 和 Buffer。View 树在 App 进程里已经被“拍平”成一张 Buffer 了。</p>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 三棵树的分工 ✦ ✦ ✦</span><br>
+    <strong>View 树</strong>：画什么（按钮、文字、图片）。<br>
+    <strong>窗口树</strong>：每个窗口在哪、谁在前、可见性、Z 序策略。<br>
+    <strong>Layer 树</strong>：真实图层怎么叠、裁剪、变换、alpha。<br>
+    渲染 = 每个 WindowState 的 View 树 → 一张 Buffer；WMS 决定 Layer 树；SF 按 Layer 树合成。
+  </div>
+
+  <p>所以“层级树渲染”不是把整棵窗口树直接丢给 GPU，而是：</p>
+  <ol>
+    <li>每个 <code>WindowState</code> 对应一个 <code>BufferStateLayer</code>；</li>
+    <li>这个窗口的 View 树在 App 进程画进自己的 Buffer；</li>
+    <li>WMS 用 <code>assignChildLayers</code> 算出每个 Layer 的 Z 值，写进 Transaction；</li>
+    <li>SF 按 Layer 树的父子关系和 Z 值，把所有 Buffer 叠成一帧。</li>
+  </ol>
+
+  <p>把“哪个节点有 Layer、哪个有 Buffer”直接列出来：</p>
+  <table>
+    <tr><th>逻辑节点</th><th>Surface 节点</th><th>有 Layer？</th><th>有 Buffer？</th></tr>
+    <tr><td><code>DisplayContent</code></td><td><code>Layer "Root"</code></td><td>必有（容器）</td><td>否</td></tr>
+    <tr><td><code>DisplayArea</code> / <code>Task</code></td><td>容器 Layer</td><td>按需</td><td>否</td></tr>
+    <tr><td><code>ActivityRecord</code> / <code>WindowToken</code></td><td>容器 Layer</td><td>首个顶层窗口加入时</td><td>否</td></tr>
+    <tr><td><code>WindowState</code></td><td><code>BufferStateLayer</code></td><td>必有</td><td><strong>是</strong></td></tr>
+  </table>
+  <div class="annotation">
+    <strong>为什么只有 WindowState 有 Buffer：</strong>因为只有它承载 App/系统真正绘制的内容；DisplayArea/Task/ActivityRecord 只是容器，负责裁剪、变换、组织 Z 序，本身不装像素。
+  </div>
+</div>
+
+<!-- ===== 7 ===== -->
+<h2 id="p7">七、合成与上屏：HWC/GPU 的最后一公里</h2>
+<div class="card">
+  <p>SurfaceFlinger 拿到所有 Layer 的 Buffer 后，做三件事：</p>
+  <table>
+    <tr><th>阶段</th><th>做什么</th><th>谁执行</th></tr>
+    <tr><td>commit</td><td>把事务应用到 Layer：位置、Z、alpha、buffer</td><td>SF 主线程</td></tr>
+    <tr><td>composite</td><td>决定每个可见区域由 HWC 还是 GPU 合成</td><td>SF + HWC / RenderEngine</td></tr>
+    <tr><td>present</td><td>把合成结果交给显示控制器，面板扫描发光</td><td>HWC / 显示驱动</td></tr>
+  </table>
+  <p>HWC 能直接叠加的层就硬件合成（省电、快）；层数太多、效果太复杂时，SF 回退用 GPU 先合成成一块 Buffer，再交给 HWC。这个决策每帧动态做。</p>
+  <div class="annotation">
+    <strong>为什么还会掉帧？</strong> 一帧的预算只有 16.6ms：Choreographer 调度、measure/layout、DisplayList 录制、GPU 绘制、BLAST 提交、SF 合成，任何一段超时，这一帧就赶不上 VSYNC，只能等下一帧。
+  </div>
+</div>
+
+<!-- ===== 8 ===== -->
+<h2 id="p8">八、完整时序：一帧的一生</h2>
+<div class="card">
+  <div class="tree">
+VSYNC
+  │
+  ▼
+Choreographer.doFrame()                       [App · UI 线程]
+  ├─ CALLBACK_INPUT            处理输入
+  ├─ CALLBACK_ANIMATION        推进动画
+  ├─ CALLBACK_INSETS_ANIMATION 推进 Insets 动画
+  └─ CALLBACK_TRAVERSAL
+        │
+        ▼
+ViewRootImpl.performTraversals()              [App · UI 线程]
+  ├─ performMeasure() → performLayout()
+  └─ performDraw()
+        │
+        ▼
+ThreadedRenderer.draw()                       [App · UI 线程]
+  ├─ updateRootDisplayList()   录制 RenderNode/DisplayList
+  └─ syncAndDrawFrame()        交给 RenderThread
+        │
+        ▼
+RenderThread                                  [App · 渲染线程]
+  └─ GPU 绘制 → GraphicBuffer → queueBuffer
+        │
+        ▼
+BLASTBufferQueue.onFrameAvailable()            [App]
+  └─ Buffer 打包进 SurfaceControl.Transaction
+        │
+        ▼
+SurfaceFlinger.commitTransaction()            [SF 进程]
+  ├─ 应用 WMS 几何事务 + App Buffer 事务
+  ├─ composite：HWC / GPU
+  └─ present：交给显示控制器
+        │
+        ▼
+面板扫描发光                                   [硬件]
+  </div>
+  <p>这张图就是“渲染”的全貌：<strong>调度 → 录制 → 绘制 → 过河 → 合成 → 上屏</strong>。窗口层级树在中间的角色，是决定“哪块 Buffer 放到哪一层、谁在前”。</p>
+</div>
+
+<!-- ===== 9 ===== -->
+<h2 id="p8b">八·五、稳态：点击之后，下一帧怎么来</h2>
+<div class="card">
+  <p>初始化只发生一次；之后屏幕每 16.6ms 重复的是“稳态闭环”。以一次点击为例：</p>
+
+  <div class="tree">
+点击 / 输入
+└─ ViewRootImpl.dispatchInputEvent()
+    └─ View.dispatchTouchEvent() → onTouchEvent()
+        └─ invalidate() / requestLayout()
+            └─ scheduleTraversals()            [:2097]
+                └─ Choreographer → VSYNC
+                    └─ doFrame()               [:701]
+                        └─ doTraversal()       [:2117]
+                            └─ performTraversals()  [:2510]
+                                └─ measure → layout → draw
+                                    └─ RenderThread → GraphicBuffer
+                                        └─ BLAST → SF commitTransaction()  [:3232]
+                                            └─ composite → present
+  </div>
+
+  <p>所以“驱动”不是某个线程从头跑到尾，而是 <strong>事件触发 + VSYNC 节拍 + 生产者/消费者事务</strong> 三者咬合。</p>
+
+  <div class="annotation star3">
+    <span class="tag">✦ ✦ ✦ 掉帧的因果 ✦ ✦ ✦</span><br>
+    一帧预算 16.6ms。measure/layout 太重、DisplayList 太大、GPU 太慢、BLAST/SF 排队，任何一段超时，这一帧就赶不上 VSYNC；屏幕继续显示上一帧，用户看到卡顿。
+  </div>
+</div>
+
+<h2 id="p9">九、类速查表与自测</h2>
+<div class="card">
+  <h3>9.1 类速查表</h3>
+  <table>
+    <tr><th>类</th><th>一句话职责</th><th>进程</th><th>关键入口</th></tr>
+    <tr><td><code>Choreographer</code></td><td>按 VSYNC 调度一帧的回调顺序</td><td>App · UI</td><td><code>doFrame():701</code></td></tr>
+    <tr><td><code>ViewRootImpl</code></td><td>执行 View 树的 measure/layout/draw</td><td>App · UI</td><td><code>performTraversals():2510</code></td></tr>
+    <tr><td><code>ThreadedRenderer</code></td><td>录制 DisplayList，提交给 RenderThread</td><td>App · UI</td><td><code>draw():613</code></td></tr>
+    <tr><td><code>RenderNode</code></td><td>存放一棵 View 子树的绘制命令</td><td>App</td><td><code>beginRecording():394</code></td></tr>
+    <tr><td><code>RenderThread</code></td><td>执行 GPU 绘制，产出 GraphicBuffer</td><td>App · 渲染线程</td><td><code>RenderThread.cpp</code></td></tr>
+    <tr><td><code>BLASTBufferQueue</code></td><td>把画好的 Buffer 打包成事务送 SF</td><td>App</td><td><code>onFrameAvailable():546</code></td></tr>
+    <tr><td><code>SurfaceFlinger</code></td><td>按 Layer 树合成所有 Buffer 并上屏</td><td>SF</td><td><code>commitTransaction():3232</code></td></tr>
+    <tr><td><code>HWComposer</code></td><td>硬件叠加；超限时回退 GPU 合成</td><td>SF / HAL</td><td><code>HWComposer</code></td></tr>
+  </table>
+
+  <h3>9.2 自测（5 题）</h3>
+  <details>
+    <summary>1. Choreographer 是负责画图的吗？</summary>
+    <div class="ans">不是。它是帧调度器：收到 VSYNC 后按固定顺序调用 input、animation、insets animation、traversal、commit 回调；真正画图的是 ViewRootImpl、ThreadedRenderer、RenderThread 和 GPU。</div>
+  </details>
+  <details>
+    <summary>2. 为什么回调顺序是 input → animation → traversal → commit？</summary>
+    <div class="ans">输入最先响应，保证点击不延迟；动画先算出这一帧的属性值；traversal 用最新属性做 measure/layout/draw；commit 收尾提交。顺序颠倒会导致输入延迟、动画跳帧或画面撕裂。</div>
+  </details>
+  <details>
+    <summary>3. DisplayList 是像素吗？</summary>
+    <div class="ans">不是。DisplayList 是绘制命令（画矩形、贴图、变换），由 RenderNode 录制；RenderThread 执行这些命令后，才由 GPU 产生像素并写进 GraphicBuffer。</div>
+  </details>
+  <details>
+    <summary>4. SurfaceFlinger 知道 View 树吗？</summary>
+    <div class="ans">不知道。SF 只认 Layer 和 Buffer。View 树在 App 进程里已经被画成每个窗口的一块 Buffer；SF 只负责按 Layer 树把 Buffer 叠起来。</div>
+  </details>
+  <details>
+    <summary>5. 层级树怎样变成屏幕画面？</summary>
+    <div class="ans">每个 WindowState 对应一块 Buffer；WMS 用 assignChildLayers 算出 Layer 的 Z 序并把几何/可见性写进事务；SF 按 Layer 树合成所有 Buffer，交给 HWC/GPU 上屏。</div>
+  </details>
+</div>
+
+<div class="annotation star3">
+  <span class="tag">✦ ✦ ✦ 三句话收尾 ✦ ✦ ✦</span><br>
+  1. <strong>Choreographer 是节拍器</strong>，不是渲染器；它按 VSYNC 调度 input → animation → traversal → commit。<br>
+  2. <strong>requestLayout / invalidate 点火，VSYNC 给拍子</strong>；一帧内多次请求合并成一次 traversal。<br>
+  3. <strong>View 树在 App 画成 Buffer；WMS 决定 Layer 树；SF 合成上屏</strong>。初始化从 SurfaceFlinger/WMS/ViewRootImpl 开始，稳态每 16.6ms 循环一次。
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android Framework 专题 · 渲染篇 | <strong>渲染是什么：从编舞者 Choreographer 到屏幕上的像素</strong></p>
+  <p>基于 AOSP 12（android-12.0.0_r32）· WSL 路径 <code>/home/book/aosp12/frameworks/</code> · 行号随文现地核实</p>
+  <p style="margin-top:10px;"><strong>渲染篇 · 独立成篇</strong> &nbsp;|&nbsp; 延伸阅读：<a href="Android窗口层级/04-像素怎样上屏.html">04 像素怎样上屏（Surface/BLAST/SF 细节）</a> &nbsp;|&nbsp; <a href="android-framework-binder.html">Binder 全链路</a></p>
+  <p style="margin-top:8px;"><a href="Android窗口层级/index.html">📚 窗口系列导航</a> &nbsp;|&nbsp; <a href="Android窗口层级/WMS学习路线图.html">🗺️ 学习路线图</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📖 这篇不依赖前篇：所有需要的窗口/图层名词都在 0.0 节定义；04 篇只是延伸阅读，不是前置。</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WMS 实践项目清单：六个动手项目（从观察到交付）— AOSP 12</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .card.p0 { border-left:4px solid var(--accent2); }
+    .card.p1 { border-left:4px solid var(--accent3); }
+    .card.p2 { border-left:4px solid var(--accent); }
+    .card.p3 { border-left:4px solid var(--tag-text); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .think .qtag { color:var(--accent3); font-weight:bold; }
+    .analogy { border-left:4px solid var(--accent2); background:var(--bg-card); border:1px solid var(--border); border-left-width:4px; padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .analogy .tag { color:var(--accent2); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:10px 16px; margin:14px 0; font-size:.9rem; color:var(--text2); }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:14px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-size:.82rem; font-weight:bold; margin-right:8px; }
+    .deliver { border:1px solid var(--accent2); border-radius:8px; padding:12px 18px; margin:14px 0; background:var(--bg-card); font-size:.92rem; }
+    .deliver .tag { color:var(--accent2); }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } table { font-size:.8rem; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🛠️ WMS 实践项目清单：六个动手项目</h1>
+<p class="subtitle">从「看 dump」到「交得出东西」——每个项目都有可验收的交付物 · 基于 AOSP 12 · 素材挖自本地千里马（马老师）知识库</p>
+<p class="series">📚 Android 窗口层级专题 · 实践篇 ｜ 配套 <a href="index.html">00–06 篇</a> ｜ 上游：<a href="WMS学习路线图.html">WMS 学习路线图</a> ｜ 上位：<a href="../../Android-Framework学习路线图.html">Framework 学习路线图（B 赛道）</a></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p0">〇、为什么「实验」不够，必须做项目</a>
+  <a href="#p1">一、项目地图：六个项目一张表</a>
+  <a href="#p2">二、P0 窗口树可视化器（热身）</a>
+  <a href="#p3">三、P1 窗口消亡的三条路径（核心作业）</a>
+  <a href="#p4">四、P2 Bug 猎手：抓一个真实窗口 bug</a>
+  <a href="#p5">五、P3 造工具：窗口问题现场抓取器</a>
+  <a href="#p6">六、P4 改需求：Freeform / 隐藏系统窗口</a>
+  <a href="#p7">七、P5 综合：Display 多屏与旋转</a>
+  <a href="#p8">八、交付物标准（怎么算「做完了」）</a>
+  <a href="#p9">九、怎么用马老师文章：先做后看</a>
+  <a href="#p10">十、八周排期建议</a>
+  <a href="#p11">附、马老师原文索引</a>
+</div>
+
+<!-- ═══════════════ 〇 ═══════════════ -->
+
+<h2 id="p0">〇、为什么「实验」不够，必须做项目</h2>
+
+<div class="card">
+  <p>先认错：前面的路线图里给你的都是<strong>实验</strong>（<code>dumpsys</code> 看一眼、跟一遍堆栈），不是<strong>项目</strong>。两者差别很大：</p>
+
+  <table>
+    <tr><th></th><th>实验</th><th>项目</th></tr>
+    <tr><td>时长</td><td>10 分钟</td><td>几天到两周</td></tr>
+    <tr><td>产出</td><td>一条命令的输出、一个「哦原来是这样」</td><td><strong>可交付的东西</strong>：patch / 工具 / 报告 / 功能</td></tr>
+    <tr><td>会暴露什么</td><td>几乎没有</td><td>你的全部知识断口——因为要动手改、要<strong>跑通</strong></td></tr>
+    <tr><td>面试能不能说</td><td>不能（人人都会）</td><td><strong>能</strong>（「我改过 X，现象是 Y，根因是 Z」）</td></tr>
+    <tr><td>对应岗位能力</td><td>无</td><td>「能改 + 能查」，正好是 B 岗的两个货币</td></tr>
+  </table>
+
+  <div class="analogy">
+    <span class="tag">类比</span> 实验 = 看别人游泳的视频；项目 = 自己下水游一趟。<strong>WMS 的知识全在「运行时行为」上</strong>——不上手改一次，永远不知道自己哪块是空的。
+  </div>
+
+  <h3>马老师是怎么做的（这就是他课程有效的原因）</h3>
+  <p>翻了一遍本地千里马知识库（850+ 篇），发现他的课程设计有个铁律：<strong>每 5–10 个视频就插一个「作业」</strong>，而且作业都以「产出物」结尾：</p>
+  <div class="tree">1-6 窗口层级树实战 ────────▶ 作业：自己独立绘制出层级窗口结构树
+7-11 addWindow / relayout ──▶ 作业：绘制整个窗口添加的流程图 / trace 图
+12-15 日志抓取平台 ─────────▶ 作业：跟着搭建，且可以控制 proto 日志开启
+16-25 冻屏 + 闪黑实战 ──────▶ 作业：① 对剩下没有 remove 的图层进行 remove
+                              ② 找到/发现一个必现的系统闪黑问题并解决
+32-36 activity 启动 ────────▶ 作业：做一个类「App 防沉迷」功能
+42-49 动画 / 远程动画 ──────▶ 作业：自己实现简单窗口的远程动画 demo
+Focus 深入分析 ─────────────▶ 作业：按照案例自己分析一遍 ANR
+横竖屏旋转深入分析 ─────────▶ 作业：实战解决小米桌面强制横屏问题</div>
+  <div class="annotation star3"><span class="tag">结论</span> 他讲的内容和我们的 00–06 篇高度重合（窗口层级树、addWindow、relayout、finishDraw、动画、旋转），<strong>差别就在「有没有作业」</strong>。所以下面这套项目清单，就是把你已有的 00–06 篇知识接上作业。</div>
+</div>
+
+<!-- ═══════════════ 一 ═══════════════ -->
+
+<h2 id="p1">一、项目地图：六个项目一张表</h2>
+
+<div class="card">
+  <table>
+    <tr><th>项目</th><th>一句话</th><th>类型</th><th>周期</th><th>前置篇目</th><th>产出</th></tr>
+    <tr><td><strong>P0</strong> 窗口树可视化器</td><td>把 dumpsys 变成可读树</td><td>工具</td><td>1–2 天</td><td>00/01/02</td><td>脚本 + 树图</td></tr>
+    <tr><td><strong>P1</strong> 窗口消亡三路径</td><td>杀一个 App，看树里谁被摘掉</td><td>分析</td><td>3–5 天</td><td>06 + AMS</td><td>流程图 + 堆栈 + 对比表</td></tr>
+    <tr><td><strong>P2</strong> Bug 猎手</td><td>复现并修一个真实窗口 bug</td><td>实战</td><td>1 周</td><td>03/04/05/06</td><td>Bug 报告 + patch</td></tr>
+    <tr><td><strong>P3</strong> 现场抓取器</td><td>一条命令抓走窗口问题现场</td><td>工具</td><td>1–2 周</td><td>全部 + Perfetto</td><td>工具 + 使用文档</td></tr>
+    <tr><td><strong>P4</strong> Freeform 自由窗口</td><td>实现自由窗口 / 隐藏系统窗口</td><td>改需求</td><td>2 周</td><td>02/03</td><td>可跑功能 + patch</td></tr>
+    <tr><td><strong>P5</strong> Display 多屏 / 旋转</td><td>一屏两 Display、旋转冻结</td><td>综合</td><td>2–3 周</td><td>01/03/07</td><td>方案 + 实现 + 文档</td></tr>
+  </table>
+
+  <div class="hint">💡 <strong>不用全做</strong>。P0→P1→P2 是「必修三件」（约 2 周），做完你对 WMS 的手感就完全不一样；P3 是性价比最高的（工具能一直用）；P4/P5 是给 B 岗简历加料的。</div>
+
+  <div class="tree">推荐顺序（递进关系）
+P0 观察 ──▶ P1 分析 ──▶ P2 定位修复 ──▶ P3 把过程工具化 ──▶ P4/P5 做需求
+  看懂树      看懂生命周期      能查 bug        能高效查 bug       能改系统</div>
+</div>
+
+<!-- ═══════════════ 二 ═══════════════ -->
+
+<h2 id="p2">二、P0 窗口树可视化器（热身，1–2 天）</h2>
+
+<div class="card p0">
+  <p><strong>目标</strong>：把 <code>dumpsys</code> 的一堆文本，变成一棵<strong>能一眼看懂的树</strong>。这是所有后续项目的基础工具——你以后每天都要看窗口树。</p>
+
+  <h3>做什么</h3>
+  <div class="step">
+    <p><span class="no">1</span>写一个脚本（Python 最顺），拉取并解析：<code>dumpsys window windows</code> / <code>dumpsys activity displays</code> / <code>dumpsys activity activities</code>。</p>
+    <p><span class="no">2</span>输出成树：<strong>DisplayContent → DisplayArea 链 → Task → ActivityRecord → WindowState</strong>，每个节点带关键字段（<code>mBaseLayer</code> / <code>mSubLayer</code> / <code>mFrame</code> / <code>isVisible</code> / <code>relayoutCalled</code> / <code>isDrawn</code>）。</p>
+    <p><span class="no">3</span>加一个校验：按 <strong>layer 升序</strong>排列，看是不是和你 00–02 篇学的树结构、以及 <a href="DisplayArea构建算法演示.html">建树模拟器</a>的结果对得上。</p>
+    <p><span class="no">4</span>进阶：把输出做成 HTML（你已有现成页面风格），或直接在页面上高亮「刚新增的窗口」。</p>
+  </div>
+
+  <h3>会碰到的卡点（这才是学到的部分）</h3>
+  <ul>
+    <li>dumpsys 输出格式在不同 Android 版本不一样，<strong>别写死正则</strong>，先 dump 下来人工看结构。</li>
+    <li>为什么同一个 App 的 Activity 在 <code>WindowToken</code> 下面，而系统窗口在 <code>DisplayArea.Tokens</code> 下面？—— 回答不了就回去看 02 篇。</li>
+    <li><code>dumpsys activity displays</code> 和 <code>dumpsys window</code> 两边的树不完全一样，弄清各看的是什么。</li>
+  </ul>
+
+  <div class="deliver">
+    <span class="tag">交付物</span>
+    <ul style="margin:8px 0 0">
+      <li>一个可重复跑的脚本（<code>window-tree.py</code> 之类），输入 adb，输出树</li>
+      <li>一棵真实窗口树的截图（普通手机 + 平板 density 各一张）</li>
+      <li>一段自述：树里每个节点类型对应哪个类（带文件名）</li>
+    </ul>
+  </div>
+
+  <div class="think"><span class="qtag">🧠 自测</span> 你的脚本能不能正确识别「这个 WindowState 是子窗口、它的父节点是另一个 WindowState 而不是 WindowToken」？—— 这一点答对，说明 02/06 篇真懂了。</div>
+</div>
+
+<!-- ═══════════════ 三 ═══════════════ -->
+
+<h2 id="p3">三、P1 窗口消亡的三条路径（核心作业，3–5 天）★</h2>
+
+<div class="card p1">
+  <p><strong>这道题来自马老师的真实作业布置</strong>（原文：<code>安卓Framework wms ams实战作业布置</code>）。它之所以是最好的第一题，因为<strong>只要动手就能看到反直觉的现象</strong>，而解释这个现象必须把 WMS + AMS 一起串起来。</p>
+
+  <h3>现象（马老师的学员首先发现的）</h3>
+  <div class="tree">场景 A：在「最近任务」里上划干掉一个 App
+   → 树里 Task / ActivityRecord / WindowState  <b>全部移除</b>
+
+场景 B：App 在<b>后台</b>，用 adb shell kill &lt;pid&gt; 杀进程
+   → 树里 Task / ActivityRecord <b>还在</b>，只有 WindowState 被移除  ← 反直觉！
+
+场景 C：App 在<b>前台</b>被 kill
+   → ？自己测（这就是作业的第一问）</div>
+
+  <h3>作业要求（马老师原题 + 我补的验收）</h3>
+  <div class="step">
+    <p><span class="no">1</span>多任务移除 vs 后台命令 kill，<strong>各自的移除是被哪个调用触发的</strong>？各自打堆栈分析差别。</p>
+    <p><span class="no">2</span>进程<strong>前台</strong>移除 vs <strong>后台</strong>移除，区别是什么？同样用堆栈展示。</p>
+    <p><span class="no">3</span><strong>（我补的）</strong>为什么后台 kill 之后 ActivityRecord 会「赖着不走」？它靠什么被回收？（提示：看 Task 的清理时机，和 AMS 的 <code>cleanUpRemovedTaskLocked</code> 一类逻辑）</p>
+  </div>
+
+  <h3>怎么动手（不要一上来就翻源码）</h3>
+  <div class="step">
+    <p><span class="no">1</span>先复现：拿模拟器，在 <code>dumpsys activity activities</code> 里确认 Task=xxx。</p>
+    <p><span class="no">2</span>加打印：在 <code>WindowState.removeIfPossible()</code> / <code>removeImmediately()</code>、<code>ActivityRecord</code> 的移除路径、<code>Task</code> 的移除路径，各加一条带堆栈的 <code>Slog</code>（或开 <a href="#p11">ProtoLog</a>）。</p>
+    <p><span class="no">3</span>三种场景各跑一遍，<strong>收集堆栈</strong>，比对调用链差异。</p>
+    <p><span class="no">4</span>画流程图：三条路径各自从哪里进入、在哪里分叉。</p>
+  </div>
+
+  <div class="deliver">
+    <span class="tag">交付物</span>
+    <ul style="margin:8px 0 0">
+      <li><strong>三条路径的对比流程图</strong>（手画/Excalidraw 都行，要带类名+方法名）</li>
+      <li><strong>四个堆栈日志</strong>（多任务移除 / 后台 kill / 前台 kill / 正常 finish）</li>
+      <li>一张表：场景 × 被移除的对象（Task / AR / WS）× 触发函数</li>
+    </ul>
+  </div>
+
+  <div class="pitfall"><span class="tag">🐛 常见翻车</span> 只 dump 不打印堆栈 —— 那你只能看到「结果」，看不到「谁干的」。<strong>本作业的核心功夫在堆栈</strong>，马老师原文也强调「自己堆栈打印分析能力的锻炼」。</div>
+
+  <div class="think"><span class="qtag">🧠 做成之后的收获</span> 你会第一次真正分清 <strong>WindowState（窗口）/ ActivityRecord（页面记录）/ Task（任务栈）三者的生命周期不是绑在一起的</strong>。这一条认知直接对应 B 岗面试题 7。</div>
+</div>
+
+<!-- ═══════════════ 四 ═══════════════ -->
+
+<h2 id="p4">四、P2 Bug 猎手：抓一个真实窗口 bug（1 周）★ 最有岗位价值</h2>
+
+<div class="card p2">
+  <p><strong>目标</strong>：完整走一遍「现象 → 复现 → 定位 → 根因 → 修复 → 验证」。这是 B 岗日常工作的全部内容，也是面试最能讲的部分。</p>
+
+  <h3>从马老师案例库里选一个（四个都适合，按难度排）</h3>
+  <table>
+    <tr><th>#</th><th>Bug</th><th>难度</th><th>学什么</th></tr>
+    <tr><td>1</td><td><strong>图库自由窗口划线框显示不全</strong>（马老师原文已给完整分析）</td><td>★★</td><td>SurfaceView 与 <code>transparentRegionHint</code>；SF 图层与 WMS 树的关系</td></tr>
+    <tr><td>2</td><td><strong>隐藏 TaskBar 后手势上滑冻屏</strong>（学员作业，aosp14）</td><td>★★★</td><td>冻屏类问题；输入与窗口可见性的联动</td></tr>
+    <tr><td>3</td><td><strong>横屏分屏黑边 / 分屏黑屏</strong></td><td>★★★</td><td>分屏容器、旋转与布局</td></tr>
+    <tr><td>4</td><td><strong>壁纸闪黑</strong>（马老师原实战：wallpaper add/relayout/detach）</td><td>★★★★</td><td>壁纸窗口生命周期；Winscope 分析</td></tr>
+  </table>
+
+  <div class="hint">📌 <strong>建议从 1 开始</strong>：它有完整参考分析，你可以「先自己分析 → 再对比原文」——这是最高效的学习方式（见第九章的「先做后看」）。</div>
+
+  <h3>标准流程（每一步都要留证据）</h3>
+  <div class="step">
+    <p><span class="no">1</span><strong>复现并录证据</strong>：复现步骤写成别人能照着做的 N 步；录屏 + 关键 dump。</p>
+    <p><span class="no">2</span><strong>对比法定位</strong>：正常场景 vs 异常场景，比 <code>dumpsys window windows</code> 和 <code>dumpsys SurfaceFlinger</code> 的差异。这一招在马老师的图库案例里直接破了案。</p>
+    <p><span class="no">3</span><strong>追到根因</strong>：差异字段是从哪来的？打堆栈找「谁设置的」。</p>
+    <p><span class="no">4</span><strong>出 patch</strong>：至少 2 个方案，说明各自代价（马老师原文就给了「单独建 Layer」和「Freeform 模式直接置 0」两案）。</p>
+    <p><span class="no">5</span><strong>验证 + 回归</strong>：修好后再跑一遍复现步骤，并自问「会不会伤到别的场景」。</p>
+  </div>
+
+  <div class="deliver">
+    <span class="tag">交付物</span>
+    <ul style="margin:8px 0 0">
+      <li>一份 Bug 报告：现象 / 复现步骤 / 对比证据 / 根因（带类名+行号）/ 修复 patch / 验证结果</li>
+      <li>如果你能在工作中复现并修掉一个，<strong>这就是简历上最硬的一条</strong></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ═══════════════ 五 ═══════════════ -->
+
+<h2 id="p5">五、P3 造工具：窗口问题现场抓取器（1–2 周）★ 性价比最高</h2>
+
+<div class="card p0">
+  <p><strong>这道题直接来自马老师的课程项目</strong>：<code>12-15 screenshot-dumpsys1~4</code>「实战偶现窗口问题日志抓取平台项目」，作业是「跟着实战搭建，且可以<strong>控制 proto 相关日志开启</strong>」。</p>
+
+  <div class="analogy">
+    <span class="tag">为什么这是性价比最高的</span> 偶现问题（闪黑、冻屏、窗口跳一下）你手动抓不住——发生的时候你不在场。所以专业团队都靠<strong>常开的高频日志缓冲 + 出事时一键打包</strong>（事实上 Android 自己也是这么做的：<code>WindowTracing</code> / ProtoLog / event log）。<strong>这个工具做完，你以后所有 bug 都查得更快。</strong>
+  </div>
+
+  <h3>做什么</h3>
+  <div class="step">
+    <p><span class="no">1</span>掌握 ProtoLog / WindowTracing：<code>adb shell cmd window tracing start</code> / <code>stop</code>，以及 <code>WindowTracing</code>（可回放窗口树随时间的变化，排查层级/动画问题的第一神器）。</p>
+    <p><span class="no">2</span>学会<strong>动态开日志</strong>：不用重编 ROM 就能打开某个 tag 的日志（<code>isLoggable</code> / ProtoLog group 开关）。马老师专门有一篇 <code>Android ProtoLog动态开启wm logging</code> 讲这个。</p>
+    <p><span class="no">3</span>写一个<strong>一键打包脚本</strong>：按下就抓走——logcat（含 ring buffer）、<code>dumpsys window/activity/input/SurfaceFlinger</code>、Winscope trace、<code>dumpsys dropbox</code>、<code>bugreportz</code> 摘要，打成一个带时间戳的目录/zip。</p>
+    <p><span class="no">4</span>加一个<strong>环形缓冲思路</strong>：让系统后台一直保留最近 N 秒的关键日志，出问题立刻导出，而不是「等你去开日志时问题已经过去了」。</p>
+  </div>
+
+  <div class="deliver">
+    <span class="tag">交付物</span>
+    <ul style="margin:8px 0 0">
+      <li>一个 <code>grab-window-state.sh</code>（或 .ps1/.py），一条命令抓齐现场</li>
+      <li>ProtoLog 动态开关的操作说明 + 验证截图</li>
+      <li>用这个工具抓到<strong>至少一个偶现问题</strong>的现场（哪怕是 P2 里那个 bug 的补充证据）</li>
+    </ul>
+  </div>
+
+  <div class="pitfall"><span class="tag">🐛 坑</span> ProtoLog 默认关闭，开了之后日志量巨大、可能拖慢系统——<strong>要能按 group 精细开关</strong>，这也是马老师作业强调「可以控制 proto 相关日志开启」的原因。</div>
+</div>
+
+<!-- ═══════════════ 六 ═══════════════ -->
+
+<h2 id="p6">六、P4 改需求：Freeform / 隐藏系统窗口（2 周）</h2>
+
+<div class="card p3">
+  <p><strong>目标</strong>：从「看懂」到「能改」——需求驱动的系统定制，这是厂商/车机岗的日常。</p>
+
+  <h3>两个候选需求（选一个，或都做）</h3>
+  <table>
+    <tr><th>需求</th><th>要做的事</th><th>难点 / 收获</th></tr>
+    <tr><td><strong>A. 自由窗口 Freeform</strong>：给一个 App 加自由窗口模式 + 划线边框（Caption）</td><td>开 freeform 支持；让 Activity 以自由窗口启动；给窗口加可拖拽边框（<code>CaptionWindow</code> / DecorCaptionView）</td><td>会见到的坑：<strong>划线框画不全</strong>（就是 P2 的 bug 1）、Caption 在 aosp13/14 实现差异</td></tr>
+    <tr><td><strong>B. 隐藏一个系统窗口</strong>：比如隐藏 aosp14 的 TaskBar</td><td>找到该窗口的创建处（<code>TaskbarActivityContext</code>），做隐藏；<strong>然后解决由此引发的冻屏</strong></td><td>极致贴近真实工作：<strong>改需求 → 引入 bug → 自己收拾</strong>（就是 P2 的 bug 2 的来源）</td></tr>
+  </table>
+
+  <div class="deliver">
+    <span class="tag">交付物</span>
+    <ul style="margin:8px 0 0">
+      <li>可运行的功能（录屏证明）</li>
+      <li><code>git diff</code> 形式的完整 patch（能直接讲清每处改动为什么必要）</li>
+      <li>一份「需求实现说明」：改了哪些文件、涉及 WMS / SystemUI / Launcher 哪几层</li>
+    </ul>
+  </div>
+
+  <div class="think"><span class="qtag">🧠 关键认知</span> 系统定制的真实工作量不在「实现需求」，而在「需求带来的副作用」。你做完 B 就会体会到：<strong>隐藏一个窗口，为什么会把输入搞死</strong>——这一课的含金量比看十篇文章都高。</div>
+</div>
+
+<!-- ═══════════════ 七 ═══════════════ -->
+
+<h2 id="p7">七、P5 综合：Display 多屏与旋转（2–3 周）</h2>
+
+<div class="card p1">
+  <p><strong>来源</strong>：马老师的 <code>android framework Display屏幕相关实战作业探讨</code>（单实体屏幕显示两个 Display 的内容）+ 横竖屏旋转深入分析。</p>
+
+  <h3>三个子任务，难度递增</h3>
+  <div class="step">
+    <p><span class="no">1</span><strong>单实体屏幕显示两个 Display</strong>：用 <code>createVirtualDisplay</code> + <code>Presentation</code>，或 WMS 侧的多 Display 方案，把两个 Display 的内容拼到一块物理屏上。先弄清 <code>DisplayContent</code> 与物理屏的对应关系。</p>
+    <p><span class="no">2</span><strong>多屏异显触摸</strong>：第二个 Display 上的内容要能被正确触摸（<code>Presentation</code> 相关的 input 路由）。</p>
+    <p><span class="no">3</span><strong>旋转与冻结</strong>：跟一遍 <code>DisplayRotation.updateRotationUnchecked()</code>，观察旋转期间屏幕是怎么被「冻住」（<code>startFreezingDisplayLocked</code> / <code>stopFreezingDisplayLocked</code>）等新方向首帧准备好的；然后尝试<strong>优化旋转闪一下</strong>的体验。</p>
+  </div>
+
+  <div class="deliver">
+    <span class="tag">交付物</span>
+    <ul style="margin:8px 0 0">
+      <li>方案说明（为什么这么设计、和原生多屏方案的差异）</li>
+      <li>实现 + 录屏</li>
+      <li>旋转过程的 Perfetto trace + 一份耗时分析</li>
+    </ul>
+  </div>
+
+  <div class="hint">🔗 这一项目直接对应路线图<strong>阶段 3（布局 / Insets / 旋转）</strong>，做完可以顺手写 07/08 篇。</div>
+</div>
+
+<!-- ═══════════════ 八 ═══════════════ -->
+
+<h2 id="p8">八、交付物标准（怎么算「做完了」）</h2>
+
+<div class="card">
+  <p>软件行业最容易自欺欺人的一句话是「我大概懂了」。下面四条是<strong>可检查</strong>的过关线：</p>
+  <table>
+    <tr><th>#</th><th>标准</th><th>反例（不算做完）</th></tr>
+    <tr><td>1</td><td><strong>能复现</strong>：别人照着你的步骤能重现同样现象</td><td>「我这里偶尔会」但写不出步骤</td></tr>
+    <tr><td>2</td><td><strong>有证据</strong>：dump 输出、堆栈、trace、录屏，至少两种</td><td>只有结论没有日志</td></tr>
+    <tr><td>3</td><td><strong>能落到源码</strong>：根因能指到具体类 + 方法 + 行为</td><td>「框架那里有个 bug」</td></tr>
+    <tr><td>4</td><td><strong>能讲给别人</strong>：不看笔记讲 5 分钟，别人能听懂</td><td>自己讲着讲着绕回 dump 抄字段</td></tr>
+  </table>
+  <div class="annotation star3"><span class="tag">额外一条（B 岗专用）</span> <strong>能把修复讲成「代价权衡」</strong>：为什么选方案 A 不选 B，A 会影响哪些场景。这是资深和普通的真正分界线。</div>
+</div>
+
+<!-- ═══════════════ 九 ═══════════════ -->
+
+<h2 id="p9">九、怎么用马老师文章：先做后看</h2>
+
+<div class="card">
+  <p>马老师那些文章是<strong>参考答案</strong>，不是课本。用错了顺序就没效果。</p>
+  <div class="step">
+    <p><span class="no">1</span><strong>只读「现象 + 复现步骤」部分</strong>，然后合上文章，自己动手分析。</p>
+    <p><span class="no">2</span><strong>卡住了再回去看他的分析路径</strong>——重点看他「用了什么工具、按什么顺序怀疑」，而不是记结论。</p>
+    <p><span class="no">3</span><strong>对比差异</strong>：我和他的分析差在哪一步？是知识缺口还是工具不熟？</p>
+    <p><span class="no">4</span><strong>用自己的话重写一遍</strong>（写成你自己的文章）——你已经在写 00–06 篇了，把这个习惯用到项目上。</p>
+  </div>
+
+  <div class="analogy">
+    <span class="tag">提醒</span> 马老师文章的正文大量是图片，markdown 版只保留了文字，<strong>关键分析步骤（截图里的 dump 对比）看不到</strong>。所以两张路：① 打开知识库根目录的同名 HTML（有图，需联网）；② 自己动手 dump —— 后者反而收获更大。
+  </div>
+
+  <div class="pitfall"><span class="tag">注意</span> 他的文章里很多是<strong>课程广告尾巴</strong>（链接、七件套专题），正文技术内容通常只占前 1/3～1/2，直接跳到「分析过程」和「作业要求」两段看即可。</div>
+</div>
+
+<!-- ═══════════════ 十 ═══════════════ -->
+
+<h2 id="p10">十、八周排期建议</h2>
+
+<div class="card">
+  <table>
+    <tr><th>周</th><th>项目</th><th>每天投入</th><th>周末验收</th></tr>
+    <tr><td>第 1 周</td><td><strong>P0</strong> 窗口树可视化器 + 重读 00–02</td><td>1–2h</td><td>脚本跑通 + 两棵树图</td></tr>
+    <tr><td>第 2 周</td><td><strong>P1</strong> 窗口消亡三路径</td><td>2h</td><td>三条流程图 + 四份堆栈</td></tr>
+    <tr><td>第 3 周</td><td><strong>P2</strong> Bug 猎手（选 bug 1）</td><td>2h</td><td>Bug 报告 + patch</td></tr>
+    <tr><td>第 4 周</td><td><strong>P3</strong> 现场抓取器（上半）</td><td>2h</td><td>ProtoLog 开关跑通</td></tr>
+    <tr><td>第 5 周</td><td><strong>P3</strong>（下半）+ 用它复抓 P2 的 bug</td><td>2h</td><td>一键脚本 + 一次偶现抓取</td></tr>
+    <tr><td>第 6–7 周</td><td><strong>P4</strong> Freeform 或 隐藏系统窗口</td><td>2–3h</td><td>可跑功能 + patch + 说明</td></tr>
+    <tr><td>第 8 周</td><td><strong>P5</strong> Display 多屏 / 旋转（或收尾 + 写文章）</td><td>2–3h</td><td>方案 + 实现 + trace</td></tr>
+  </table>
+  <div class="hint">⏱️ 如果只有碎片时间：<strong>优先 P1 → P0 → P2</strong>（顺序会因你已有 00–06 基础而缩短）；P3 的工具属于「一次投入长期受益」，值得挤时间做。</div>
+
+  <div class="think"><span class="qtag">📌 与文章的关系</span> 每个项目做完，都应该产出<strong>一篇你自己的文章</strong>（现象 / 分析 / 修复），最自然的落点就是接着 06 篇往后：P1 → 07 篇（AMS 生命周期）、P2 → 08 篇（Bug 分析实战）、P3 → 09 篇（工具链）、P4/P5 → 10/11 篇。</div>
+</div>
+
+<!-- ═══════════════ 附 ═══════════════ -->
+
+<h2 id="p11">附、马老师原文索引（本地知识库）</h2>
+
+<div class="card">
+  <p>以下文件均在 <code>D:\openclaw\马老师文章\_其它资料\千里马学框架\markdown\</code>（根目录同名 HTML 带图）。</p>
+  <table>
+    <tr><th>对应项目</th><th>文章</th></tr>
+    <tr><td>P1</td><td><code>安卓Framework wms ams实战作业布置-千里马学框架 千里马学安卓csdn.md</code>（本题原题）</td></tr>
+    <tr><td>P1 / P2</td><td><code>安卓冻屏bug案例作业分享-千里马学员wms+input实战作业.md</code></td></tr>
+    <tr><td>P2</td><td><code>aosp13自由窗口项目出现图库app划线不全bug修改-安卓framework实战项目.md</code></td></tr>
+    <tr><td>P2</td><td><code>黑屏实战之横屏情况下分屏黑边问题bug-学员提供….md</code></td></tr>
+    <tr><td>P2</td><td><code>安卓疑难问题冻屏 黑屏深入剖析原因-全网独家framework实战.md</code></td></tr>
+    <tr><td>P3</td><td><code>Android Framework最难模块WMS实战作业-….md</code>（12–15 集项目 + 全部作业清单）</td></tr>
+    <tr><td>P3</td><td><code>Android ProtoLog动态开启wm logging源码分析补充.md</code></td></tr>
+    <tr><td>P3</td><td><code>WinScope实现录制视频与是Timeline时间轴同步设置方法….md</code></td></tr>
+    <tr><td>P3</td><td><code>如何实现对窗口window的viewtree进行dump Hierarchy-….md</code></td></tr>
+    <tr><td>P4</td><td><code>android framework实战开发之WINDOWING MODE FREEFORM自由窗口相关.md</code></td></tr>
+    <tr><td>P4</td><td><code>aosp13 14上自由窗口实战开发之CaptionWindow原理差异分析.md</code></td></tr>
+    <tr><td>P4</td><td><code>手机大厂的自由窗口freeform功能基于aosp14 安卓14适配完成-….md</code></td></tr>
+    <tr><td>P5</td><td><code>android framework Display屏幕相关实战作业探讨….md</code>（两连篇）</td></tr>
+    <tr><td>P5</td><td><code>android framework高级开发-多屏异显触摸Presentation相关实战demo….md</code></td></tr>
+    <tr><td>P5</td><td><code>WMS实战之解决小米等国内桌面被强制横屏布局乱问题….md</code></td></tr>
+    <tr><td>P5</td><td><code>安卓framework单屏幕Display秒双 多屏互动相关需求改进-wms实战开发 安卓分屏framework修改思路.md</code></td></tr>
+  </table>
+  <div class="hint">🔍 按主题自己搜更多：<code>Get-ChildItem &lt;markdown目录&gt; -Filter *.md | Where-Object Name -match '实战|作业|冻屏|黑屏|分屏|freeform|Display'</code></div>
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android 窗口层级专题 · 实践篇 | <strong>WMS 实践项目清单：六个动手项目</strong></p>
+  <p>基于 AOSP 12 · 素材挖自本地千里马（马老师）知识库 850+ 篇 · 项目设计 2026-10-18</p>
+  <p style="margin-top:10px;"><a href="index.html">🏠 系列导航</a> &nbsp;|&nbsp; <a href="WMS学习路线图.html">🗺️ WMS 学习路线图</a> &nbsp;|&nbsp; <a href="../../Android-Framework学习路线图.html">🧭 Framework 路线图（B 赛道）</a></p>
+  <p style="margin-top:8px; color:var(--accent3);">📌 配套阅读：00–06 篇讲「是什么」，本篇讲「怎么练」。</p>
+</div>
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'awt_theme';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>

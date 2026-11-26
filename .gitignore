@@ -1,0 +1,30 @@
+# --- 凭据（永不入库）---
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+id_rsa*
+id_ed25519*
+authorized_keys
+known_hosts
+credentials*
+*secret*
+
+# --- 日志与临时产物 ---
+*.log
+*.bak
+*.tmp
+*tmp*
+
+# --- 本地构建/截图缓存（应由脚本重新生成）---
+**/_build/
+**/_build_*/
+**/__pycache__/
+*.pyc
+
+# --- 系统垃圾 ---
+Thumbs.db
+.DS_Store
+desktop.ini

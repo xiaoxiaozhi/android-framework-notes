@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Binder 驱动层：一次拷贝的真相与 1MB 上限 — AOSP 12 源码深度分析</title>
+  <style>
+    :root {
+      --bg: #faf8f5; --bg-card: #ffffff; --text: #2c2c2c; --text2: #555; --border: #e0ddd5;
+      --accent: #c44536; --accent2: #2a7f62; --accent3: #5b7e9e; --code-bg: #f4f1eb;
+      --kw: #7b3f6a; --fn: #c44536; --cm: #6b8f71; --tag-bg: #f0e6d3; --tag-text: #a0522d;
+      --link: #2a5f8f; --h2-border: #ddd8cc; --hover-bg: #e8e4db; --table-border: #e0ddd5;
+      --table-hdr: #efece5; --theme-btn-bg: rgba(0,0,0,0.08); --theme-btn-text: #333;
+      --step-bg: #fdf6ec; --step-border: #e8c87a;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1e; --bg-card: #222226; --text: #e0ddd5; --text2: #999; --border: #333338;
+      --accent: #e0755a; --accent2: #5dbf96; --accent3: #7fa9c9; --code-bg: #28282c;
+      --kw: #c99bc8; --fn: #e0755a; --cm: #8bc34a; --tag-bg: #3d3020; --tag-text: #d4a05a;
+      --link: #6ab0e0; --h2-border: #333338; --hover-bg: #2a2a30; --table-border: #333338;
+      --table-hdr: #2a2a30; --theme-btn-bg: rgba(255,255,255,0.1); --theme-btn-text: #ddd;
+      --step-bg: #2a2a18; --step-border: #5a4a20;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI Symbol","Apple Symbols",sans-serif; background:var(--bg); color:var(--text); line-height:1.85; padding:40px 20px; transition:background .3s,color .3s; }
+    .container { max-width:1020px; margin:0 auto; }
+    h1 { font-size:1.85rem; margin-bottom:6px; color:var(--accent); border-bottom:3px solid var(--accent); padding-bottom:12px; }
+    .subtitle { color:var(--text2); font-size:.92rem; margin-bottom:8px; }
+    .series { color:var(--accent3); font-size:.85rem; margin-bottom:24px; }
+    h2 { font-size:1.45rem; margin:40px 0 18px; padding-bottom:8px; border-bottom:2px solid var(--h2-border); color:var(--accent2); }
+    h3 { font-size:1.15rem; margin:28px 0 12px; color:var(--accent3); }
+    h4 { font-size:1rem; margin:18px 0 8px; font-weight:600; }
+    p, li { margin-bottom:10px; }
+    ul, ol { padding-left:24px; margin-bottom:16px; }
+    a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+    code { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; background:var(--code-bg); padding:1px 6px; border-radius:4px; color:var(--fn); }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px 26px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.04); transition:background .3s,border .3s; }
+    .card:hover { border-color:var(--accent3); }
+    .annotation { border-left:4px solid var(--accent3); background:var(--code-bg); padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .annotation.star3 { border-left-color:var(--accent); background:var(--tag-bg); }
+    .tag { color:var(--tag-text); font-weight:bold; letter-spacing:2px; }
+    .draft-note { border:1px dashed var(--accent); background:var(--tag-bg); border-radius:8px; padding:12px 18px; margin-bottom:24px; font-size:.88rem; }
+    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; overflow-x:auto; transition:background .3s; }
+    .code-block .filename { padding:8px 16px; font-size:.82rem; color:var(--text2); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.03); font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; }
+    .code-block pre { padding:14px 18px; font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.80rem; line-height:1.7; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+    .kw { color:var(--kw); font-weight:600; } .fn { color:var(--fn); font-weight:600; } .cm { color:var(--cm); font-style:italic; } .num { color:#b48a3a; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+    th, td { border:1px solid var(--table-border); padding:9px 13px; text-align:left; vertical-align:top; }
+    th { background:var(--table-hdr); font-weight:600; }
+    tr:hover td { background:var(--hover-bg); }
+    .tree { font-family:"SF Mono","Fira Code","Consolas","Microsoft YaHei","PingFang SC","Segoe UI Symbol","Apple Symbols",monospace; font-size:.82rem; line-height:1.85; padding:10px 6px; overflow-x:auto; white-space:pre; background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:16px 0; }
+    .pitfall { border-left:4px solid var(--accent); padding:10px 16px; margin:12px 0; background:var(--tag-bg); border-radius:6px; font-size:.92rem; }
+    .pitfall .tag { color:var(--accent); }
+    .think { border-left:4px solid var(--accent3); padding:10px 16px; margin:14px 0 4px; background:var(--code-bg); border-radius:6px; font-size:.93rem; }
+    .think .qtag { color:var(--accent3); font-weight:bold; }
+    .analogy { border-left:4px solid var(--accent2); background:var(--bg-card); border:1px solid var(--border); border-left-width:4px; padding:12px 18px; margin:14px 0; border-radius:6px; font-size:.93rem; }
+    .analogy .tag { color:var(--accent2); }
+    .hint { border:1px dashed var(--accent2); border-radius:8px; padding:10px 16px; margin:14px 0; font-size:.9rem; color:var(--text2); }
+    .step { background:var(--step-bg); border:1px solid var(--step-border); border-radius:10px; padding:14px 20px; margin:14px 0; }
+    .step .no { display:inline-block; background:var(--accent); color:#fff; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-size:.82rem; font-weight:bold; margin-right:8px; }
+    .why { color:var(--accent2); font-weight:bold; }
+    .deliver { border:1px solid var(--accent2); border-radius:8px; padding:12px 18px; margin:14px 0; background:var(--bg-card); font-size:.92rem; }
+    .deliver .tag { color:var(--accent2); }
+    details { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:10px 16px; margin:8px 0 14px; }
+    summary { cursor:pointer; font-weight:600; color:var(--accent3); }
+    .ans { margin-top:10px; padding:10px 14px; border-left:3px solid var(--accent2); background:var(--bg-card); border-radius:6px; font-size:.9rem; }
+    #theme-btn { position:fixed; bottom:30px; right:30px; width:48px; height:48px; border-radius:50%; border:none; background:var(--theme-btn-bg); color:var(--theme-btn-text); font-size:1.4rem; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.15); z-index:999; transition:all .3s; backdrop-filter:blur(4px); }
+    #theme-btn:hover { transform:scale(1.1); }
+    .toc { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 24px; margin-bottom:24px; }
+    .toc a { display:block; padding:2px 0; font-size:.92rem; }
+    @media (max-width:640px) { body { padding:20px 12px; } h1 { font-size:1.4rem; } .card { padding:16px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>⚙️ Binder 驱动层：一次拷贝的真相与 1MB 上限</h1>
+<p class="subtitle">B0 讲了用户态六层链路，本篇下潜到内核边界：open/mmap/ioctl、binder_write_read 结构、对象指针与 fd 传递 · AOSP 12 源码逐行核实</p>
+<p class="series">📚 Android Framework 专题 · Binder 篇 B1（临时稿） ｜ 上承 B0 全链路 ｜ 基于 <code>android-12.0.0_r32</code></p>
+<button id="theme-btn" title="切换主题">🌓</button>
+
+<div class="draft-note">
+  📝 <strong>临时稿（_draft）</strong>：本文件尚未分配系列编号、未放入正式目录、未更新 index.html。请直接在本文件上审阅修改；改完后由你下发正式落盘命令。
+</div>
+
+<div class="toc">
+  <strong style="color:var(--accent)">📑 目录</strong>
+  <a href="#p1">一、全景：驱动在中间到底做了什么</a>
+  <a href="#p2">二、进程初始化：open + mmap + 三条 ioctl</a>
+  <a href="#p3">三、一次事务的内核旅程：writeTransactionData 与双命令流</a>
+  <a href="#p4">四、一次拷贝的真相，与 1MB 上限从哪来</a>
+  <a href="#p5">五、数据里的"对象指针"：offsets 与 BINDER_TYPE_*</a>
+  <a href="#p6">六、fd 怎么跨进程传</a>
+  <a href="#p7">七、完整链路与源码速查</a>
+  <a href="#p8">八、实践题与自测</a>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p1">一、全景：驱动在中间到底做了什么</h2>
+
+<div class="card">
+  <div class="annotation star3"><span class="tag">先划清源码边界（重要）</span> —— <strong>内核侧的 <code>drivers/android/binder.c</code> 不在这棵 AOSP 树里</strong>（本树 <code>kernel/</code> 只有 <code>configs/ prebuilts/ tests/</code>，没有内核源码）。所以本篇<strong>不讲内核函数的行号</strong>（讲不了就不编）——只讲<strong>用户态能看到的界面</strong>：<br>
+  · 用户态怎么与驱动交互 → <code>frameworks/native/libs/binder/ProcessState.cpp</code>、<code>IPCThreadState.cpp</code><br>
+  · 双方约定的数据结构与常量 → <code>bionic/libc/kernel/uapi/linux/android/binder.h</code>（这是内核暴露给用户态的 uapi 头，<strong>在这棵树里，可逐行核实</strong>）<br>
+  想看内核实现，请另取内核源码（如 <code>android12-5.10</code> 分支）——但<strong>读透本篇的 uapi 边界，已经能解释 90% 的线上问题</strong>。</div>
+
+  <h3>驱动站在什么位置</h3>
+  <div class="tree">用户态（B0 讲过的部分）              内核态（本篇焦点）
+
+BinderProxy.transact()                      ┌──────────────────────────┐
+  └─ IPCThreadState::transact()             │   binder 驱动             │
+       └─ writeTransactionData()  ──┐       │                          │
+                                    │       │  1. 校验/权限（uid/pid） │
+       └─ talkWithDriver()          │       │  2. 找到目标进程          │
+            └─ ioctl(BINDER_WRITE_READ) ──▶ │  3. 按 handle 查节点      │
+                                        │   │  4. 复制数据到目标 mmap  │
+                                        │   │  5. 唤醒目标 Binder 线程 │
+                                        │   │  6. 处理对象指针(offsets)│
+       ┌────────────────────────────────┘   │  7. 处理 fd 传递          │
+       ▼                                    └──────────────────────────┘
+  把命令写入 mOut 缓冲                          ▲
+  （BC_TRANSACTION）                            │
+                                                │
+  等待时睡眠在 ioctl 里 ◀───────────────────────┘
+  被唤醒后从 mIn 读回命令（BR_REPLY）</div>
+
+  <p><strong>驱动做的七件事</strong>（本篇逐一展开）：</p>
+  <table>
+    <tr><th>#</th><th>做什么</th><th>为什么必须在驱动层</th><th>本篇在哪讲</th></tr>
+    <tr><td>1</td><td>记录调用者 uid/pid，随事务传递</td><td>用户态可伪造，内核不可</td><td>B0 块 C + 本篇 §3</td></tr>
+    <tr><td>2</td><td>按 <code>handle</code> 找到目标节点/进程</td><td>只有内核能看到全局的 binder 节点表</td><td>§3</td></tr>
+    <tr><td>3</td><td>把数据复制进目标的 mmap 区</td><td>跨进程地址空间只有内核能动</td><td><strong>§4（核心）</strong></td></tr>
+    <tr><td>4</td><td>唤醒目标的等待线程</td><td>跨进程的调度唤醒</td><td>§3 命令流</td></tr>
+    <tr><td>5</td><td>翻译对象指针（binder/handle/fd）</td><td>指针跨进程必须重写</td><td><strong>§5</strong></td></tr>
+    <tr><td>6</td><td>传递文件描述符</td><td>fd 是进程私有的</td><td><strong>§6</strong></td></tr>
+    <tr><td>7</td><td>管理线程池（按需催生/回收）</td><td>需要知道"谁在等"</td><td>B0 块 H</td></tr>
+  </table>
+
+  <div class="analogy">
+    <span class="tag">类比</span> 把驱动想成<strong>公司的收发室</strong>：它不生产内容（内容是你的业务逻辑），但它负责——<strong>查验寄件人工牌</strong>（uid）、<strong>按地址找收件部门</strong>（handle→进程）、<strong>把包裹搬到对方货架</strong>（一次拷贝）、<strong>翻译里面写的"请看附件三"</strong>（对象指针偏移）、<strong>把钥匙复制一把给对方</strong>（fd 传递）。收发室是唯一能同时看到所有部门货架的地方。
+  </div>
+
+  <div class="hint">🔗 本篇与 B0 的衔接：B0 第五节讲到 <code>talkWithDriver()</code> 里那行 <code>ioctl(BINDER_WRITE_READ)</code> 就停住了（"真正的跨进程发生在这一行之内"）。<strong>本篇就是掀开"这一行之内"。</strong></div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p2">二、进程初始化：open + mmap + 三条 ioctl</h2>
+
+<div class="card">
+  <p>任何一个进程想用 Binder，第一步都是"打开驱动、映射一块内存"。这两件事决定了后面所有的性能与限制，值得逐行看。</p>
+
+  <h3>块 A：open_driver——打开驱动并握手（ProcessState.cpp:379）</h3>
+  <div class="code-block">
+    <div class="filename">frameworks/native/libs/binder/ProcessState.cpp:44-45、379-405（裁剪）</div>
+    <pre><span class="cm">// ① 先看两个宏（同文件 :44-45）——本篇的两个主角：</span>
+<span class="kw">#define</span> BINDER_VM_SIZE ((<span class="num">1</span> * <span class="num">1024</span> * <span class="num">1024</span>) - <span class="fn">sysconf</span>(_SC_PAGE_SIZE) * <span class="num">2</span>)
+<span class="cm">// ② ★ 1MB 上限的真正来源就在这行！注意它不是"正好 1MB"——</span>
+<span class="cm">//    减掉了 2 个页大小（通常 8KB）。为什么减？见 §4。</span>
+
+<span class="kw">#define</span> DEFAULT_MAX_BINDER_THREADS <span class="num">15</span>
+<span class="cm">// ③ B0 提过的 15 个线程上限，来源是这里</span>
+
+<span class="kw">static int</span> <span class="fn">open_driver</span>(<span class="kw">const char</span> *driver)
+{
+    <span class="kw">int</span> fd = <span class="fn">open</span>(driver, O_RDWR | O_CLOEXEC);
+    <span class="cm">// ④ 打开驱动节点（通常是 /dev/binder）。O_CLOEXEC 保证 fork+exec 后不被继承</span>
+
+    <span class="kw">if</span> (fd >= <span class="num">0</span>) {
+        <span class="kw">int</span> vers = <span class="num">0</span>;
+        status_t result = <span class="fn">ioctl</span>(fd, BINDER_VERSION, &amp;vers);
+        <span class="cm">// ⑤ 握手第 1 条：问驱动"你是哪个协议版本"</span>
+        <span class="kw">if</span> (result == -<span class="num">1</span>) {
+            ALOGE(<span class="cm">"Binder ioctl to obtain version failed: %s"</span>, <span class="fn">strerror</span>(errno));
+            <span class="fn">close</span>(fd); fd = -<span class="num">1</span>;
+        }
+        <span class="kw">if</span> (result != <span class="num">0</span> || vers != BINDER_CURRENT_PROTOCOL_VERSION) {
+            ALOGE(<span class="cm">"Binder driver protocol(%d) does not match user space protocol(%d)! ..."</span>,
+                  vers, BINDER_CURRENT_PROTOCOL_VERSION, result);
+            <span class="fn">close</span>(fd); fd = -<span class="num">1</span>;
+        }
+        <span class="cm">// ⑥ ★ 版本必须严格相等，否则直接失败 ——</span>
+        <span class="cm">//    这个检查防的是"新用户态 + 旧内核"这种错配（刷机刷一半就会遇到）</span>
+
+        <span class="cm">// … 省略：BINDER_SET_MAX_THREADS 设置线程池上限</span>
+        <span class="kw">size_t</span> maxThreads = DEFAULT_MAX_BINDER_THREADS;
+        result = <span class="fn">ioctl</span>(fd, BINDER_SET_MAX_THREADS, &amp;maxThreads);
+        <span class="cm">// ⑦ 握手第 2 条：把"我最多开 15 个 Binder 线程"告诉驱动</span>
+    }
+    <span class="kw">return</span> fd;
+}
+<span class="cm">// ⑧ 三条 ioctl（版本 / 最大线程数 / 后文的 BINDER_SET_CONTEXT_MGR）都是"一次性配置"，</span>
+<span class="cm">//    之后的高频操作只有 BINDER_WRITE_READ 一条</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：打开驱动、核对协议版本、上报线程上限——都是进程级的<strong>一次性握手</strong>。</p>
+  <p><strong>设计意图</strong>：<span class="why">版本严格相等是刻意的"硬失败"</span>。Binder 协议是内核与用户态的<strong>二进制契约</strong>：结构体布局、命令编号都不能差。与其容忍错配后出现难查的内存混乱，不如在打开时就报错退出（<code>LOG_ALWAYS_FATAL</code>，见块 B）。<strong>这也解释了"刷机刷一半手机会起不来"</strong>——system 分区与 boot 分区的 binder 版本不匹配。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>报 "Binder driver protocol(8) does not match user space protocol(7)"</strong>。<strong>因果</strong>：内核里编译进去的 binder 协议版本（<code>BINDER_CURRENT_PROTOCOL_VERSION</code>，uapi <code>binder.h:102/104</code> 有 7 和 8 两个分支）与用户态库不一致。<strong>怎么查</strong>：确认 boot.img（内核）与 system.img 是不是同一版本；AOSP 12 常见的是 <strong>7</strong>（老内核）与 <strong>8</strong>（新内核，支持更多特性）分歧。<code>adb shell dmesg | grep -i binder</code> 能看到驱动的版本打印。</div>
+
+  <h3>块 B：mmap——那块 1MB 内存（ProcessState.cpp:412 / 428）</h3>
+  <div class="code-block">
+    <div class="filename">frameworks/native/libs/binder/ProcessState.cpp:412-440（裁剪）</div>
+    <pre><span class="cm">// 构造函数初始化列表里 mDriverFD 就是 open_driver 的返回值</span>
+ProcessState::<span class="fn">ProcessState</span>(<span class="kw">const char</span> *driver)
+    : mDriverName(<span class="fn">String8</span>(driver))
+    , mDriverFD(<span class="fn">open_driver</span>(driver))
+    , mVMStart(MAP_FAILED)
+    <span class="cm">// … 省略：一堆锁与计数器初始化</span>
+    , mMaxThreads(DEFAULT_MAX_BINDER_THREADS)
+    , mThreadPoolStarted(<span class="kw">false</span>)
+{
+    <span class="kw">if</span> (mDriverFD >= <span class="num">0</span>) {
+        <span class="cm">// mmap the binder, providing a chunk of virtual address space to receive transactions.</span>
+        mVMStart = <span class="fn">mmap</span>(<span class="kw">nullptr</span>, BINDER_VM_SIZE, PROT_READ,
+                MAP_PRIVATE | MAP_NORESERVE, mDriverFD, <span class="num">0</span>);
+        <span class="cm">// ① ★★ 整篇最关键的一行：向驱动 mmap 出一块<b>接收缓冲区</b></span>
+        <span class="cm">//    · PROT_READ —— 只读！用户态不能直接写它（写要走 ioctl）</span>
+        <span class="cm">//    · MAP_NORESERVE —— 不预留物理页，用到才分配（省内存）</span>
+        <span class="cm">//    · 从 fd 0 偏移 —— 特殊语义：不是在映射"文件"，而是映射驱动的缓冲区</span>
+
+        <span class="kw">if</span> (mVMStart == MAP_FAILED) {
+            ALOGE(<span class="cm">"Using %s failed: unable to mmap transaction memory.\n"</span>, mDriverName.<span class="fn">c_str</span>());
+            <span class="fn">close</span>(mDriverFD);
+            mDriverFD = -<span class="num">1</span>;
+            mDriverName.<span class="fn">clear</span>();
+        }
+        <span class="cm">// ② 映射失败就整体放弃（连 fd 一起关）——没有缓冲区就无法收发事务</span>
+    }
+<span class="kw">#ifdef</span> __ANDROID__
+    <span class="fn">LOG_ALWAYS_FATAL_IF</span>(mDriverFD &lt; <span class="num">0</span>, <span class="cm">"Binder driver '%s' could not be opened.  Terminating."</span>, driver);
+    <span class="cm">// ③ ★ Android 上打不开 Binder 驱动 = 进程直接 abort</span>
+    <span class="cm">//    （因为整个 Android 的运行都依赖 Binder，没有它什么都做不了）</span>
+<span class="kw">#endif</span>
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：向驱动映射一块只读的接收缓冲区，失败就让进程死。</p>
+  <p><strong>设计意图</strong>：<span class="why">"只读"这个属性是理解整个一次拷贝的关键</span>。你的进程<strong>发</strong>数据时走 <code>ioctl</code>（拷贝进内核），<strong>收</strong>数据时内核直接写进这块已映射的内存——你只管读。接收侧省掉一次拷贝，就是靠这个 mmap。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>进程莫名 abort / tombstone 里有 "could not be opened"</strong>。<strong>因果</strong>：<code>/dev/binder</code> 打不开或 mmap 失败——常见于 SELinux 拒绝、<code>/dev</code> 未挂载、或非 Android 宿主环境。<strong>怎么查</strong>：<code>adb shell dmesg | grep -i avc</code> 看有没有 SELinux 拒绝；<code>ls -lZ /dev/binder*</code> 看节点与标签。</div>
+  <div class="think"><span class="qtag">🧠 思考（单块）</span> 为什么这里 mmap 的是 <code>PROT_READ</code>（只读）而不是读写？如果你能直接写这块内存，会带来什么问题？（提示：设想两个进程同时往同一块区域写，内核还怎么保证事务边界。）</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p3">三、一次事务的内核旅程：writeTransactionData 与双命令流</h2>
+
+<div class="card">
+  <p>B0 讲到 <code>talkWithDriver()</code> 里的 <code>ioctl</code> 就停了。现在把"进 ioctl 之前"和"出 ioctl 之后"补上——关键是<strong>Binder 的命令是双向的、且用同一块缓冲区</strong>。</p>
+
+  <h3>块 C：把事务写进待发缓冲（IPCThreadState.cpp:1082）</h3>
+  <div class="code-block">
+    <div class="filename">IPCThreadState.cpp:1082-1120</div>
+    <pre><span class="kw">status_t</span> <span class="fn">IPCThreadState::writeTransactionData</span>(int32_t cmd, uint32_t binderFlags,
+    int32_t handle, uint32_t code, <span class="kw">const</span> Parcel&amp; data, status_t* statusBuffer)
+{
+    <span class="kw">binder_transaction_data</span> tr;
+    <span class="cm">// ① 这个结构体就是"事务的元数据"（uapi binder.h:139 定义），</span>
+    <span class="cm">//    它与真正的负载数据分开：这里只放"发给谁、什么码、多大、在哪"</span>
+
+    tr.target.ptr = <span class="num">0</span>; <span class="cm">/* Don't pass uninitialized stack data to a remote process */</span>
+    tr.target.handle = handle;
+    <span class="cm">// ② ★ 目标用 handle（一个整数索引），不是指针！</span>
+    <span class="cm">//    这正是"跨进程指针无意义"的体现——见 §5</span>
+
+    tr.code = code;
+    tr.flags = binderFlags;
+    <span class="cm">// ③ code = 方法编号（AIDL 生成的 TRANSACTION_xxx）</span>
+    <span class="cm">//    flags 里最关键的是 TF_ONE_WAY（oneway 异步）</span>
+
+    tr.cookie = <span class="num">0</span>;
+    tr.sender_pid = <span class="num">0</span>;
+    tr.sender_euid = <span class="num">0</span>;
+    <span class="cm">// ④ ★ 这三个"由谁填"很关键：用户态填 0，<b>实际值由驱动写入</b>——</span>
+    <span class="cm">//    这就是 B0 块 C 说的"UID 从内核来、不可伪造"在数据层面的证据</span>
+
+    <span class="kw">const</span> status_t err = data.<span class="fn">errorCheck</span>();
+    <span class="kw">if</span> (err == NO_ERROR) {
+        tr.data_size = data.<span class="fn">ipcDataSize</span>();
+        tr.data.ptr.buffer = data.<span class="fn">ipcData</span>();
+        tr.offsets_size = data.<span class="fn">ipcObjectsCount</span>() * <span class="kw">sizeof</span>(binder_size_t);
+        tr.data.ptr.offsets = data.<span class="fn">ipcObjects</span>();
+        <span class="cm">// ⑤ ★★ 注意这里传的是<b>用户态缓冲区的指针</b>（ptr）！</span>
+        <span class="cm">//    也就是说：此刻数据还在你的进程里，还没进内核。</span>
+        <span class="cm">//    内核收到后会做 copy_from_user（这才是"那一次拷贝"）</span>
+    } <span class="kw">else if</span> (statusBuffer) {
+        tr.flags |= TF_STATUS_CODE;
+        *statusBuffer = err;
+        tr.data_size = <span class="kw">sizeof</span>(status_t);
+        tr.data.ptr.buffer = <span class="fn">reinterpret_cast</span>&lt;uintptr_t&gt;(statusBuffer);
+        tr.offsets_size = <span class="num">0</span>;
+        tr.data.ptr.offsets = <span class="num">0</span>;
+        <span class="cm">// ⑥ 序列化时就出错的场景：只把那一个错误码发过去</span>
+        <span class="cm">//    （TF_STATUS_CODE 标记"这不是正常负载，是错误码"）</span>
+    } <span class="kw">else</span> {
+        <span class="kw">return</span> (mLastError = err);
+    }
+
+    mOut.<span class="fn">writeInt32</span>(cmd);
+    mOut.<span class="fn">write</span>(&amp;tr, <span class="kw">sizeof</span>(tr));
+    <span class="cm">// ⑦ 写进 mOut：先是命令码（BC_TRANSACTION），再是结构体本身</span>
+    <span class="cm">//    此时只是"准备好了"，还没送给驱动</span>
+
+    <span class="kw">return</span> NO_ERROR;
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：把「发给谁（handle）+ 什么方法（code）+ 数据在哪（用户态指针）+ 多大」组装成 <code>binder_transaction_data</code>，塞进待发缓冲区 <code>mOut</code>。</p>
+  <p><strong>设计意图</strong>：<span class="why">元数据与负载分离，且指针此时才"过河"</span>。注意 <code>tr.data.ptr.buffer</code> 是用户态地址——内核拿到后会 <code>copy_from_user</code> 把这片内存拷进目标进程的映射区。<strong>这就是"一次拷贝"发生的精确时刻</strong>：不是在你的 <code>transact()</code> 调用时，而是在内核处理 <code>BC_TRANSACTION</code> 时。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>为什么传指针而不是传数据是安全的？</strong>因为这是 ioctl 的同步语义：内核在你的 <code>ioctl</code> 系统调用里直接把数据拷走，返回后你才可以复用缓冲区。<strong>但如果中途出错</strong>（比如 <code>data.errorCheck()</code> 失败），就要走 ⑥ 那个分支只发错误码——否则接收方会拿到一段没意义的地址。<strong>怎么查</strong>：如果对端收到奇怪的 "FAILED_TRANSACTION"，看服务端是否在做大对象序列化（序列化失败会走这条路）。</div>
+
+  <h3>块 D：双命令流——一次 ioctl 收发双向（IPCThreadState.cpp:975-1040）</h3>
+  <div class="code-block">
+    <div class="filename">IPCThreadState.cpp:975-1045（裁剪）</div>
+    <pre><span class="kw">status_t</span> <span class="fn">IPCThreadState::talkWithDriver</span>(<span class="kw">bool</span> doReceive)
+{
+    <span class="kw">binder_write_read</span> bwr;
+    <span class="cm">// ① 这是与驱动交互的唯一"信封"（uapi binder.h:90）</span>
+    <span class="cm">//    结构里有四个关键字段：write_size/write_consumed/read_size/read_consumed</span>
+
+    <span class="kw">const bool</span> needRead = mIn.<span class="fn">dataPosition</span>() &gt;= mIn.<span class="fn">dataSize</span>();
+    <span class="cm">// ② 输入缓冲读完了吗（读完了才需要这次收）</span>
+
+    <span class="kw">const size_t</span> outAvail = (!doReceive || needRead) ? mOut.<span class="fn">dataSize</span>() : <span class="num">0</span>;
+    bwr.write_size = outAvail;
+    bwr.write_buffer = (uintptr_t)mOut.<span class="fn">data</span>();
+    <span class="cm">// ③ 待发：就是块 C 写进去的 BC_TRANSACTION + 结构体</span>
+
+    <span class="kw">if</span> (doReceive &amp;&amp; needRead) {
+        bwr.read_size = mIn.<span class="fn">dataCapacity</span>();
+        bwr.read_buffer = (uintptr_t)mIn.<span class="fn">data</span>();
+    } <span class="kw">else</span> {
+        bwr.read_size = <span class="num">0</span>;
+        bwr.read_buffer = <span class="num">0</span>;
+    }
+    <span class="cm">// ④ 待收：留出缓冲接收驱动给的命令（BR_REPLY / BR_DEAD_REPLY ...）</span>
+
+    <span class="kw">if</span> ((bwr.write_size == <span class="num">0</span>) &amp;&amp; (bwr.read_size == <span class="num">0</span>)) <span class="kw">return</span> NO_ERROR;
+    <span class="cm">// ⑤ 没活干直接返回（避免空转系统调用）</span>
+
+    bwr.write_consumed = <span class="num">0</span>;
+    bwr.read_consumed = <span class="num">0</span>;
+    status_t err;
+    <span class="kw">do</span> {
+        <span class="kw">if</span> (<span class="fn">ioctl</span>(mProcess-&gt;mDriverFD, BINDER_WRITE_READ, &amp;bwr) &gt;= <span class="num">0</span>)
+            err = NO_ERROR;
+        <span class="kw">else</span>
+            err = -errno;
+        <span class="cm">// ⑥ ★★ 就是这一行 —— 一次系统调用同时完成"提交我的请求 + 收下给我的命令"</span>
+        <span class="cm">//    如果 doReceive 且驱动暂无数据，这里会<b>睡眠</b>（同步调用就阻塞在这）</span>
+    } <span class="kw">while</span> (err == -EINTR);
+    <span class="cm">// ⑦ 被信号打断（EINTR）就重试 —— 注意不是失败</span>
+
+    <span class="kw">if</span> (err &gt;= NO_ERROR) {
+        <span class="kw">if</span> (bwr.write_consumed &gt; <span class="num">0</span>) {
+            <span class="kw">if</span> (bwr.write_consumed &lt; mOut.<span class="fn">dataSize</span>())
+                <span class="fn">LOG_ALWAYS_FATAL</span>(<span class="cm">"Driver did not consume write buffer. ..."</span>);
+            <span class="kw">else</span> {
+                mOut.<span class="fn">setDataSize</span>(<span class="num">0</span>);
+                <span class="fn">processPostWriteDerefs</span>();
+                <span class="cm">// ⑧ ★ 驱动收完了才清空 mOut ——"发出去的才能丢"</span>
+                <span class="cm">//    如果驱动只消费了一部分，直接 LOG_ALWAYS_FATAL 崩溃：</span>
+                <span class="cm">//    因为这已经是协议级异常，继续跑会更糟</span>
+            }
+        }
+        <span class="cm">// … 省略：根据 read_consumed 更新 mIn 的读指针</span>
+    }
+}</pre>
+  </div>
+  <p><strong>这段在干什么</strong>：用 <code>binder_write_read</code> 这一个结构，一次 <code>ioctl</code> 同时"送出去"和"收回来"。</p>
+  <p><strong>设计意图</strong>：<span class="why">读写合一，是为了让"同步调用"只需一个系统调用</span>。典型同步调用是"发出去、等回复"——如果分成"写 ioctl"+"读 ioctl"，就多一次系统调用和一次上下文切换。合一之后：<code>write_size &gt; 0, read_size &gt; 0</code>，内核先处理写、再（若有）填充读；没有读数据时就直接睡眠等。<strong>这就是 B0 块 F 里"oneway 也要等 BR_TRANSACTION_COMPLETE"的底层原因</strong>——它等的正是这次 ioctl 的 read 部分给出的回执。</p>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 C、块 D）</span> 块 C 里 <code>tr.data.ptr.buffer</code> 传的是<strong>用户态指针</strong>，块 D 里 <code>bwr.write_buffer</code> 也是用户态指针。既然指针跨进程没意义，为什么这里可以传指针？（提示：这两个指针的使用者是谁——是别的进程，还是内核本身？）</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p4">四、一次拷贝的真相，与 1MB 上限从哪来</h2>
+
+<div class="card">
+  <p>这是本篇的核心。B0 已经说"一次拷贝"，但<strong>没讲清"为什么只能一次"和"为什么必须 1MB"</strong>——它们是同一件事的两面。</p>
+
+  <h3>块 E：三种 IPC 的拷贝次数对比</h3>
+  <div class="tree">【Socket / 管道】两次拷贝
+  发送方用户态 ──①copy_to_user→ 内核缓冲 ──②copy_to_user→ 接收方用户态
+  （两边的地址空间互不可见，内核必须各拷一次）
+
+【共享内存】零次拷贝，但需自己解决同步与安全
+  发送方 ──直接写──▶ 共享区 ◀──直接读── 接收方
+  （谁在写、写到哪、写完没有——全靠自己实现，易错且危险）
+
+【Binder】一次拷贝 —— 关键在"接收方提前 mmap 了内核缓冲"
+  发送方用户态 ──①copy_from_user→ 内核里的"目标进程缓冲"
+                                        │
+                                        └── 接收方<b>直接读</b>（已 mmap 映射，无需再拷）
+
+★ 省掉的是 ②：因为接收方地址空间里<b>已经映射了</b>那块内核缓冲（块 B 的 mmap）</div>
+
+  <h3>块 F：为什么必须限制成 1MB（ProcessState.cpp:44 / 428）</h3>
+  <div class="code-block">
+    <div class="filename">ProcessState.cpp:44 + 428 + Binder.java:1087</div>
+    <pre><span class="kw">#define</span> BINDER_VM_SIZE ((<span class="num">1</span> * <span class="num">1024</span> * <span class="num">1024</span>) - <span class="fn">sysconf</span>(_SC_PAGE_SIZE) * <span class="num">2</span>)
+<span class="cm">// ① 看到这个减法就要问"为什么"：1MB 减 2 个页（通常 8KB）= 1MB - 8KB</span>
+<span class="cm">//    这两页是留给驱动自己用的元数据/保护区的（实现细节，不必背）</span>
+
+mVMStart = <span class="fn">mmap</span>(<span class="kw">nullptr</span>, BINDER_VM_SIZE, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, mDriverFD, <span class="num">0</span>);
+<span class="cm">// ② ★ 每个进程只映射<b>一块固定大小</b>的接收区 —— 这就是"上限"的物理来源</span>
+<span class="cm">//    注意它是<b>虚拟地址</b>映射（MAP_NORESERVE），实际物理页按需分配</span>
+
+<span class="cm">// ③ 用户态还有一道软检查（Binder.java:1087）：</span>
+<span class="kw">static void</span> <span class="fn">checkParcel</span>(IBinder obj, <span class="kw">int</span> code, Parcel parcel, String msg) {
+    <span class="kw">if</span> (CHECK_PARCEL_SIZE &amp;&amp; parcel.<span class="fn">dataSize</span>() &gt;= <span class="num">800</span>*<span class="num">1024</span>) {
+        <span class="cm">// ④ 800KB 就警告（不是硬上限）：留出余量，因为上限是<b>进程共享</b>的</span>
+        <span class="cm">// … 省略：抛 TransactionTooLargeException 的组装逻辑</span>
+    }
+}
+<span class="cm">// ⑤ ★★ 注意"进程共享"四个字：那 1MB 是<b>整个进程</b>共用的，</span>
+<span class="cm">//    不是"每次调用 1MB"！所以 10 个线程各传 200KB 就可能一起失败</span>
+
+<span class="cm">// ⑥ 驱动侧的另一道闸（uapi binder.h:120 / 122）：</span>
+<span class="cm">//    BINDER_WRITE_READ —— 传输就这一条命令</span>
+<span class="cm">//    BINDER_SET_MAX_THREADS —— 线程数上限（15）</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：说明 1MB 不是"随便定的数字"，而是<strong>mmap 映射区的固定大小</strong>；而 800KB 是用户态的提前警告线。</p>
+  <p><strong>设计意图</strong>：<span class="why">为什么不做成"按需增长"</span>。因为 Binder 追求的是一次 ioctl 完成一次交付（低延迟、可预测）。如果缓冲区动态增长：① 内核要处理"目标缓冲区不够、需要扩容"的复杂失败回滚；② 接收方 mmap 区变化要同步通知；③ 更大的共享区意味着更大的攻击面。<strong>固定 1MB + 明确上限</strong>是"用可预测性换掉复杂度"——大数据请走 §6 的 fd 传递。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>TransactionTooLargeException 的正确理解</strong>（也是 B0 实践题 P2 的答案要点）：<br>
+  ① <strong>不是"传了超过 1MB 才炸"</strong>——<code>checkParcel</code> 在 800KB 就警告；而且它是<strong>进程级共享</strong>的，并发时更容易超；<br>
+  ② <strong>不是"每次都扣 1MB"</strong>——缓冲区是复用的，<code>mOut.setDataSize(0)</code> 后就归还；<br>
+  ③ <strong>真正的大数据方案</strong>是传 fd（见 §6），不是"压缩后硬塞"。<br>
+  排查：<code>dumpsys</code> 看不到时，看崩溃栈是否在 <code>Binder.checkParcel</code>；再用 §7 的命令观察有无 oneway 洪水堆积。</div>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 B、块 E、块 F）</span> 块 B 的 mmap 用了 <code>MAP_NORESERVE</code>（不预留物理页）。如果系统内存紧张，这块区域会怎样？这能否解释"内存不足时 Binder 调用更容易 <code>Failed</code>"（<code>BR_FAILED_REPLY</code>）？——这题答出来，你就同时理解了 mmap 语义与线上偶发故障。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p5">五、数据里的"对象指针"：offsets 与 BINDER_TYPE_*</h2>
+
+<div class="card">
+  <p>把 Binder 对象（或 fd）塞进 Parcel 传递时，字节流里存的是什么？<strong>不是指针，是一个"待翻译的占位"</strong>，由驱动在传递时重写。这是 Binder 最精妙的设计之一。</p>
+
+  <h3>块 G：结构里为什么要"另一份 offsets"（uapi binder.h:90 / 139）</h3>
+  <div class="code-block">
+    <div class="filename">uapi/linux/android/binder.h:56-70、86-100、139-160（裁剪）</div>
+    <pre><span class="cm">// 先看"平铺对象"的结构（uapi :56）——它是塞在数据里的占位符：</span>
+<span class="kw">struct</span> <span class="fn">flat_binder_object</span> {
+    <span class="kw">struct</span> binder_object_header hdr;   <span class="cm">// hdr.type 标明"我是哪种对象"</span>
+    __u32 flags;
+    <span class="kw">union</span> {
+        binder_uintptr_t binder;        <span class="cm">// ① 本进程内：是真实指针</span>
+        __u32 handle;                   <span class="cm">// ② 跨进程时：驱动把它换成 handle</span>
+    };
+    binder_uintptr_t cookie;
+};
+<span class="cm">// ★ 同一个 union，两种含义 —— 取决于"发给谁"</span>
+
+<span class="cm">// 再看事务结构里的两个尺寸（uapi :139）：</span>
+<span class="kw">struct</span> <span class="fn">binder_transaction_data</span> {
+    <span class="cm">// … 省略 target / code / flags / sender_*</span>
+    binder_size_t data_size;            <span class="cm">// ③ 数据总字节数</span>
+    binder_size_t offsets_size;         <span class="cm">// ④ ★ 偏移表字节数</span>
+    <span class="kw">union</span> {
+        <span class="kw">struct</span> { binder_uintptr_t buffer; binder_uintptr_t offsets; } ptr;
+        __u8 buf[<span class="num">8</span>];
+    } data;
+};
+<span class="cm">// ⑤ ★★ 为什么需要 offsets？因为数据里混着两类东西：</span>
+<span class="cm">//    · 普通字节（int/string/byte[]）—— 直接拷就行</span>
+<span class="cm">//    · 对象占位（Binder/fd）—— <b>必须在数据里的哪些位置</b></span>
+<span class="cm">//    驱动不可能扫描整片数据去找对象（那既慢又不可靠），</span>
+<span class="cm">//    所以发送方<b>额外给一份"对象在数据中的偏移列表"</b>——就是 offsets</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：解释 <code>offsets</code> 的作用——告诉驱动"数据里第 N 个字节处是个对象，需要你翻译"。</p>
+  <p><strong>设计意图</strong>：<span class="why">用偏移表代替"扫描识别"</span>。这既保证了性能（O(对象数) 而非 O(数据大小)），也保证了正确性（避免把恰好长得像对象的普通字节误判）。<code>flat_binder_object.binder/handle</code> 那个 union 则是"翻译"的具体动作：**发给本进程时填真实指针，发给其他进程时换成 handle**。</p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>序列化 Binder 对象后调用失败 / 拿到 null</strong>。<strong>因果</strong>：如果发送方没正确把这个对象登记进 <code>offsets</code>（比如手工拼 Parcel 时忘了 <code>writeStrongBinder</code> 而直接写了字节），驱动就不会翻译它，对端读出来是个无效值。<strong>怎么查</strong>：确认用的是 <code>Parcel.writeStrongBinder()</code>（<code>Parcel.java:898</code>）而非写裸字节；服务端 <code>readStrongBinder()</code> 拿到的对象做 <code>asInterface</code> 前先判空。</div>
+
+  <h3>块 H：对象类型的全家福（uapi binder.h:26-31）</h3>
+  <div class="code-block">
+    <div class="filename">uapi/linux/android/binder.h:26-31、131-136</div>
+    <pre><span class="cm">// 驱动需要认识的对象类型（BINDER_TYPE_*）：</span>
+BINDER_TYPE_BINDER       = B_PACK_CHARS(<span class="cm">'s','b','*'</span>, B_TYPE_LARGE)
+<span class="cm">// ① 强 Binder（本地实体，BBinder/Binder）—— 引用计数强</span>
+
+BINDER_TYPE_WEAK_BINDER  = B_PACK_CHARS(<span class="cm">'w','b','*'</span>, B_TYPE_LARGE)
+<span class="cm">// ② 弱 Binder（不阻止对方死亡，用于"只想观察不想持有"）</span>
+
+BINDER_TYPE_HANDLE       = B_PACK_CHARS(<span class="cm">'s','h','*'</span>, B_TYPE_LARGE)
+<span class="cm">// ③ 强 handle（代理，BpBinder）</span>
+
+BINDER_TYPE_WEAK_HANDLE  = B_PACK_CHARS(<span class="cm">'w','h','*'</span>, B_TYPE_LARGE)
+<span class="cm">// ④ 弱 handle</span>
+
+BINDER_TYPE_FD           = B_PACK_CHARS(<span class="cm">'f','d','*'</span>, B_TYPE_LARGE)
+<span class="cm">// ⑤ ★ 文件描述符（见 §6）</span>
+
+<span class="cm">// 事务标志（uapi :131）：</span>
+TF_ONE_WAY = <span class="num">0x01</span>,        <span class="cm">// ⑥ 异步，不等回复</span>
+TF_ROOT_OBJECT = <span class="num">0x04</span>,
+TF_STATUS_CODE = <span class="num">0x08</span>,      <span class="cm">// ⑦ "负载其实是错误码"（块 C 的 ⑥ 用过）</span>
+TF_ACCEPT_FDS = <span class="num">0x10</span>,       <span class="cm">// ⑧ 允许对方回传 fd（默认关，安全考虑）</span>
+TF_CLEAR_BUF = <span class="num">0x20</span>,
+
+<span class="cm">// ⑨ ★ "强/弱"的意义：强引用会阻止对端销毁对象（类似智能指针的 shared/weak）</span>
+<span class="cm">//    AddRef/Release 语义在跨进程也要成立，这就是 linkToDeath 的底座（B0 块 K）</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：列出驱动认识的所有对象类型，以及事务标志。</p>
+  <p><strong>设计意图</strong>：<span class="why">"强/弱"解决的是跨进程引用计数</span>。A 持有 B 的 Binder 对象时，B 不能随便死——否则 A 手里的就是个悬空引用（会收到 <code>BR_DEAD_REPLY</code>）。这套引用计数由驱动维护，配合 <code>linkToDeath</code> 通知。**所以 B0 块 K 说的"死亡通知"，本质是驱动在引用计数归零时告知所有持有者。**</p>
+  <div class="think"><span class="qtag">🧠 思考（需结合：块 G、块 H）</span> 如果把一个 <code>BpBinder</code>（代理）又传回给它的"原主进程"，驱动会怎么处理？——这直接回答马老师库里的场景面试题第 2 题："Binder 通信中能否传递 BpBinder 对象？"</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p6">六、fd 怎么跨进程传</h2>
+
+<div class="card">
+  <p>fd（文件描述符）在你进程里只是个<strong>小整数</strong>——"第 7 号打开文件"。这个数字在别的进程里毫无意义。那 Binder 怎么把"打开的文件"传过去？</p>
+
+  <h3>块 I：BINDER_TYPE_FD 的秘密</h3>
+  <div class="code-block">
+    <div class="filename">uapi binder.h:57-66 + BinderProxy/Message 侧调用</div>
+    <pre><span class="cm">// 数据里出现的是这个结构（uapi :57）：</span>
+<span class="kw">struct</span> <span class="fn">binder_fd_object</span> {
+    <span class="kw">struct</span> binder_object_header hdr;   <span class="cm">// hdr.type == BINDER_TYPE_FD</span>
+    __u32 pad_flags;
+    <span class="kw">union</span> {
+        binder_uintptr_t pad_binder;
+        __u32 fd;                       <span class="cm">// ① 发送方的 fd 数字</span>
+    };
+    binder_uintptr_t cookie;
+};
+
+<span class="cm">// ★ 传递过程（内核做的事）：</span>
+<span class="cm">//   ① 发送方把 fd 放进 Parcel（Message 里对应 ParcelFileDescriptor）</span>
+<span class="cm">//   ② 驱动收到后，调用内核的 fd 复制能力（get_unused_fd + fget + fd_install 同类语义）</span>
+<span class="cm">//   ③ 在<b>目标进程</b>里分配一个新的 fd 号，指向同一个打开文件</span>
+<span class="cm">//   ④ 目标进程 readStrongBinder/读 Parcel 时，拿到的是<b>它自己的</b>新 fd</span>
+<span class="cm">// ⑤ 于是两个进程的 fd 数字不同，但都指向同一个"打开文件"</span>
+
+<span class="cm">// 【用户态怎么用】</span>
+<span class="cm">//   写：parcel.writeFileDescriptor(ParcelFileDescriptor) 或 writeRawFileDescriptor</span>
+<span class="cm">//   读：parcel.readFileDescriptor() → 得到一个 ParcelFileDescriptor</span>
+<span class="cm">//   然后可以 new FileInputStream(pfd.getFileDescriptor()) —— 直接读对方给的文件！</span>
+
+<span class="cm">// 【为什么这也是"大数据"的正解】</span>
+<span class="cm">//   ashmem / MemoryDealer / 匿名共享内存：</span>
+<span class="cm">//   创建一块共享内存 → 得到一个 fd → 通过 Binder 传 fd → 双方 mmap 同一块内存</span>
+<span class="cm">//   于是<b>大数据走共享内存，Binder 只传一个 fd</b>，完全绕开 1MB 上限</span></pre>
+  </div>
+  <p><strong>这段在干什么</strong>：说明 fd 传递的本质是"内核在目标进程复制一份 fd 引用"。</p>
+  <p><strong>设计意图</strong>：<span class="why">这是 Binder 的"逃生舱口"</span>。1MB 限制（§4）本意是"小消息快传"，而大数据用共享内存 + fd 传递解决。<strong>框架里到处是这个模式</strong>：传 Bitmap（走 ashmem）、传视频帧（GraphicBuffer 的 fd）、传文件（ParcelFileDescriptor）。<strong>记住这条，你就不会问"为什么 Binder 只能传 1MB"——因为大东西根本不走 Binder。</strong></p>
+  <div class="pitfall"><span class="tag">🐛 实战</span> <strong>收到 fd 后没关导致 fd 泄漏</strong>。<strong>因果</strong>：跨进程传过来的 fd 是<strong>目标进程新增的一个 fd</strong>，用完必须自己 <code>close()</code>（或让 ParcelFileDescriptor.close() 处理），否则 fd 数只增不减。<strong>怎么查</strong>：<code>adb shell ls /proc/&lt;pid&gt;/fd | wc -l</code> 观察是否单调增长；对比 <code>dumpsys meminfo &lt;pkg&gt;</code> 里的 fd 计数。</div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p7">七、完整链路与源码速查</h2>
+
+<div class="card">
+  <h3>完整链路（本篇覆盖的边界）</h3>
+  <div class="tree">【进程初始化 · 一次】
+  ProcessState::ProcessState()                 :412
+    ├─ open_driver()                           :379
+    │    ├─ open("/dev/binder")                      ← 打开驱动
+    │    ├─ ioctl(BINDER_VERSION)              :384   ← 握手①版本必须相等
+    │    └─ ioctl(BINDER_SET_MAX_THREADS)      :396   ← 握手②上报 15
+    └─ mmap(BINDER_VM_SIZE, PROT_READ, ...)    :428   ← 映射 1MB 接收区
+
+【发起事务 · 每次】
+  IPCThreadState::transact()                   :685
+    ├─ writeTransactionData(BC_TRANSACTION)    :1082
+    │    └─ 填 binder_transaction_data（handle / code / 用户态指针 / offsets）
+    │       ★ sender_pid/uid 填 0，真实值由驱动写
+    └─ waitForResponse()                       :875
+         └─ talkWithDriver()                   :975
+              └─ ioctl(BINDER_WRITE_READ, &bwr)     ★ 这次系统调用之内：
+                   内核：校验身份 → 找 handle → copy_from_user（唯一一次拷贝）
+                        → 翻译 offsets 里的对象 → 复制 fd 引用 → 唤醒目标线程
+
+【接收事务 · 每次】
+  Binder 线程：getAndExecuteCommand → executeCommand(BR_TRANSACTION)  :1204
+    ├─ mIn.read(&tr, sizeof(tr))                       ← 读出事务头
+    ├─ buffer.ipcSetDataReference(tr.data.ptr.buffer, ...)  ← ★ 直接引用（不再拷）
+    ├─ mCallingPid = tr.sender_pid                     ← ★ 身份从这来（不可伪造）
+    ├─ mCallingUid = tr.sender_euid
+    └─ … 之后回调 Java（B0 块 D 的 JavaBBinder）
+
+【失败信号】
+  BR_DEAD_REPLY    → DEAD_OBJECT        :903  对端进程死了
+  BR_FAILED_REPLY  → FAILED_TRANSACTION :907  驱动拒绝（常见：缓冲区不足）
+  BR_FROZEN_REPLY  → FAILED_TRANSACTION :911  对端被冻结（Android 12 新特性）
+  BR_TRANSACTION_COMPLETE                :899  我发的事务已被驱动收下</div>
+
+  <h3>源码速查（行号均已 grep 核实）</h3>
+  <div class="code-block">
+    <div class="filename">用户态侧（frameworks/native/libs/binder/）</div>
+    <pre><span class="cm"># 进程初始化</span>
+ProcessState.cpp:44        BINDER_VM_SIZE（1MB - 2 页）★ 上限来源
+ProcessState.cpp:45        DEFAULT_MAX_BINDER_THREADS = 15
+ProcessState.cpp:76        ProcessState::self()
+ProcessState.cpp:139       startThreadPool()
+ProcessState.cpp:149       becomeContextManager()（B0 块 J 提过）
+ProcessState.cpp:379-405   open_driver()（open + 三条 ioctl）
+ProcessState.cpp:412-440   构造函数（mmap 1MB 接收区）
+
+<span class="cm"># 发起与等待</span>
+IPCThreadState.cpp:685     transact()
+IPCThreadState.cpp:875     waitForResponse()
+IPCThreadState.cpp:899     BR_TRANSACTION_COMPLETE 处理
+IPCThreadState.cpp:903     BR_DEAD_REPLY
+IPCThreadState.cpp:907     BR_FAILED_REPLY
+IPCThreadState.cpp:911     BR_FROZEN_REPLY
+IPCThreadState.cpp:924     BR_REPLY（回填 reply 的 ipcSetDataReference）
+IPCThreadState.cpp:975     talkWithDriver() ★ ioctl 在这
+IPCThreadState.cpp:1082    writeTransactionData() ★ 组装事务头
+IPCThreadState.cpp:1204    executeCommand: BR_TRANSACTION ★ 接收侧
+
+<span class="cm"># Parcel 侧</span>
+Parcel.cpp:2114            ipcSetDataReference()（零拷贝引用驱动缓冲区）
+
+<span class="cm"># 用户态软检查</span>
+Binder.java:1087           checkParcel() 800KB 警告 ★ TransactionTooLarge 来源
+Parcel.java:898            writeStrongBinder()</pre>
+  </div>
+  <div class="code-block">
+    <div class="filename">uapi 头（bionic/libc/kernel/uapi/linux/android/binder.h）—— 内核与用户态的契约</div>
+    <pre><span class="cm"># 对象类型</span>
+:26-31     BINDER_TYPE_BINDER / WEAK_BINDER / HANDLE / WEAK_HANDLE / FD / FDA
+:56-70     struct flat_binder_object / binder_fd_object
+:90-100    struct binder_write_read ★ 与驱动交互的唯一信封
+:102/104   BINDER_CURRENT_PROTOCOL_VERSION 7 / 8
+:120-124   BINDER_WRITE_READ / SET_MAX_THREADS / SET_CONTEXT_MGR
+:130-136   TF_ONE_WAY / TF_STATUS_CODE / TF_ACCEPT_FDS
+:139-160   struct binder_transaction_data ★ 事务头（含 data_size/offsets_size）
+:186-190   BR_TRANSACTION / BR_REPLY / BR_DEAD_REPLY / BR_TRANSACTION_COMPLETE
+:197       BR_SPAWN_LOOPER（催生 Binder 线程）
+:204-216   BC_TRANSACTION / BC_REPLY / REGISTER_LOOPER / ENTER_LOOPER
+
+<span class="cm"># 注意：内核实现 drivers/android/binder.c 不在这棵 AOSP 树里</span>
+<span class="cm">#       要看实现请另取内核源码（android12-5.10 等分支）</span></pre>
+  </div>
+
+  <h3>🧠 自测：6 个问题</h3>
+
+  <details><summary>1. 打开 Binder 驱动时要过哪几道校验？为什么版本检查是"硬失败"？</summary>
+  <div class="ans">三道：① <code>open("/dev/binder", O_RDWR|O_CLOEXEC)</code>；② <code>ioctl(BINDER_VERSION)</code> 核对协议版本，<strong>必须严格相等</strong>否则关 fd 返回失败；③ <code>ioctl(BINDER_SET_MAX_THREADS)</code> 上报线程上限。<br>版本检查必须硬失败，因为 Binder 协议是内核与用户态的<strong>二进制契约</strong>（结构体布局、命令编号），错配会导致难查的内存混乱。这也解释了"刷机刷一半起不来"——boot 与 system 分区的 binder 版本不一致。Android 上打不开驱动更直接：<code>LOG_ALWAYS_FATAL</code> 让进程 abort。</div></details>
+
+  <details><summary>2. 为什么 mmap 出来的接收区是 <code>PROT_READ</code>（只读）？</summary>
+  <div class="ans">因为这块内存<strong>只用于"接收"</strong>：内核把对端发来的数据写进去，本进程只管读。发送走的是 <code>ioctl</code>（内核 <code>copy_from_user</code> 从你的 mOut 拷走），不需要写这块映射区。<br>如果允许写，就会出现"两个进程同时写同一区域"的竞争，内核也无法保证事务边界。<strong>只读 + 统一走 ioctl，是把并发控制完全收回内核</strong>——这是 Binder 安全性与一致性的基础。</div></details>
+
+  <details><summary>3. 一次 Binder 调用，数据到底在哪一刻被拷贝？</summary>
+  <div class="ans">在 <code>ioctl(BINDER_WRITE_READ)</code> 进入内核、驱动处理 <code>BC_TRANSACTION</code> 时，通过 <code>copy_from_user</code> 把 <code>tr.data.ptr.buffer</code>（这是<strong>发送方的用户态地址</strong>）指向的内存拷进"目标进程的映射区"。<br>注意 <code>writeTransactionData</code> 只是记录了指针，<strong>此时数据还在原进程</strong>。接收侧之所以不需要再拷，是因为目标进程 <code>mmap</code> 过那块区域（块 B），<code>ipcSetDataReference</code> 直接引用（<code>Parcel.cpp:2114</code>）。</div></details>
+
+  <details><summary>4. 1MB 上限是怎么来的？为什么不是"每次调用 1MB"？</summary>
+  <div class="ans">来自 <code>BINDER_VM_SIZE = 1MB - 2 页</code>（<code>ProcessState.cpp:44</code>），即 <code>mmap</code> 给每个进程的<strong>接收区固定大小</strong>（块 F）。<br>它是<strong>进程级共享</strong>的缓冲区，不是每次调用独立开销——所以并发调用时更容易撞上限。用户态还有一道提前警告：<code>Binder.checkParcel()</code> 在 <code>800*1024</code> 就抛 <code>TransactionTooLargeException</code>（<code>Binder.java:1087</code>），留出余量。<br>第二问的"为什么不做成动态增长"见块 F 的设计意图：用<strong>可预测性换掉复杂度</strong>。</div></details>
+
+  <details><summary>5. <code>binder_transaction_data</code> 里为什么需要 <code>offsets</code> 这个额外字段？</summary>
+  <div class="ans">因为负载数据里混着两类内容：<strong>普通字节</strong>（int/String/byte[]）和<strong>对象占位</strong>（Binder/fd）。后者必须被驱动"翻译"（本进程指针 ↔ 对端 handle / 新 fd）。<br>驱动不能扫描整片数据去猜哪些是对象（慢且不可靠），所以发送方额外提供<strong>一份偏移列表</strong>，精确指出"数据里第 N 字节处是对象"。这样驱动只需 O(对象数) 的处理，且不会误判。</div></details>
+
+  <details><summary>6. 大数据（图片/视频帧）怎么能绕过 1MB？</summary>
+  <div class="ans">走 <strong>fd 传递 + 共享内存</strong>（块 I）：创建 ashmem/匿名共享内存 → 得到一个 fd → 通过 Binder 传这个 fd（<code>BINDER_TYPE_FD</code>）→ 内核在<strong>目标进程</strong>里分配一个新 fd 指向同一个打开文件 → 双方 <code>mmap</code> 同一块物理内存。<br>于是 <strong>Binder 只传一个 fd 数字，数据本身不进 Binder 缓冲区</strong>，完全绕开 1MB。<br>框架里到处是这个模式：Bitmap 走 ashmem、视频帧走 GraphicBuffer 的 fd、文件走 <code>ParcelFileDescriptor</code>。<strong>所以"Binder 只能传 1MB"这句话不完整——大东西根本不走 Binder。</strong></div></details>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+
+<h2 id="p8">八、实践题与自测（动手做）</h2>
+
+<div class="card">
+  <p>本篇讲的是"边界"，所以实践题也围绕边界：<strong>亲手测出上限、亲手看到 fd、亲手制造一次 FAILED_TRANSACTION</strong>。</p>
+
+  <h3>🛠️ P1 实测 Binder 传输上限（40 分钟 · ★ 必做）</h3>
+  <div class="step">
+    <p><span class="no">1</span>在你 <code>D:\workspace\binder</code> 项目的 AIDL 里加 <code>void sendBytes(in byte[] data);</code>，服务端只打印收到的长度。</p>
+    <p><span class="no">2</span>客户端依次传 100KB / 500KB / 700KB / 800KB / 900KB / 1MB / 2MB。</p>
+    <p><span class="no">3</span>记录每一档的**实际行为**（成功 / 警告 / 抛异常），把 800KB 与 1MB 两档作为重点。</p>
+    <p><span class="no">4</span><strong>验证"进程共享"</strong>：开 5 个线程，每个各传 300KB，看是否比单线程更容易失败。</p>
+  </div>
+  <div class="deliver">
+    <span class="tag">交付</span> 一张实测表（档位 → 行为 → 报错文案），外加对这两句话的验证结论：<br>① "800KB 是警告线不是硬上限"；② "1MB 是整个进程共享的"。
+  </div>
+
+  <h3>🛠️ P2 亲手传一个 fd（40 分钟 · ★ 推荐）</h3>
+  <div class="step">
+    <p><span class="no">1</span>服务端用 <code>ParcelFileDescriptor</code> 打开一个自己创建的文件（含一段文字），把 PFD 通过 AIDL 返回给客户端。</p>
+    <p><span class="no">2</span>客户端用 <code>new FileInputStream(pfd.getFileDescriptor())</code> 读出内容，验证"拿到了对方的文件"。</p>
+    <p><span class="no">3</span><strong>对比 fd 号</strong>：两边各打印自己的 <code>pfd.getFd()</code>，看数字是否不同（应该不同——它是目标进程的新 fd）。</p>
+    <p><span class="no">4</span><strong>泄漏实验</strong>：故意不 close，反复调用 50 次，用 <code>adb shell ls /proc/&lt;pid&gt;/fd | wc -l</code> 看计数增长。</p>
+  </div>
+  <div class="deliver">
+    <span class="tag">交付</span> 可运行的 fd 传递 demo + 一张 fd 计数曲线（不 close 版 vs close 版）+ 一句结论「fd 传递为什么能绕开 1MB」。
+  </div>
+
+  <h3>🛠️ P3 抓一次 BR_FAILED_REPLY（50 分钟 · 进阶）</h3>
+  <div class="step">
+    <p><span class="no">1</span>读马老师库里的《实战开发-binder 驱动之 oneway 导致的 transaction failed》。</p>
+    <p><span class="no">2</span>构造 oneway 洪水：一个循环连续 <code>oneway</code> 调用（不等回复），观察何时开始失败。</p>
+    <p><span class="no">3</span>看错误码：客户端侧会拿到 <code>FAILED_TRANSACTION</code>（对应 <code>BR_FAILED_REPLY</code>，<code>IPCThreadState.cpp:907</code>）。</p>
+    <p><span class="no">4</span>开驱动统计：<code>adb shell cat /sys/kernel/debug/binder/stats</code>（需 root），看 buffer 占用与 <code>failed_transaction</code> 计数。</p>
+  </div>
+  <div class="deliver">
+    <span class="tag">交付</span> 一份「Binder 缓冲区耗尽的成因与观测方法」：① oneway 洪水；② 大数据硬塞；③ 死锁环路占满线程（B0 块 H）；每条写清怎么复现、怎么观测。
+  </div>
+
+  <h3>🛠️ P4 读内核源码（选做 · 有内核源码时）</h3>
+  <div class="hint">本树没有内核源码，若你另取了 <code>android12-5.10</code>，可以对着本篇找这些：<br>
+  <code>drivers/android/binder.c</code>：<code>binder_ioctl</code>（对应本篇的 BINDER_WRITE_READ）、<code>binder_transaction</code>（拷贝与翻译）、<code>binder_thread_read</code>（把 BR_* 写回用户态）、<code>binder_alloc_new_buf</code>（1MB 分配）。<br>
+  <strong>读法建议</strong>：先在本篇理解"用户态看到什么"，再去内核找"它怎么实现"——顺序反了会淹死在几千行里。</div>
+</div>
+
+<div style="margin-top:50px; padding:20px 0; border-top:1px solid var(--border); text-align:center; color:var(--text2); font-size:.85rem;">
+  <p>📚 Android Framework 专题 · Binder 篇 B1 | <strong>Binder 驱动层：一次拷贝的真相与 1MB 上限</strong></p>
+  <p>基于 AOSP 12 · 行号 2026-10-19 现地核实 · 内核实现不在本树，已如实标注边界</p>
+  <p style="margin-top:10px;">
+    <a href="../../../android-framework-binder.html">← B0 全链路</a> &nbsp;|&nbsp;
+    <a href="../../../Android-Framework学习路线图.html">🧭 Framework 路线图（B 赛道）</a>
+  </p>
+  <p style="margin-top:8px;">正式落盘后决定编号（拟 B1）与放置位置。</p>
+</div>
+
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = '***';
+  var btn = document.getElementById('theme-btn');
+  var html = document.documentElement;
+  var currentMode = localStorage.getItem(STORAGE_KEY) || 'auto';
+  function isDarkTime() { var h = new Date().getHours(); return h < 7 || h >= 22; }
+  function applyTheme(mode) {
+    var theme = (mode === 'auto') ? (isDarkTime() ? 'dark' : 'light') : mode;
+    html.setAttribute('data-theme', theme);
+    btn.textContent = mode === 'auto' ? '🌓' : mode === 'light' ? '☀️' : '🌙';
+    btn.title = mode === 'auto' ? '自动切换' : mode === 'light' ? '浅色模式' : '深色模式';
+  }
+  function cycleMode() {
+    if (currentMode === 'auto') currentMode = 'light';
+    else if (currentMode === 'light') currentMode = 'dark';
+    else currentMode = 'auto';
+    localStorage.setItem(STORAGE_KEY, currentMode);
+    applyTheme(currentMode);
+  }
+  setInterval(function() { if (currentMode === 'auto') applyTheme('auto'); }, 60000);
+  btn.addEventListener('click', cycleMode);
+  applyTheme(currentMode);
+})();
+</script>
+
+</body>
+</html>
