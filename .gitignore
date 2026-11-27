@@ -24,8 +24,8 @@ credentials*
 **/__pycache__/
 *.pyc
 
-# --- 本地技能软链接（junction 指向真实技能目录，只在阻塞机有效）---
-skills/
+# --- 技能库（真实文件，随仓库同步）---
+# skills/ 参与 git；各机的 junction/副本不留在此
 
 # --- 系统垃圾 ---
 Thumbs.db

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{TITLE}}</title>
+<style>/*__CSS__*/</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<!-- 1) HERO：kicker 写基线/主题，h1 两行，lede 一句话，meta 放模式/基线/校验/时长 -->
+<header class="hero">
+  <div class="shell">
+    <p class="kicker">AOSP 13 · {{AREA}} · 学习轮次 01</p>
+    <h1>{{TITLE_MAIN}}<br><span class="thin">{{TITLE_SUB}}</span></h1>
+    <p class="lede">{{LEDE}}</p>
+    <div class="meta">
+      <span class="chip">模式 <b>A</b> · 骨架 + 3 问</span>
+      <span class="chip">基线 <b>android-13.0.0_r84</b></span>
+      <span class="chip ok">{{N}} 行锚点已 grep 核实</span>
+      <span class="chip">形状校验 <b>PASS</b></span>
+      <span class="chip">阅读 <b>约 12 分钟</b></span>
+    </div>
+  </div>
+</header>
+
+<!-- 2) NAV：与 <section id> 一一对应 -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="#s1" class="on">① 骨架</a><a href="#s2">② 决策点</a><a href="#s3">③ 三个问题</a>
+    <a href="#s4">骨架阅读法</a><a href="#s5">L0 判据题</a><a href="#s6">白话对照</a><a href="#s7">12→13 漂移</a>
+  </div>
+</nav>
+
+<main class="shell">
+<!-- 3) 骨架：pre.tree 里每行一个 span.ln；锚点用 span.an；分支保留 ├─/└─ -->
+<section id="s1">
+  <div class="sec-head"><span class="sec-num">01</span><h2>骨架</h2></div>
+  <p class="sec-sub">{{SKELETON_HINT}}</p>
+  <div class="codeblock">
+    <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span>
+      <span class="cb-name">{{CHAIN_NAME}}</span>
+      <button class="copy" type="button">复制</button></div>
+<pre class="tree"><span class="ln">{{SKELETON_LINES}}</span></pre>
+  </div>
+
+  <!-- 4) 骨架解说：一行一个标号，禁止挤成一段 -->
+  <div class="note explain">
+    <span class="tag">骨架解说 · 这段在讲什么</span>
+    <p class="lead">{{EXPLAIN_LEAD}}</p>
+    <div class="steps">
+      <div class="step"><span class="n">①</span><div><b>{{STEP1_NAME}}</b>：{{STEP1_TEXT}}</div></div>
+      <div class="step"><span class="n">②</span><div><b>{{STEP2_NAME}}</b>：{{STEP2_TEXT}}</div></div>
+    </div>
+    <p class="sum"><b>一句话</b>：{{SUMMARY}}</p>
+  </div>
+
+  <!-- 5) 基线附注（不编号） -->
+  <div class="note"><p><b>基线</b>：{{BASELINE}}</p></div>
+</section>
+
+<!-- 6) 决策点：.grid.two + .card -->
+<section id="s2">
+  <div class="sec-head"><span class="sec-num">02</span><h2>决策点</h2></div>
+  <div class="grid two">
+    <div class="card"><div class="idx">DECISION 01</div><h4>{{D1_TITLE}}</h4><p>{{D1_TEXT}}</p></div>
+  </div>
+</section>
+
+<!-- 7) 三问：ol.q -->
+<section id="s3">
+  <div class="sec-head"><span class="sec-num">03</span><h2>我要你答的 3 个问题</h2></div>
+  <ol class="q"><li>{{Q1}}</li><li>{{Q2}}</li><li>{{Q3}}</li></ol>
+</section>
+
+<!-- 8) 阅读法：.method 五行 -->
+<section id="s4">
+  <div class="sec-head"><span class="sec-num">04</span><h2>骨架阅读法</h2></div>
+  <div class="method">
+    <div class="row"><div class="k">一句话定位</div><div class="v">{{R1}}</div></div>
+    <div class="row"><div class="k">三个接力边界</div><div class="v">{{R2}}</div></div>
+    <div class="row"><div class="k">最小验证命令</div><div class="v">{{R3}}</div></div>
+    <div class="row"><div class="k">最贵的一行</div><div class="v">{{R4}}</div></div>
+    <div class="row"><div class="k">可追问的名字</div><div class="v">{{R5}}</div></div>
+  </div>
+</section>
+
+<!-- 9) L0 题：.task 四行（触发/判据/锚点/产出） -->
+<section id="s5">
+  <div class="sec-head"><span class="sec-num">05</span><h2>L0 判据题</h2></div>
+  <div class="task">
+    <div class="task-h"><span class="no">TASK 01</span><h4>{{T1_TITLE}}</h4></div>
+    <div class="kv">
+      <div>触发</div><div><code>{{T1_CMD}}</code></div>
+      <div>判据</div><div>{{T1_CHECK}}</div>
+      <div>锚点</div><div><span class="an">{{T1_ANCHOR}}</span></div>
+      <div>产出</div><div>{{T1_OUT}}</div>
+    </div>
+  </div>
+</section>
+
+<!-- 10) 白话对照 / 12→13 漂移：.tablewrap > table -->
+<section id="s6">
+  <div class="sec-head"><span class="sec-num">06</span><h2>白话对照</h2></div>
+  <div class="tablewrap"><table><thead><tr><th>代码</th><th>白话</th></tr></thead>
+    <tbody><tr><td><code>{{TERM}}</code></td><td>{{PLAIN}}</td></tr></tbody></table></div>
+</section>
+
+<section id="s7">
+  <div class="sec-head"><span class="sec-num">07</span><h2>12 → 13 行号漂移</h2></div>
+  <div class="tablewrap"><table><thead><tr><th>位置</th><th>AOSP 12</th><th>AOSP 13</th></tr></thead>
+    <tbody><tr><td><code>{{SYMBOL}}</code></td><td>{{L12}}</td><td><b>{{L13}}</b></td></tr></tbody></table></div>
+</section>
+
+<footer><p>{{FOOTER}}</p></footer>
+</main>
+
+<!-- 11) 主题按钮 + 脚本：三态切换、进度条、导航高亮、复制 -->
+<button id="themeBtn" type="button" title="自动 → 浅色 → 深色">
+  <span class="ic">🌓</span><span class="tx">自动</span>
+</button>
+
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+  var KEY = "{{THEME_KEY}}";
+  var modes = ["auto","light","dark"];
+  var icon  = {auto:"🌓", light:"☀️", dark:"🌙"};
+  var label = {auto:"自动", light:"浅色", dark:"深色"};
+  var btn = document.getElementById("themeBtn");
+
+  function isNight(d){ var h = d.getHours(); return h >= 22 || h < 7; }
+  function resolve(mode){ return mode === "auto" ? (isNight(new Date()) ? "dark" : "light") : mode; }
+  function apply(mode){
+    root.setAttribute("data-theme", resolve(mode));
+    btn.querySelector(".ic").textContent = icon[mode];
+    btn.querySelector(".tx").textContent = label[mode];
+  }
+  function saved(){ try { return localStorage.getItem(KEY) || "auto"; } catch(e){ return "auto"; } }
+
+  var mode = saved();
+  apply(mode);
+  btn.addEventListener("click", function(){
+    mode = modes[(modes.indexOf(mode) + 1) % modes.length];
+    apply(mode);
+    try { localStorage.setItem(KEY, mode); } catch(e){}
+  });
+  setInterval(function(){ if (mode === "auto") apply(mode); }, 60000);
+
+  var bar = document.getElementById("progress");
+  function onScroll(){
+    var h = document.documentElement, max = h.scrollHeight - h.clientHeight;
+    bar.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + "%";
+  }
+  document.addEventListener("scroll", onScroll, {passive:true}); onScroll();
+
+  var links = [].slice.call(document.querySelectorAll(".nav a"));
+  var secs = links.map(function(a){ return document.querySelector(a.getAttribute("href")); });
+  function highlight(){
+    var y = window.scrollY + 120, current = 0;
+    secs.forEach(function(s, i){ if (s && s.offsetTop <= y) current = i; });
+    links.forEach(function(a, i){ a.classList.toggle("on", i === current); });
+  }
+  document.addEventListener("scroll", highlight, {passive:true}); highlight();
+
+  [].forEach.call(document.querySelectorAll(".copy"), function(b){
+    b.addEventListener("click", function(){
+      var pre = b.closest(".codeblock").querySelector("pre");
+      var done = function(){ b.textContent = "已复制"; setTimeout(function(){ b.textContent = "复制"; }, 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(pre.textContent).then(done, done);
+      } else { done(); }
+    });
+  });
+
+  root.setAttribute("data-ready", "1");
+})();
+</script>
+</body>
+</html>

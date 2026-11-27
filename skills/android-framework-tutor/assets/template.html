@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- 替换：中文标题 — <实际源码版本> 源码深度分析 -->
+<title>{{TITLE}} — {{AOSP_VERSION}} 源码深度分析</title>
+<style>
+:root{
+  --bg:#f4ecdd; --paper:#fbf6ea; --ink:#2c2620; --muted:#7a6f5f;
+  --accent:#b4552d; --accent-soft:#e8d9c8; --line:#d9cbb4;
+  --code-bg:#f7f1e4; --cm:#8a7a5f; --tree-ink:#3a3229;
+  --shadow:0 1px 3px rgba(80,60,30,.12);
+}
+[data-theme="dark"]{
+  --bg:#1d1916; --paper:#262019; --ink:#e8ddc9; --muted:#a99b82;
+  --accent:#e08a5b; --accent-soft:#3a2f24; --line:#463b2e;
+  --code-bg:#221c16; --cm:#9c8c6e; --tree-ink:#d9c9ac;
+  --shadow:0 1px 3px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Noto Serif SC","Source Han Serif SC","Songti SC","Microsoft YaHei",
+    "Segoe UI Symbol","Apple Symbols",serif;
+  line-height:1.8; font-size:16px;
+}
+.wrap{max-width:920px; margin:0 auto; padding:32px 22px 80px;}
+h1{font-size:1.9em; line-height:1.4; margin:.2em 0 .4em; color:var(--ink);}
+h2{font-size:1.35em; margin:1.8em 0 .7em; padding-bottom:.25em; border-bottom:2px solid var(--accent);}
+h3{font-size:1.12em; margin:1.4em 0 .5em;}
+p{margin:.6em 0;}
+a{color:var(--accent); text-decoration:none;} a:hover{text-decoration:underline;}
+.series{font-size:.85em; color:var(--muted); margin-bottom:6px; font-family:"Microsoft YaHei","Segoe UI Symbol","Apple Symbols",sans-serif;}
+.lead{background:var(--paper); border-left:4px solid var(--accent); padding:14px 18px; border-radius:6px; box-shadow:var(--shadow);}
+.card{background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:16px 20px; margin:18px 0; box-shadow:var(--shadow);}
+.toc{font-family:"Microsoft YaHei","Segoe UI Symbol","Apple Symbols",sans-serif; font-size:.95em;}
+.toc a{color:var(--tree-ink);} .toc ul{margin:.3em 0; padding-left:1.4em;}
+table{border-collapse:collapse; width:100%; margin:14px 0; font-size:.94em; background:var(--paper);}
+th,td{border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top;}
+th{background:var(--accent-soft);}
+.tag{display:inline-block; font-size:.78em; padding:1px 9px; border-radius:10px; background:var(--accent-soft); color:var(--accent); margin-right:6px; font-family:"Microsoft YaHei","Segoe UI Symbol","Apple Symbols",sans-serif;}
+.filename{font-family:Consolas,"Cascadia Mono","Segoe UI Symbol","Apple Symbols",monospace; font-size:.85em; color:var(--muted); margin:14px 0 0;}
+.code-block{background:var(--code-bg); border:1px solid var(--line); border-radius:6px; padding:12px 14px; overflow-x:auto; margin:4px 0 8px;}
+.code-block pre{margin:0; font-family:Consolas,"Cascadia Mono","Segoe UI Symbol","Apple Symbols",monospace; font-size:.86em; line-height:1.65; white-space:pre;}
+.cm{color:var(--cm);}
+.annotation{background:var(--accent-soft); border-radius:4px; padding:2px 5px;}
+.tree{font-family:Consolas,"Cascadia Mono","Segoe UI Symbol","Apple Symbols",monospace;
+  background:var(--code-bg); border:1px solid var(--line); border-radius:6px;
+  padding:12px 14px; overflow-x:auto; color:var(--tree-ink); font-size:.85em; line-height:1.7; white-space:pre;}
+.note{border-left:3px solid var(--line); padding:4px 14px; color:var(--muted); margin:12px 0;}
+.warn{border-left:3px solid var(--accent); padding:4px 14px; background:var(--accent-soft); border-radius:0 6px 6px 0;}
+details{border:1px solid var(--line); border-radius:6px; padding:8px 14px; margin:10px 0; background:var(--paper);}
+summary{cursor:pointer; color:var(--accent);}
+.ans{margin-top:8px;}
+footer{margin-top:48px; padding-top:16px; border-top:1px solid var(--line); color:var(--muted); font-size:.9em; font-family:"Microsoft YaHei","Segoe UI Symbol","Apple Symbols",sans-serif;}
+#themeBtn{position:fixed; right:22px; bottom:22px; border:1px solid var(--line); background:var(--paper); color:var(--ink);
+  border-radius:20px; padding:8px 14px; cursor:pointer; box-shadow:var(--shadow); font-size:.85em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="series"><!-- 系列条，如：Android 窗口层级 03 ｜ 基于 android-12.0.0_r32 ｜ 上/下篇链接 --></p>
+
+<h1 id="top">{{TITLE}}</h1>
+
+<!-- 开篇定位：必须是「一段连贯的话」，覆盖 是什么/用在哪/设计取舍/机制骨架，禁止拆成四个小标题 -->
+<div class="lead" id="lead">
+{{开篇一段话：先一句话定位它属于哪层、解决什么；再讲开发/定制/排障场景；再点 1-2 个设计取舍与“反过来会怎样”；最后给出 3-6 个已核实参与者与“起点→终点”主流程。}}
+</div>
+
+<div class="card toc" id="toc">
+<strong>目录</strong>
+<ul>
+  <li><a href="#p0">0.0 名词表</a></li>
+  <li><a href="#p1">1. 驱动机制</a></li>
+  <li><a href="#p2">2. 方法逐个看</a></li>
+  <li><a href="#p3">3. 分块源码走读</a></li>
+  <li><a href="#p4">4. 稳态闭环</a></li>
+  <li><a href="#quiz">🧠 自测</a></li>
+</ul>
+</div>
+
+<h2 id="p0">0.0 名词表</h2>
+<div class="card">
+<table>
+<tr><th>名词</th><th>一句话解释</th></tr>
+<tr><td>{{名词}}</td><td>{{解释，本篇自足，不要求先读前篇}}</td></tr>
+</table>
+</div>
+
+<h2 id="p1">1. 驱动机制</h2>
+<!-- 谁触发、在哪个线程、沿什么流推进；调用链用 .tree，不要箭头长句 -->
+<div class="tree">{{Class#method()                    [File.java:行号 已核实]
+├─ next#call()                  [File.cpp:行号]  // 行内注释讲 why
+└─ end#finish()                 [File.java:行号]}}</div>
+
+<h2 id="p2">2. 方法逐个看</h2>
+<div class="card">
+<table>
+<tr><th>方法/类</th><th>谁调它</th><th>作用</th><th>下一步</th></tr>
+<tr><td>{{Class#method()}}</td><td>{{上游}}</td><td>{{作用}}</td><td><a href="#p3">{{下游}}</a></td></tr>
+</table>
+</div>
+
+<h2 id="p3">3. 分块源码走读</h2>
+
+<h3 id="p3-1">块A｜第1跳：{{标题}}</h3>
+<p class="filename">{{ViewRootImpl.java:1024-1060}}</p>
+<div class="code-block"><pre>{{// ① why 注释：这里为什么必须这样，不写 what
+...
+// … 省略：xxx 分支（何时执行；为何与本篇无关）}}</pre></div>
+<p><strong>这段在干什么：</strong>{{进入本块时数据/状态是什么，出去变成什么。}}</p>
+<p><strong>设计意图：</strong>{{锁/线程/事务上的取舍。}}</p>
+<p class="warn"><strong>实战问题：</strong>{{现象 → 与本块的因果 → 怎么查：dumpsys 子命令 / event log 关键词 / 断点行号（均需验证）。}}</p>
+<details><summary>🧠 思考（单块）</summary><div class="ans">{{对话中只出题不给答案；成篇可折叠参考答案。}}</div></details>
+
+<h3 id="p3-2">块B｜第2跳：{{标题}}</h3>
+<!-- 结构同块A。闭环块放跨块实战题与闭环思考题，标注（需结合：块A、块C） -->
+
+<h2 id="p4">4. 稳态闭环</h2>
+<!-- 长文必须有头有尾：一次循环结束后系统回到什么稳态，什么条件触发下一轮 -->
+<p>{{稳态闭环说明。}}</p>
+
+<h2 id="quiz">🧠 自测：N 个问题</h2>
+<details><summary>题目 1（闭环·需结合块A、块B）</summary><div class="ans">{{参考答案}}</div></details>
+
+<footer>
+<p><a href="{{上一篇.html}}">← 上一篇</a> ｜ <a href="{{下一篇.html}}">下一篇 →</a></p>
+<p><a href="{{路线图.html}}">学习路线图</a> ｜ 下篇预告：{{主题}}</p>
+</footer>
+
+</div>
+<button id="themeBtn" title="主题切换">🌗 auto</button>
+<script>
+(function(){
+  // localStorage key 沿用目标系列：窗口系列为 awt_theme；新系列同样用 awt_theme
+  var KEY='awt_theme';
+  var btn=document.getElementById('themeBtn');
+  var order=['auto','light','dark'];
+  function apply(m){
+    if(m==='auto'){
+      var h=new Date().getHours();
+      document.documentElement.setAttribute('data-theme',(h>=7&&h<19)?'light':'dark');
+    }else{ document.documentElement.setAttribute('data-theme',m); }
+    btn.textContent='🌗 '+m;
+  }
+  var mode=localStorage.getItem(KEY)||'auto'; apply(mode);
+  btn.addEventListener('click',function(){
+    mode=order[(order.indexOf(mode)+1)%order.length];
+    localStorage.setItem(KEY,mode); apply(mode);
+  });
+  setInterval(function(){ if(mode==='auto') apply('auto'); },60000);
+})();
+</script>
+</body>
+</html>
