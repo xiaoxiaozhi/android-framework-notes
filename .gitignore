@@ -24,6 +24,9 @@ credentials*
 **/__pycache__/
 *.pyc
 
+# --- 本地技能软链接（junction 指向真实技能目录，只在阻塞机有效）---
+skills/
+
 # --- 系统垃圾 ---
 Thumbs.db
 .DS_Store
